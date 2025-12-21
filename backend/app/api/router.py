@@ -1,0 +1,21 @@
+"""Main API router that includes all module routers."""
+
+from fastapi import APIRouter
+
+from app.modules.auth.router import router as auth_router
+from app.modules.portfolio.router import router as portfolio_router
+from app.modules.trading.router import router as trading_router
+from app.modules.analysis.router import router as analysis_router
+from app.modules.data.router import router as data_router
+from app.modules.watchlist.router import router as watchlist_router
+
+api_router = APIRouter()
+
+# Include module routers
+api_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(portfolio_router, prefix="/portfolio", tags=["Portfolio"])
+api_router.include_router(trading_router, prefix="/orders", tags=["Trading"])
+api_router.include_router(analysis_router, prefix="/analysis", tags=["Analysis"])
+api_router.include_router(data_router, prefix="/stocks", tags=["Market Data"])
+api_router.include_router(watchlist_router, prefix="/watchlist", tags=["Watchlist"])
+

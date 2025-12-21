@@ -1,0 +1,80 @@
+"""Trading/Order database models."""
+
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+from uuid import uuid4
+
+from sqlalchemy import String, DateTime, Numeric, ForeignKey, Index, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+
+from app.core.database import Base
+
+
+class OrderSide(str, Enum):
+    """Order side enum."""
+
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+class OrderType(str, Enum):
+    """Order type enum."""
+
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP_LOSS = "STOP_LOSS"
+    TAKE_PROFIT = "TAKE_PROFIT"
+
+
+class OrderStatus(str, Enum):
+    """Order status enum."""
+
+    PENDING = "PENDING"
+    FILLED = "FILLED"
+    PARTIALLY_FILLED = "PARTIAL"
+    CANCELLED = "CANCELLED"
+    REJECTED = "REJECTED"
+
+
+class Order(Base):
+    """Order model for paper trading."""
+
+    __tablename__ = "orders"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MARKET")
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    filled_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=Decimal("0"))
+    filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    fees: Mapped[Decimal] = mapped_column(Numeric(18, 4), default=Decimal("0"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_orders_user_status", "user_id", "status"),
+        Index("ix_orders_user_created", "user_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Order {self.side} {self.quantity} {self.symbol} @ {self.price} [{self.status}]>"
+
