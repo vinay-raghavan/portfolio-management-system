@@ -183,8 +183,9 @@ class OrderValidator:
             return True  # Allow order to proceed, will be checked at execution
 
         # Calculate required amount (quantity * price + estimated fees)
-        estimated_fees = price * order.quantity * Decimal("0.001")  # 0.1% estimated fees
-        required_amount = (order.quantity * price) + estimated_fees
+        price_decimal = Decimal(str(price))
+        estimated_fees = price_decimal * order.quantity * Decimal("0.001")  # 0.1% estimated fees
+        required_amount = (order.quantity * price_decimal) + estimated_fees
 
         has_funds = await self.funds_service.check_buying_power(user_id, required_amount)
 
