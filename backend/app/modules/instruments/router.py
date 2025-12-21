@@ -1,15 +1,22 @@
 """Instrument API routes."""
 
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.redis import get_redis
 from app.modules.instruments.schemas import (
+    InstrumentCreate,
     InstrumentResponse,
     InstrumentSearchParams,
     InstrumentSearchResponse,
 )
 from app.modules.instruments.service import InstrumentService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -123,4 +130,67 @@ async def get_expiry_dates(
     service = InstrumentService(db)
     dates = await service.get_expiry_dates(underlying, exchange)
     return [d.isoformat() for d in dates]
+
+
+@router.post("/sync/pending", response_model=dict)
+async def sync_pending_instruments(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Process pending instrument syncs from Redis.
+
+    This endpoint picks up instruments stored by Celery tasks and
+    syncs them to the database using bulk upsert.
+    """
+    redis = await get_redis()
+    service = InstrumentService(db)
+
+    # Keys for pending syncs
+    pending_keys = [
+        "instruments:nse:equity:pending",
+        "instruments:nse:indices:pending",
+    ]
+
+    results = {}
+
+    for key in pending_keys:
+        try:
+            data = await redis.get(key)
+            if not data:
+                continue
+
+            instruments_data = json.loads(data)
+
+            # Convert to InstrumentCreate objects
+            instrument_creates = []
+            for inst_data in instruments_data:
+                try:
+                    instrument_creates.append(InstrumentCreate(**inst_data))
+                except Exception as e:
+                    logger.warning(f"Invalid instrument data for {inst_data.get('symbol')}: {e}")
+
+            # Use bulk upsert
+            if instrument_creates:
+                bulk_result = await service.upsert_bulk(instrument_creates)
+                results[key] = {
+                    "created": bulk_result.created,
+                    "updated": bulk_result.updated,
+                    "failed": bulk_result.failed,
+                }
+
+            # Delete processed key
+            await redis.delete(key)
+
+        except Exception as e:
+            logger.error(f"Error processing {key}: {e}")
+            results[key] = {"error": str(e)}
+
+    total_created = sum(r.get("created", 0) for r in results.values() if isinstance(r, dict))
+    total_updated = sum(r.get("updated", 0) for r in results.values() if isinstance(r, dict))
+
+    return {
+        "status": "success",
+        "total_created": total_created,
+        "total_updated": total_updated,
+        "details": results,
+    }
 

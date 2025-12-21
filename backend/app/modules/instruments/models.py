@@ -77,9 +77,9 @@ class Instrument(Base):
         Index("ix_instruments_exchange_symbol", "exchange", "symbol"),
         Index("ix_instruments_segment_exchange", "segment", "exchange"),
         Index("ix_instruments_underlying_expiry", "underlying", "expiry"),
-        # Full-text search index (PostgreSQL specific)
-        Index("ix_instruments_name_trgm", "name", postgresql_using="gin",
-              postgresql_ops={"name": "gin_trgm_ops"}),
+        # Note: For full-text search, enable pg_trgm extension and create index manually:
+        # CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        # CREATE INDEX ix_instruments_name_trgm ON instruments USING gin (name gin_trgm_ops);
     )
 
     def __repr__(self) -> str:
