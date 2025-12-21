@@ -1,5 +1,6 @@
 """Portfolio service layer."""
 
+from collections.abc import Callable
 from decimal import Decimal
 
 from sqlalchemy import select, func
@@ -61,7 +62,7 @@ class PortfolioService:
         return position
 
     async def get_portfolio(
-        self, user_id: str, price_getter: callable | None = None
+        self, user_id: str, price_getter: Callable | None = None
     ) -> PortfolioResponse:
         """Get full portfolio with summary."""
         positions = await self.get_positions(user_id)
