@@ -14,6 +14,7 @@ celery_app = Celery(
         "worker.tasks.analysis",
         "worker.tasks.portfolio",
         "worker.tasks.alerts",
+        "worker.tasks.instruments",
     ],
 )
 
@@ -50,6 +51,21 @@ celery_app.conf.beat_schedule = {
         "schedule": {
             "hour": 0,
             "minute": 0,
+        },
+    },
+    # Instrument master sync - daily at 6 AM IST (00:30 UTC)
+    "sync-nse-equity-master-daily": {
+        "task": "worker.tasks.instruments.sync_nse_equity_master",
+        "schedule": {
+            "hour": 0,
+            "minute": 30,
+        },
+    },
+    "sync-nse-indices-daily": {
+        "task": "worker.tasks.instruments.sync_nse_indices",
+        "schedule": {
+            "hour": 0,
+            "minute": 35,
         },
     },
 }

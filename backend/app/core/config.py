@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     DATA_PROVIDER: str = "yahoo"  # yahoo | nse | angelone
     BROKER_TYPE: str = "paper"  # paper | angelone | dhan
 
+    # NSE Data Provider Settings
+    NSE_RATE_LIMIT_REQUESTS: int = 3  # Max requests per time window
+    NSE_RATE_LIMIT_WINDOW: float = 1.0  # Time window in seconds
+    NSE_CACHE_TTL_QUOTE: int = 30  # Quote cache TTL in seconds
+    NSE_CACHE_TTL_HISTORICAL: int = 3600  # Historical data cache TTL (1 hour)
+    NSE_COOKIE_TTL_MINUTES: int = 5  # Cookie refresh interval
+
     # Paper Trading
     PAPER_TRADING_INITIAL_BALANCE: float = 1000000.0  # ₹10 Lakh default
 

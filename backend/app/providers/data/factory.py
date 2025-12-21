@@ -7,6 +7,7 @@ from typing import Type
 from app.core.config import settings
 from app.providers.data.base import DataProvider
 from app.providers.data.yahoo import YahooDataProvider
+from app.providers.data.nse import NSEDataProvider
 from app.providers.symbols import Exchange
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class DataProviderFactory:
     # Registry of available providers
     _providers: dict[str, Type[DataProvider]] = {
         "yahoo": YahooDataProvider,
-        # "nse": NSEDataProvider,  # TODO: Phase 1, Week 2
+        "nse": NSEDataProvider,
         # "angelone": AngelOneDataProvider,  # TODO: Phase 2
     }
 
