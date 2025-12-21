@@ -112,7 +112,7 @@ def sync_nse_equity_master(self) -> dict:
 def sync_nse_indices(self) -> dict:
     """Sync NSE index instruments."""
     logger.info("Starting NSE indices sync")
-    
+
     # Pre-defined list of major NSE indices
     indices = [
         {"symbol": "NIFTY 50", "name": "Nifty 50", "exchange": "NSE", "instrument_type": "IDX"},
@@ -133,7 +133,7 @@ def sync_nse_indices(self) -> dict:
         {"symbol": "NIFTY METAL", "name": "Nifty Metal", "exchange": "NSE", "instrument_type": "IDX"},
         {"symbol": "NIFTY FIN SERVICE", "name": "Nifty Financial Services", "exchange": "NSE", "instrument_type": "IDX"},
     ]
-    
+
     # Add common fields
     for idx in indices:
         idx.update({
@@ -143,7 +143,7 @@ def sync_nse_indices(self) -> dict:
             "is_active": True,
             "is_tradeable": False,  # Indices are not directly tradeable
         })
-    
+
     # Store in Redis
     redis_client = Redis.from_url(settings.REDIS_URL)
     import json
@@ -152,7 +152,78 @@ def sync_nse_indices(self) -> dict:
         3600,
         json.dumps(indices),
     )
-    
+
     logger.info(f"NSE indices sync complete. Found {len(indices)} indices")
     return {"status": "success", "exchange": "NSE", "segment": "IDX", "count": len(indices)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.instruments.sync_nse_fo_master")
+def sync_nse_fo_master(self) -> dict:
+    """Sync NSE F&O instrument master with lot sizes.
+
+    Downloads the F&O lot size data from NSE and stores in Redis.
+    """
+    logger.info("Starting NSE F&O master sync")
+
+    try:
+        client = _get_http_client()
+
+        # First, visit NSE homepage to get cookies
+        client.get("https://www.nseindia.com/")
+
+        # Download F&O lot size CSV
+        response = client.get(NSE_FO_CSV_URL)
+        response.raise_for_status()
+
+        # Parse CSV - F&O lot size format is different
+        content = response.text
+        lines = content.strip().split('\n')
+
+        instruments = []
+        # Skip header rows (usually first 2 lines)
+        for line in lines[2:]:
+            try:
+                parts = line.split(',')
+                if len(parts) >= 2:
+                    symbol = parts[0].strip()
+                    # Lot sizes are in subsequent columns for different expiries
+                    lot_size = int(parts[1].strip()) if parts[1].strip().isdigit() else 1
+
+                    if symbol and symbol != "SYMBOL":
+                        instrument = {
+                            "symbol": symbol,
+                            "name": symbol,
+                            "exchange": "NSE",
+                            "segment": "FO",
+                            "instrument_type": "FUT",
+                            "lot_size": lot_size,
+                            "tick_size": "0.05",
+                            "is_active": True,
+                            "is_tradeable": True,
+                        }
+                        instruments.append(instrument)
+            except Exception as e:
+                logger.warning(f"Error parsing F&O row: {e}")
+
+        # Store in Redis for API to process
+        redis_client = Redis.from_url(settings.REDIS_URL)
+
+        import json
+        redis_client.setex(
+            "instruments:nse:fo:pending",
+            3600,  # 1 hour TTL
+            json.dumps(instruments),
+        )
+
+        logger.info(f"NSE F&O master sync complete. Found {len(instruments)} instruments")
+        return {
+            "status": "success",
+            "exchange": "NSE",
+            "segment": "FO",
+            "count": len(instruments),
+        }
+
+    except Exception as e:
+        logger.error(f"Error syncing NSE F&O master: {e}")
+        return {"status": "error", "message": str(e)}
 

@@ -68,5 +68,12 @@ celery_app.conf.beat_schedule = {
             "minute": 35,
         },
     },
+    "sync-nse-fo-master-daily": {
+        "task": "worker.tasks.instruments.sync_nse_fo_master",
+        "schedule": {
+            "hour": 0,
+            "minute": 40,
+        },
+    },
 }
 

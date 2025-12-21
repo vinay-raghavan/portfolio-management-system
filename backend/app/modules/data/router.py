@@ -1,11 +1,32 @@
 """Market data API routes."""
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
+from datetime import datetime
 
 from app.modules.data.schemas import StockQuote, StockInfo, HistoricalDataResponse, SearchResult
 from app.modules.data.service import MarketDataService
+from app.core.config import settings
 
 router = APIRouter()
+
+
+class MarketStatus(BaseModel):
+    """Market status response."""
+
+    is_open: bool
+    status: str
+    market: str
+    timestamp: datetime | None = None
+    next_open: datetime | None = None
+
+
+@router.get("/market/status", response_model=MarketStatus)
+async def get_market_status() -> MarketStatus:
+    """Get current market status (open/closed)."""
+    service = MarketDataService()
+    status_info = await service.get_market_status()
+    return MarketStatus(**status_info)
 
 
 @router.get("/{symbol}/quote", response_model=StockQuote)

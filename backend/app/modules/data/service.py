@@ -112,3 +112,33 @@ class MarketDataService:
             for r in results
         ]
 
+    async def get_market_status(self) -> dict:
+        """Get current market status.
+
+        Returns:
+            Dict with market status information.
+        """
+        from datetime import datetime
+        from app.core.config import settings
+
+        # Check if provider has market status method
+        if hasattr(self._provider, "get_market_status"):
+            status = await self._provider.get_market_status()
+            status["market"] = settings.DEFAULT_MARKET
+            return status
+
+        # Fallback for providers without market status
+        is_open = await self._provider.is_market_open()
+        result = {
+            "is_open": is_open,
+            "status": "open" if is_open else "closed",
+            "market": settings.DEFAULT_MARKET,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # Add next open time if provider supports it
+        if hasattr(self._provider, "get_next_market_open"):
+            result["next_open"] = self._provider.get_next_market_open().isoformat()
+
+        return result
+

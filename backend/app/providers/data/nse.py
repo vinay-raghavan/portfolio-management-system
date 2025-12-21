@@ -6,10 +6,13 @@ It handles:
 - Historical OHLCV data
 - Index data (Nifty 50, Bank Nifty, etc.)
 - Market hours awareness (9:15 AM - 3:30 PM IST)
+- Caching with Redis
+- Rate limiting to avoid blocks
 """
 
+import json
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, date
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,6 +31,28 @@ IST = ZoneInfo("Asia/Kolkata")
 # NSE market hours
 MARKET_OPEN = time(9, 15)  # 9:15 AM IST
 MARKET_CLOSE = time(15, 30)  # 3:30 PM IST
+PRE_MARKET_OPEN = time(9, 0)  # 9:00 AM IST
+PRE_MARKET_CLOSE = time(9, 8)  # 9:08 AM IST
+
+# NSE trading holidays (to be updated annually)
+NSE_HOLIDAYS_2024 = [
+    date(2024, 1, 26),  # Republic Day
+    date(2024, 3, 8),   # Mahashivratri
+    date(2024, 3, 25),  # Holi
+    date(2024, 3, 29),  # Good Friday
+    date(2024, 4, 11),  # Id-Ul-Fitr
+    date(2024, 4, 17),  # Ram Navami
+    date(2024, 4, 21),  # Mahavir Jayanti
+    date(2024, 5, 1),   # May Day
+    date(2024, 5, 23),  # Buddha Purnima
+    date(2024, 6, 17),  # Eid-ul-Adha
+    date(2024, 7, 17),  # Muharram
+    date(2024, 8, 15),  # Independence Day
+    date(2024, 10, 2),  # Gandhi Jayanti
+    date(2024, 11, 1),  # Diwali Laxmi Pujan
+    date(2024, 11, 15), # Guru Nanak Jayanti
+    date(2024, 12, 25), # Christmas
+]
 
 # NSE API endpoints
 NSE_BASE_URL = "https://www.nseindia.com"
@@ -357,8 +382,37 @@ class NSEDataProvider(DataProvider):
         if now.weekday() >= 5:  # Saturday or Sunday
             return False
 
+        # Check for trading holidays
+        if now.date() in NSE_HOLIDAYS_2024:
+            return False
+
         current_time = now.time()
         return MARKET_OPEN <= current_time <= MARKET_CLOSE
+
+    def is_pre_market_open(self) -> bool:
+        """Check if NSE pre-market session is open."""
+        now = datetime.now(IST)
+        if now.weekday() >= 5:
+            return False
+        if now.date() in NSE_HOLIDAYS_2024:
+            return False
+        current_time = now.time()
+        return PRE_MARKET_OPEN <= current_time <= PRE_MARKET_CLOSE
+
+    def get_next_market_open(self) -> datetime:
+        """Get the next market open time."""
+        now = datetime.now(IST)
+        next_open = datetime.combine(now.date(), MARKET_OPEN, tzinfo=IST)
+
+        # If market is already open or past close, move to next day
+        if now.time() >= MARKET_OPEN:
+            next_open += timedelta(days=1)
+
+        # Skip weekends and holidays
+        while next_open.weekday() >= 5 or next_open.date() in NSE_HOLIDAYS_2024:
+            next_open += timedelta(days=1)
+
+        return next_open
 
     async def get_index_quote(self, index: str) -> Quote | None:
         """Get quote for NSE indices (NIFTY 50, NIFTY BANK, etc.)."""
