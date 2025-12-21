@@ -1,11 +1,62 @@
 """Market data API routes."""
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
+from datetime import datetime
 
-from app.modules.data.schemas import StockQuote, StockInfo, HistoricalDataResponse, SearchResult
+from app.modules.data.schemas import (
+    StockQuote,
+    StockInfo,
+    HistoricalDataResponse,
+    SearchResult,
+    IndexConstituentsResponse,
+)
 from app.modules.data.service import MarketDataService
+from app.core.config import settings
 
 router = APIRouter()
+
+
+class MarketStatus(BaseModel):
+    """Market status response."""
+
+    is_open: bool
+    status: str
+    market: str
+    timestamp: datetime | None = None
+    next_open: datetime | None = None
+
+
+@router.get("/market/status", response_model=MarketStatus)
+async def get_market_status() -> MarketStatus:
+    """Get current market status (open/closed)."""
+    service = MarketDataService()
+    status_info = await service.get_market_status()
+    return MarketStatus(**status_info)
+
+
+@router.get("/index/{index_name}/constituents", response_model=IndexConstituentsResponse)
+async def get_index_constituents(index_name: str) -> IndexConstituentsResponse:
+    """Get constituents of a Nifty index with their current quotes.
+
+    Available indices:
+    - NIFTY 50, NIFTY 100, NIFTY 200, NIFTY 500
+    - NIFTY BANK, NIFTY IT, NIFTY NEXT 50
+    - NIFTY MIDCAP 50, NIFTY MIDCAP 100
+    - And other NSE indices
+
+    Note: This endpoint is only available when using the NSE data provider.
+    """
+    service = MarketDataService()
+    result = await service.get_index_constituents(index_name)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Index constituents not found for: {index_name}. Make sure you're using the NSE data provider.",
+        )
+
+    return result
 
 
 @router.get("/{symbol}/quote", response_model=StockQuote)

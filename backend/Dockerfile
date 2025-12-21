@@ -14,6 +14,10 @@ COPY pyproject.toml uv.lock README.md ./
 # Copy application code (needed for editable install)
 COPY app ./app
 
+# Copy Alembic configuration and migrations
+COPY alembic.ini ./
+COPY alembic ./alembic
+
 # Install dependencies
 RUN uv sync --frozen --no-dev
 
