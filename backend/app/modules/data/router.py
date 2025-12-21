@@ -41,8 +41,8 @@ async def get_stock_info(symbol: str) -> StockInfo:
 @router.get("/{symbol}/history", response_model=HistoricalDataResponse)
 async def get_historical_data(
     symbol: str,
-    period: str = Query("1mo", regex="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$"),
-    interval: str = Query("1d", regex="^(1m|2m|5m|15m|30m|60m|90m|1h|1d|5d|1wk|1mo|3mo)$"),
+    period: str = Query("1mo", pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$"),
+    interval: str = Query("1d", pattern="^(1m|2m|5m|15m|30m|60m|90m|1h|1d|5d|1wk|1mo|3mo)$"),
 ) -> HistoricalDataResponse:
     """Get historical price data for a stock symbol."""
     service = MarketDataService()

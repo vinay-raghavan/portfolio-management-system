@@ -15,7 +15,8 @@ from app.core.database import init_db
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
-    await init_db()
+    if not settings.SKIP_DB_INIT:
+        await init_db()
     yield
     # Shutdown
 
