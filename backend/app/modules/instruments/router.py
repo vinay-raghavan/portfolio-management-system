@@ -194,7 +194,6 @@ async def sync_pending_instruments(
         "details": results,
     }
 
-<<<<<<< HEAD
 
 @router.post("/sync/nifty/{index_name}", response_model=dict)
 async def sync_nifty_index_constituents(
@@ -393,5 +392,3 @@ async def sync_all_nse_stocks(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error syncing NSE stocks: {str(e)}",
         )
-=======
->>>>>>> e1b0c1c (feat: Enhance instrument models and API with pending sync endpoint and Docker configuration updates)
