@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/portfolio"
+    SKIP_DB_INIT: bool = False  # Skip database initialization on startup
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
