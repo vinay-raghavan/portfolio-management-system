@@ -378,11 +378,14 @@ flowchart TB
 | Technical Analysis | ✅ Done | RSI, MACD, BB, ATR |
 | yfinance Integration | ✅ Done | US stocks working |
 | Frontend | 🟡 Partial | Basic dashboard only |
-| Indian Stock Data | ❌ Missing | Need NSE/BSE support |
-| Abstracted Data Layer | ✅ Done | DataProvider + YahooDataProvider + Factory |
+| Indian Stock Data | ✅ Done | NSE provider with 2220+ stocks, industry data for Nifty 500 |
+| Abstracted Data Layer | ✅ Done | DataProvider + YahooDataProvider + NSEDataProvider + Factory |
 | Abstracted Broker Layer | ✅ Done | Broker + PaperBroker + Factory |
 | Symbol System | ✅ Done | Symbol + SymbolMapper for multi-exchange |
 | Notification Abstraction | ✅ Done | NotificationProvider + types defined |
+| Instrument Master | ✅ Done | 2220+ NSE stocks with ISIN, industry, series |
+| Instrument Sync | ✅ Done | Weekly scheduled sync + manual API endpoints |
+| Market Status | ✅ Done | NSE trading hours awareness |
 | Backtesting | ❌ Missing | Not implemented |
 | Risk Management | ❌ Missing | Not implemented |
 | Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
