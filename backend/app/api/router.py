@@ -9,6 +9,7 @@ from app.modules.analysis.router import router as analysis_router
 from app.modules.data.router import router as data_router
 from app.modules.watchlist.router import router as watchlist_router
 from app.modules.instruments.router import router as instruments_router
+from app.modules.risk.router import router as risk_router
 
 api_router = APIRouter()
 
@@ -20,4 +21,5 @@ api_router.include_router(analysis_router, prefix="/analysis", tags=["Analysis"]
 api_router.include_router(data_router, prefix="/stocks", tags=["Market Data"])
 api_router.include_router(watchlist_router, prefix="/watchlist", tags=["Watchlist"])
 api_router.include_router(instruments_router, prefix="/instruments", tags=["Instruments"])
+api_router.include_router(risk_router, prefix="/risk", tags=["Risk Management"])
 
