@@ -477,7 +477,8 @@ class PaperBroker(Broker):
 
         # Format: "Trigger price: X" or "GTT: Trigger at X, ..."
         import re
-        match = re.search(r'[Tt]rigger(?:\s+price)?(?:\s+at)?:\s*([\d.]+)', message)
+        # Match "Trigger price: 123" or "Trigger at 123" or "Trigger: 123"
+        match = re.search(r'[Tt]rigger(?:\s+(?:price|at))?[:\s]+(\d+(?:\.\d+)?)', message)
         if match:
             return Decimal(match.group(1))
         return None
