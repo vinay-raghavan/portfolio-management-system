@@ -69,12 +69,5 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.instruments.sync_instruments_weekly",
         "schedule": crontab(hour=0, minute=30, day_of_week=0),  # Sunday 00:30 UTC
     },
-    "sync-nse-fo-master-daily": {
-        "task": "worker.tasks.instruments.sync_nse_fo_master",
-        "schedule": {
-            "hour": 0,
-            "minute": 40,
-        },
-    },
 }
 
