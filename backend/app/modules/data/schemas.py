@@ -63,3 +63,31 @@ class SearchResult(BaseModel):
     exchange: str | None = None
     type: str | None = None
 
+
+class IndexConstituent(BaseModel):
+    """Schema for index constituent stock."""
+
+    symbol: str
+    name: str | None = None
+    industry: str | None = None
+    isin: str | None = None
+    series: str = "EQ"
+    is_fno: bool = False
+    last_price: Decimal | None = None
+    change: Decimal | None = None
+    change_pct: Decimal | None = None
+    open: Decimal | None = None
+    high: Decimal | None = None
+    low: Decimal | None = None
+    previous_close: Decimal | None = None
+    volume: int | None = None
+    year_high: Decimal | None = None
+    year_low: Decimal | None = None
+
+
+class IndexConstituentsResponse(BaseModel):
+    """Schema for index constituents response."""
+
+    index: str
+    count: int
+    constituents: list[IndexConstituent]

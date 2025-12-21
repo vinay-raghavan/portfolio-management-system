@@ -194,3 +194,201 @@ async def sync_pending_instruments(
         "details": results,
     }
 
+
+@router.post("/sync/nifty/{index_name}", response_model=dict)
+async def sync_nifty_index_constituents(
+    index_name: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Sync constituents of a Nifty index to the instruments table.
+
+    This fetches stocks from NSE directly and stores them with industry data.
+
+    Available indices:
+    - NIFTY50, NIFTY100, NIFTY200, NIFTY500
+    - BANKNIFTY, NIFTYIT, NIFTYNEXT50
+    - NIFTYMIDCAP50, NIFTYMIDCAP100
+
+    Example: POST /api/v1/instruments/sync/nifty/NIFTY500
+    """
+    from app.providers.data.nse import NSEDataProvider
+    from decimal import Decimal
+
+    try:
+        # Use NSE provider to fetch constituents
+        nse_provider = NSEDataProvider()
+        constituents = await nse_provider.get_index_constituents(index_name)
+
+        if not constituents:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No constituents found for index: {index_name}",
+            )
+
+        # Convert to InstrumentCreate objects
+        service = InstrumentService(db)
+        instrument_creates = []
+
+        for c in constituents:
+            try:
+                instrument_creates.append(
+                    InstrumentCreate(
+                        symbol=c["symbol"],
+                        name=c.get("name") or c["symbol"],
+                        exchange="NSE",
+                        segment="EQ",
+                        instrument_type="EQ",
+                        series=c.get("series", "EQ"),
+                        isin=c.get("isin"),
+                        lot_size=1,
+                        tick_size=Decimal("0.05"),
+                        is_active=True,
+                        is_tradeable=True,
+                        industry=c.get("industry"),
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error creating instrument for {c.get('symbol')}: {e}")
+
+        # Bulk upsert
+        if instrument_creates:
+            result = await service.upsert_bulk(instrument_creates)
+            await db.commit()
+
+            return {
+                "status": "success",
+                "index": index_name.upper(),
+                "total_constituents": len(constituents),
+                "created": result.created,
+                "updated": result.updated,
+                "failed": result.failed,
+                "errors": result.errors[:5] if result.errors else [],
+            }
+
+        return {
+            "status": "error",
+            "message": "No valid instruments to sync",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing index {index_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error syncing index constituents: {str(e)}",
+        )
+
+
+@router.post("/sync/nse/all", response_model=dict)
+async def sync_all_nse_stocks(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Sync ALL NSE listed stocks from the official equity master CSV.
+
+    This fetches ~2200+ stocks from NSE's official equity list.
+    Note: This does not include industry data. Use /sync/nifty/NIFTY500 first
+    to get industry data for major stocks.
+
+    Example: POST /api/v1/instruments/sync/nse/all
+    """
+    import csv
+    import io
+    import httpx
+    from decimal import Decimal
+
+    NSE_EQUITY_CSV_URL = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+
+    try:
+        # Download equity CSV from NSE
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # First visit NSE homepage to get cookies
+            await client.get(
+                "https://www.nseindia.com/",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+
+            # Download CSV
+            response = await client.get(
+                NSE_EQUITY_CSV_URL,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "text/csv,application/csv,text/plain,*/*",
+                    "Referer": "https://www.nseindia.com/",
+                },
+            )
+            response.raise_for_status()
+
+        # Parse CSV
+        content = response.text
+        reader = csv.DictReader(io.StringIO(content))
+
+        # Get existing instruments to preserve industry data
+        from sqlalchemy import select
+        from app.modules.instruments.models import Instrument
+
+        service = InstrumentService(db)
+        existing_result = await db.execute(
+            select(Instrument.symbol, Instrument.industry).where(Instrument.exchange == "NSE")
+        )
+        existing_industries = {row[0]: row[1] for row in existing_result.fetchall()}
+
+        instrument_creates = []
+        for row in reader:
+            try:
+                symbol = row.get("SYMBOL", "").strip()
+                if not symbol:
+                    continue
+
+                # Preserve existing industry data if available
+                industry = existing_industries.get(symbol)
+
+                # CSV columns have spaces in names, try both variants
+                series = (row.get(" SERIES") or row.get("SERIES") or "EQ").strip()
+                isin = (row.get(" ISIN NUMBER") or row.get("ISIN NUMBER") or "").strip()
+
+                instrument_creates.append(
+                    InstrumentCreate(
+                        symbol=symbol,
+                        name=row.get("NAME OF COMPANY", "").strip() or symbol,
+                        exchange="NSE",
+                        segment="EQ",
+                        instrument_type="EQ",
+                        series=series or "EQ",
+                        isin=isin or None,
+                        lot_size=1,
+                        tick_size=Decimal("0.05"),
+                        is_active=True,
+                        is_tradeable=True,
+                        industry=industry,  # Preserve if we have it
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error parsing row: {e}")
+
+        # Bulk upsert
+        if instrument_creates:
+            result = await service.upsert_bulk(instrument_creates)
+            await db.commit()
+
+            return {
+                "status": "success",
+                "source": "NSE Equity Master CSV",
+                "total_parsed": len(instrument_creates),
+                "created": result.created,
+                "updated": result.updated,
+                "failed": result.failed,
+                "errors": result.errors[:5] if result.errors else [],
+            }
+
+        return {
+            "status": "error",
+            "message": "No instruments found in CSV",
+        }
+
+    except Exception as e:
+        logger.error(f"Error syncing NSE equity master: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error syncing NSE stocks: {str(e)}",
+        )

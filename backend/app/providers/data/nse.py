@@ -98,12 +98,20 @@ class NSEDataProvider(DataProvider):
     async def _get_session(self) -> httpx.AsyncClient:
         """Get or create HTTP session with proper cookies."""
         if self._session is None:
+            # Create headers without Accept-Encoding to let httpx handle it
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.nseindia.com/",
+                "Connection": "keep-alive",
+            }
             self._session = httpx.AsyncClient(
                 timeout=httpx.Timeout(30.0),
                 follow_redirects=True,
-                headers=self._headers,
+                headers=headers,
             )
-        
+
         # Refresh cookies if needed
         await self._refresh_cookies()
         return self._session
@@ -466,6 +474,86 @@ class NSEDataProvider(DataProvider):
             "status": data.get("marketState", [{}])[0].get("marketStatus", "unknown"),
             "timestamp": datetime.now(IST).isoformat(),
         }
+
+    async def get_index_constituents(self, index: str) -> list[dict]:
+        """Get constituents of an NSE index with their current quotes.
+
+        Args:
+            index: Index name (e.g., "NIFTY 50", "NIFTY 500", "NIFTY BANK")
+
+        Returns:
+            List of constituent stocks with their quote data
+        """
+        # Map common index names
+        index_mapping = {
+            "NIFTY": "NIFTY 50",
+            "NIFTY50": "NIFTY 50",
+            "NIFTY 50": "NIFTY 50",
+            "NIFTY100": "NIFTY 100",
+            "NIFTY 100": "NIFTY 100",
+            "NIFTY200": "NIFTY 200",
+            "NIFTY 200": "NIFTY 200",
+            "NIFTY500": "NIFTY 500",
+            "NIFTY 500": "NIFTY 500",
+            "BANKNIFTY": "NIFTY BANK",
+            "NIFTYBANK": "NIFTY BANK",
+            "NIFTY BANK": "NIFTY BANK",
+            "NIFTYIT": "NIFTY IT",
+            "NIFTY IT": "NIFTY IT",
+            "NIFTYNEXT50": "NIFTY NEXT 50",
+            "NIFTY NEXT 50": "NIFTY NEXT 50",
+            "NIFTYMIDCAP50": "NIFTY MIDCAP 50",
+            "NIFTY MIDCAP 50": "NIFTY MIDCAP 50",
+            "NIFTYMIDCAP100": "NIFTY MIDCAP 100",
+            "NIFTY MIDCAP 100": "NIFTY MIDCAP 100",
+        }
+        index_name = index_mapping.get(index.upper(), index.upper())
+
+        # URL encode the index name
+        from urllib.parse import quote
+        encoded_index = quote(index_name)
+
+        data = await self._make_request(f"/equity-stockIndices?index={encoded_index}")
+        if not data or "data" not in data:
+            logger.warning(f"No data found for index: {index_name}")
+            return []
+
+        try:
+            constituents = []
+            for item in data.get("data", []):
+                # Skip the index itself (priority=1) and only include stocks
+                if item.get("priority") == 1:
+                    continue
+
+                symbol = item.get("symbol", "")
+                if not symbol:
+                    continue
+
+                meta = item.get("meta", {})
+                constituents.append({
+                    "symbol": symbol,
+                    "name": meta.get("companyName", ""),
+                    "industry": meta.get("industry", ""),
+                    "isin": meta.get("isin", ""),
+                    "series": item.get("series", "EQ"),
+                    "is_fno": meta.get("isFNOSec", False),
+                    "last_price": item.get("lastPrice"),
+                    "change": item.get("change"),
+                    "change_pct": item.get("pChange"),
+                    "open": item.get("open"),
+                    "high": item.get("dayHigh"),
+                    "low": item.get("dayLow"),
+                    "previous_close": item.get("previousClose"),
+                    "volume": item.get("totalTradedVolume"),
+                    "year_high": item.get("yearHigh"),
+                    "year_low": item.get("yearLow"),
+                })
+
+            logger.info(f"Fetched {len(constituents)} constituents for {index_name}")
+            return constituents
+        except Exception as e:
+            logger.error(f"Error fetching index constituents for {index}: {e}")
+            return []
 
     async def close(self) -> None:
         """Close the HTTP session."""

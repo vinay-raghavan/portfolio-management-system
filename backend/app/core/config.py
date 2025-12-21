@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_API_KEY: str = ""
 
     # Market Data
-    DEFAULT_MARKET: str = "US"  # US | IN
+    DEFAULT_MARKET: str = "IN"  # US | IN
     DATA_REFRESH_INTERVAL_SECONDS: int = 60
 
     # Provider Configuration
