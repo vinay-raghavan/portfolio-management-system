@@ -1,0 +1,52 @@
+version: "3.9"
+
+# Development overrides - run with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # PostgreSQL with TimescaleDB
+  db:
+    ports:
+      - "5432:5432"
+
+  # Redis
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Backend API - development mode with hot reload
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    environment:
+      DEBUG: "true"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend - development mode with hot reload
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NODE_ENV: development
+    command: npm run dev
+
+  # Celery Worker - development mode with auto-reload
+  worker:
+    volumes:
+      - ./worker:/app
+    command: celery -A worker.celery_app worker --loglevel=debug
+
+  # Celery Beat
+  beat:
+    volumes:
+      - ./worker:/app
+    command: celery -A worker.celery_app beat --loglevel=debug
+
