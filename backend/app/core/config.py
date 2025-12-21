@@ -26,12 +26,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/portfolio"
+    # Database (port 5433 to avoid conflicts with other projects)
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/portfolio"
     SKIP_DB_INIT: bool = False  # Skip database initialization on startup
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # Redis (port 6380 to avoid conflicts with other projects)
+    REDIS_URL: str = "redis://localhost:6380/0"
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]

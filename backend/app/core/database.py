@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -33,10 +34,14 @@ class Base(DeclarativeBase):
 
 
 async def init_db() -> None:
-    """Initialize database (create tables if needed)."""
+    """Initialize database - verify connection.
+
+    Note: Tables are managed by Alembic migrations.
+    Run: alembic upgrade head
+    """
     async with engine.begin() as conn:
-        # In production, use Alembic migrations instead
-        await conn.run_sync(Base.metadata.create_all)
+        # Just verify connection - Alembic manages schema
+        await conn.execute(text("SELECT 1"))
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
