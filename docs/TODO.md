@@ -379,11 +379,13 @@ flowchart TB
 | yfinance Integration | ✅ Done | US stocks working |
 | Frontend | 🟡 Partial | Basic dashboard only |
 | Indian Stock Data | ❌ Missing | Need NSE/BSE support |
-| Abstracted Data Layer | ❌ Missing | Need provider pattern |
-| Abstracted Broker Layer | ❌ Missing | Need provider pattern |
+| Abstracted Data Layer | ✅ Done | DataProvider + YahooDataProvider + Factory |
+| Abstracted Broker Layer | ✅ Done | Broker + PaperBroker + Factory |
+| Symbol System | ✅ Done | Symbol + SymbolMapper for multi-exchange |
+| Notification Abstraction | ✅ Done | NotificationProvider + types defined |
 | Backtesting | ❌ Missing | Not implemented |
 | Risk Management | ❌ Missing | Not implemented |
-| Alerts/Notifications | ❌ Missing | Not implemented |
+| Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
 
 
 ### 1.1 Core Infrastructure (Week 1)
@@ -462,15 +464,15 @@ backend/app/providers/
 ```
 
 **Tasks:**
-- [ ] Create `DataProvider` abstract base class
+- [x] Create `DataProvider` abstract base class
   - `get_quote(symbol) -> Quote`
   - `get_historical(symbol, period, interval) -> List[OHLCV]`
   - `search_symbols(query) -> List[Symbol]`
   - `get_instrument_info(symbol) -> InstrumentInfo`
-- [ ] Migrate existing yfinance code to `YahooDataProvider`
-- [ ] Create `NSEDataProvider` using free NSE APIs
-- [ ] Create `DataProviderFactory` for runtime selection
-- [ ] Add `DATA_PROVIDER` config setting
+- [x] Migrate existing yfinance code to `YahooDataProvider`
+- [ ] Create `NSEDataProvider` using free NSE APIs *(deferred to phase-1/indian-market)*
+- [x] Create `DataProviderFactory` for runtime selection
+- [x] Add `DATA_PROVIDER` config setting
 
 #### 1.1.2 Abstract Broker Layer
 Create a pluggable broker system for order execution.
@@ -485,28 +487,28 @@ backend/app/providers/
 ```
 
 **Tasks:**
-- [ ] Create `Broker` abstract base class
+- [x] Create `Broker` abstract base class
   - `place_order(order) -> OrderResponse`
   - `cancel_order(order_id) -> bool`
   - `modify_order(order_id, changes) -> OrderResponse`
   - `get_order_status(order_id) -> OrderStatus`
   - `get_positions() -> List[Position]`
   - `get_funds() -> Funds`
-- [ ] Migrate existing paper trading to `PaperBroker`
-- [ ] Create `BrokerFactory` for runtime selection
-- [ ] Add `BROKER_TYPE` config setting (paper/live)
+- [x] Migrate existing paper trading to `PaperBroker`
+- [x] Create `BrokerFactory` for runtime selection
+- [x] Add `BROKER_TYPE` config setting (paper/live)
 
 #### 1.1.3 Unified Symbol System
 Handle different symbol formats across exchanges.
 
 **Tasks:**
-- [ ] Create `Symbol` model with exchange-specific tokens
+- [x] Create `Symbol` model with exchange-specific tokens
   - `symbol` (display name: "RELIANCE")
   - `exchange` (NSE, BSE, NYSE, NASDAQ)
   - `token` (exchange-specific ID)
   - `isin` (for Indian stocks)
-- [ ] Create symbol mapper for Indian stocks
-- [ ] Handle Yahoo format (RELIANCE.NS) vs broker format (RELIANCE-EQ)
+- [x] Create symbol mapper for Indian stocks
+- [x] Handle Yahoo format (RELIANCE.NS) vs broker format (RELIANCE-EQ)
 
 ---
 
