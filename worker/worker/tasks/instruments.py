@@ -227,3 +227,69 @@ def sync_nse_fo_master(self) -> dict:
         logger.error(f"Error syncing NSE F&O master: {e}")
         return {"status": "error", "message": str(e)}
 
+
+@celery_app.task(bind=True, name="worker.tasks.instruments.sync_instruments_weekly")
+def sync_instruments_weekly(self) -> dict:
+    """Weekly sync of all NSE instruments via API endpoints.
+
+    This task:
+    1. Syncs Nifty 500 constituents (with industry data)
+    2. Syncs all NSE stocks from equity master CSV
+
+    Runs every Sunday at 6 AM IST (00:30 UTC).
+    """
+    import time
+
+    logger.info("Starting weekly instrument master sync")
+
+    # Use internal API URL
+    api_url = "http://api:8000/api/v1/instruments"
+
+    results = {
+        "nifty500": None,
+        "all_nse": None,
+        "status": "success",
+    }
+
+    try:
+        client = httpx.Client(timeout=120.0)
+
+        # Step 1: Sync Nifty 500 for industry data
+        logger.info("Syncing Nifty 500 constituents...")
+        try:
+            response = client.post(f"{api_url}/sync/nifty/NIFTY500")
+            if response.status_code == 200:
+                results["nifty500"] = response.json()
+                logger.info(f"Nifty 500 sync: {results['nifty500']}")
+            else:
+                results["nifty500"] = {"error": response.text}
+                logger.warning(f"Nifty 500 sync failed: {response.status_code}")
+        except Exception as e:
+            results["nifty500"] = {"error": str(e)}
+            logger.error(f"Error syncing Nifty 500: {e}")
+
+        # Small delay between requests
+        time.sleep(2)
+
+        # Step 2: Sync all NSE stocks
+        logger.info("Syncing all NSE stocks...")
+        try:
+            response = client.post(f"{api_url}/sync/nse/all")
+            if response.status_code == 200:
+                results["all_nse"] = response.json()
+                logger.info(f"All NSE sync: {results['all_nse']}")
+            else:
+                results["all_nse"] = {"error": response.text}
+                logger.warning(f"All NSE sync failed: {response.status_code}")
+        except Exception as e:
+            results["all_nse"] = {"error": str(e)}
+            logger.error(f"Error syncing all NSE: {e}")
+
+        client.close()
+
+        logger.info("Weekly instrument master sync complete")
+        return results
+
+    except Exception as e:
+        logger.error(f"Error in weekly instrument sync: {e}")
+        return {"status": "error", "message": str(e)}

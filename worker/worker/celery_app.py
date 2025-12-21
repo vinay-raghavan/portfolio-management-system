@@ -1,6 +1,7 @@
 """Celery application configuration."""
 
 from celery import Celery
+from celery.schedules import crontab
 
 from worker.config import settings
 
@@ -48,32 +49,25 @@ celery_app.conf.beat_schedule = {
     },
     "calculate-daily-analytics-at-midnight": {
         "task": "worker.tasks.analysis.calculate_daily_analytics",
-        "schedule": {
-            "hour": 0,
-            "minute": 0,
-        },
+        "schedule": crontab(hour=0, minute=0),  # Daily at midnight UTC
     },
     # Instrument master sync - daily at 6 AM IST (00:30 UTC)
     "sync-nse-equity-master-daily": {
         "task": "worker.tasks.instruments.sync_nse_equity_master",
-        "schedule": {
-            "hour": 0,
-            "minute": 30,
-        },
+        "schedule": crontab(hour=0, minute=30),  # Daily at 00:30 UTC
     },
     "sync-nse-indices-daily": {
         "task": "worker.tasks.instruments.sync_nse_indices",
-        "schedule": {
-            "hour": 0,
-            "minute": 35,
-        },
+        "schedule": crontab(hour=0, minute=35),  # Daily at 00:35 UTC
     },
     "sync-nse-fo-master-daily": {
         "task": "worker.tasks.instruments.sync_nse_fo_master",
-        "schedule": {
-            "hour": 0,
-            "minute": 40,
-        },
+        "schedule": crontab(hour=0, minute=40),  # Daily at 00:40 UTC
+    },
+    # Weekly full instrument sync - Sunday 6 AM IST (00:30 UTC)
+    "sync-instruments-weekly": {
+        "task": "worker.tasks.instruments.sync_instruments_weekly",
+        "schedule": crontab(hour=0, minute=30, day_of_week=0),  # Sunday 00:30 UTC
     },
 }
 
