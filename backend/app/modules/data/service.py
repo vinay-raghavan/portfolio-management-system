@@ -10,6 +10,8 @@ from app.modules.data.schemas import (
     StockInfo,
     HistoricalDataPoint,
     HistoricalDataResponse,
+    IndexConstituent,
+    IndexConstituentsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,4 +113,80 @@ class MarketDataService:
             }
             for r in results
         ]
+
+    async def get_market_status(self) -> dict:
+        """Get current market status.
+
+        Returns:
+            Dict with market status information.
+        """
+        from datetime import datetime
+        from app.core.config import settings
+
+        # Check if provider has market status method
+        if hasattr(self._provider, "get_market_status"):
+            status = await self._provider.get_market_status()
+            status["market"] = settings.DEFAULT_MARKET
+            return status
+
+        # Fallback for providers without market status
+        is_open = await self._provider.is_market_open()
+        result = {
+            "is_open": is_open,
+            "status": "open" if is_open else "closed",
+            "market": settings.DEFAULT_MARKET,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # Add next open time if provider supports it
+        if hasattr(self._provider, "get_next_market_open"):
+            result["next_open"] = self._provider.get_next_market_open().isoformat()
+
+        return result
+
+    async def get_index_constituents(self, index: str) -> IndexConstituentsResponse | None:
+        """Get constituents of an index.
+
+        Args:
+            index: Index name (e.g., "NIFTY 50", "NIFTY 500")
+
+        Returns:
+            IndexConstituentsResponse with list of constituent stocks
+        """
+        # Check if provider supports index constituents
+        if not hasattr(self._provider, "get_index_constituents"):
+            logger.warning(f"Provider {type(self._provider).__name__} does not support index constituents")
+            return None
+
+        constituents_data = await self._provider.get_index_constituents(index)
+        if not constituents_data:
+            return None
+
+        constituents = [
+            IndexConstituent(
+                symbol=c["symbol"],
+                name=c.get("name"),
+                industry=c.get("industry"),
+                isin=c.get("isin"),
+                series=c.get("series", "EQ"),
+                is_fno=c.get("is_fno", False),
+                last_price=c.get("last_price"),
+                change=c.get("change"),
+                change_pct=c.get("change_pct"),
+                open=c.get("open"),
+                high=c.get("high"),
+                low=c.get("low"),
+                previous_close=c.get("previous_close"),
+                volume=c.get("volume"),
+                year_high=c.get("year_high"),
+                year_low=c.get("year_low"),
+            )
+            for c in constituents_data
+        ]
+
+        return IndexConstituentsResponse(
+            index=index.upper(),
+            count=len(constituents),
+            constituents=constituents,
+        )
 

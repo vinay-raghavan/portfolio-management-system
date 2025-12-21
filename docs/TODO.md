@@ -515,23 +515,23 @@ Handle different symbol formats across exchanges.
 ### 1.2 Indian Market Data (Week 2)
 > 🌿 **Branch:** `phase-1/indian-market`
 
-#### 1.2.1 NSE Data Provider
+#### 1.2.1 NSE Data Provider ✅
 Free NSE data for Indian stocks.
 
 **Tasks:**
-- [ ] Implement NSE data fetching
-  - [ ] Get live quotes from NSE website/API
-  - [ ] Get historical data from NSE archives
-  - [ ] Get index data (Nifty 50, Bank Nifty)
-- [ ] Handle market hours (9:15 AM - 3:30 PM IST)
-- [ ] Cache frequently accessed data in Redis
-- [ ] Rate limiting to avoid blocks
+- [x] Implement NSE data fetching
+  - [x] Get live quotes from NSE website/API
+  - [x] Get historical data from NSE archives
+  - [x] Get index data (Nifty 50, Bank Nifty)
+- [x] Handle market hours (9:15 AM - 3:30 PM IST)
+- [x] Cache frequently accessed data in Redis
+- [x] Rate limiting to avoid blocks
 
-#### 1.2.2 Instrument Master Database
+#### 1.2.2 Instrument Master Database ✅
 Store all tradeable instruments.
 
 **Tasks:**
-- [ ] Create `Instrument` model
+- [x] Create `Instrument` model
   ```python
   class Instrument:
       symbol: str
@@ -543,9 +543,9 @@ Store all tradeable instruments.
       tick_size: Decimal
       expiry: date   # For F&O
   ```
-- [ ] Daily job to download instrument master
-- [ ] Search endpoint for instruments
-- [ ] Filter by segment (Equity, F&O, etc.)
+- [x] Daily job to download instrument master
+- [x] Search endpoint for instruments
+- [x] Filter by segment (Equity, F&O, etc.)
 
 ---
 
