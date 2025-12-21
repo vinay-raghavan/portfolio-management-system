@@ -1,15 +1,23 @@
 """Portfolio database models."""
 
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
+from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import String, DateTime, Numeric, ForeignKey, Index
+from sqlalchemy import String, DateTime, Date, Numeric, ForeignKey, Index, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+
+
+class ProductType(str, Enum):
+    """Product type for positions."""
+
+    DELIVERY = "DELIVERY"  # CNC - Cash and Carry (overnight holding)
+    INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
 
 
 class Position(Base):
@@ -26,6 +34,15 @@ class Position(Base):
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
     avg_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+
+    # New fields for enhanced position tracking
+    product_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=ProductType.DELIVERY.value
+    )
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -35,10 +52,127 @@ class Position(Base):
 
     __table_args__ = (
         Index("ix_positions_user_symbol", "user_id", "symbol", unique=True),
+        Index("ix_positions_user_product", "user_id", "product_type"),
     )
 
     def __repr__(self) -> str:
-        return f"<Position {self.symbol}: {self.quantity}>"
+        return f"<Position {self.symbol}: {self.quantity} ({self.product_type})>"
+
+
+class UserFunds(Base):
+    """User funds/balance model for paper trading.
+
+    Tracks virtual cash balance, margin usage, and collateral.
+    """
+
+    __tablename__ = "user_funds"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    # Cash available for trading
+    cash_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    # Margin blocked for open positions/orders
+    margin_used: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    # Stock collateral value (for margin trading - future use)
+    collateral: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    @property
+    def available_cash(self) -> Decimal:
+        """Calculate available cash (balance - margin used)."""
+        return self.cash_balance - self.margin_used
+
+    @property
+    def total_balance(self) -> Decimal:
+        """Calculate total balance including collateral."""
+        return self.cash_balance + self.collateral
+
+    @property
+    def available_margin(self) -> Decimal:
+        """Calculate available margin for new positions."""
+        return self.cash_balance + self.collateral - self.margin_used
+
+    def __repr__(self) -> str:
+        return f"<UserFunds user={self.user_id} cash={self.cash_balance}>"
+
+
+class DailyPnL(Base):
+    """Daily P&L snapshot for tracking performance over time.
+
+    Captures end-of-day portfolio state for historical analysis.
+    """
+
+    __tablename__ = "daily_pnl"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    # Date of the snapshot
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # Portfolio values at end of day
+    total_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )
+    total_cost: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )
+    total_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )
+
+    # Cash balance at end of day
+    cash_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )
+
+    # Daily change
+    day_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    # Number of trades executed that day
+    trades_count: Mapped[int] = mapped_column(nullable=False, default=0)
+
+    # Snapshot of positions as JSON for historical reference
+    positions_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_daily_pnl_user_date", "user_id", "date", unique=True),
+    )
 
 
 class Trade(Base):

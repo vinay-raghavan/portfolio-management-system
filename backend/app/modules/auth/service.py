@@ -1,11 +1,16 @@
 """Authentication service layer."""
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.modules.auth.models import User
 from app.modules.auth.schemas import UserCreate, TokenResponse
+from app.modules.portfolio.funds_service import FundsService
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -13,6 +18,7 @@ class AuthService:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.funds_service = FundsService(db)
 
     async def get_user_by_email(self, email: str) -> User | None:
         """Get user by email address."""
@@ -25,7 +31,11 @@ class AuthService:
         return result.scalar_one_or_none()
 
     async def create_user(self, user_data: UserCreate) -> User:
-        """Create a new user."""
+        """Create a new user with initialized funds.
+
+        Creates the user and initializes their paper trading funds
+        with the configured initial balance.
+        """
         user = User(
             email=user_data.email,
             password_hash=get_password_hash(user_data.password),
@@ -34,6 +44,15 @@ class AuthService:
         self.db.add(user)
         await self.db.flush()
         await self.db.refresh(user)
+
+        # Initialize funds for the new user
+        try:
+            await self.funds_service.initialize_funds(user.id)
+            logger.info(f"Initialized funds for new user {user.id}")
+        except Exception as e:
+            logger.error(f"Failed to initialize funds for user {user.id}: {e}")
+            # Continue - funds can be created on first access
+
         return user
 
     async def authenticate_user(self, email: str, password: str) -> User | None:
