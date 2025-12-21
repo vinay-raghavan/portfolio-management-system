@@ -1,7 +1,21 @@
-"""Broker integration module for live trading."""
+"""Broker integration module for live trading.
 
-from app.modules.broker.base import BrokerInterface, BrokerFactory
-from app.modules.broker.angelone import AngelOneBroker
+This module re-exports the broker abstraction from the providers layer.
+Use app.providers.broker for direct access to broker functionality.
+"""
 
-__all__ = ["BrokerInterface", "BrokerFactory", "AngelOneBroker"]
+from app.providers.broker.base import Broker
+from app.providers.broker.factory import BrokerFactory, get_broker
+from app.providers.broker.paper import PaperBroker
+
+# Legacy alias for backward compatibility
+BrokerInterface = Broker
+
+__all__ = [
+    "Broker",
+    "BrokerInterface",  # Legacy alias
+    "BrokerFactory",
+    "get_broker",
+    "PaperBroker",
+]
 

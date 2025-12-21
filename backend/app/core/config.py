@@ -40,8 +40,21 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_API_KEY: str = ""
 
     # Market Data
-    DEFAULT_MARKET: str = "US"
+    DEFAULT_MARKET: str = "US"  # US | IN
     DATA_REFRESH_INTERVAL_SECONDS: int = 60
+
+    # Provider Configuration
+    DATA_PROVIDER: str = "yahoo"  # yahoo | nse | angelone
+    BROKER_TYPE: str = "paper"  # paper | angelone | dhan
+
+    # Paper Trading
+    PAPER_TRADING_INITIAL_BALANCE: float = 1000000.0  # ₹10 Lakh default
+
+    # Angel One Credentials (for Phase 2)
+    ANGEL_API_KEY: str = ""
+    ANGEL_CLIENT_ID: str = ""
+    ANGEL_PASSWORD: str = ""
+    ANGEL_TOTP_SECRET: str = ""
 
 
 @lru_cache
