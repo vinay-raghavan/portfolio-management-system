@@ -44,9 +44,79 @@ A two-phase approach to build a complete algorithmic trading platform:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+### Architecture Diagram (Mermaid)
+
+```mermaid
+flowchart TB
+    subgraph Frontend["🖥️ FRONTEND (Next.js)"]
+        FE[Dashboard | Charts | Watchlist | Orders | Portfolio | Signals | Algo]
+    end
+
+    subgraph Backend["⚙️ BACKEND (FastAPI)"]
+        direction LR
+        Auth[Auth]
+        Portfolio[Portfolio]
+        Trading[Trading]
+        Analysis[Analysis]
+        Data[Data]
+        Watchlist[Watchlist]
+        Alerts[Alerts]
+        Algo[Algo Engine]
+    end
+
+    subgraph Providers["🔌 PROVIDER ABSTRACTION LAYER"]
+        direction TB
+        subgraph DataProviders["Data Providers"]
+            Yahoo[Yahoo Finance]
+            NSE[NSE India]
+            AngelData[Angel One Data]
+        end
+        subgraph BrokerProviders["Broker Providers"]
+            Paper[Paper Trading]
+            AngelBroker[Angel One]
+            Dhan[Dhan]
+        end
+        subgraph NotificationProviders["Notification Providers"]
+            Email[Email]
+            WhatsApp[WhatsApp]
+            WebSocket[WebSocket]
+            Push[Push/SMS]
+        end
+    end
+
+    subgraph Workers["👷 BACKGROUND JOBS (Celery)"]
+        PriceUpdates[Price Updates]
+        SignalGen[Signal Generation]
+        PortfolioMetrics[Portfolio Metrics]
+        AlertTasks[Alerts]
+        AlgoExec[Algo Execution]
+        NotifyTasks[Notifications]
+    end
+
+    subgraph Infra["🏗️ INFRASTRUCTURE"]
+        DB[(PostgreSQL + TimescaleDB)]
+        Redis[(Redis)]
+        Docker[Docker]
+    end
+
+    Frontend --> Backend
+    Backend --> Providers
+    Backend --> Workers
+    Workers --> Providers
+    Providers --> Infra
+    Backend --> Infra
+    Workers --> Infra
+
+    style Frontend fill:#e3f2fd,stroke:#1976d2
+    style Backend fill:#e8f5e9,stroke:#4caf50
+    style Providers fill:#f3e5f5,stroke:#9c27b0
+    style Workers fill:#fff3e0,stroke:#ff9800
+    style Infra fill:#fce4ec,stroke:#e91e63
+```
+
 ---
 
-## � Git Branching Strategy
+## 🌿 Git Branching Strategy
 
 ### Branch Naming Convention
 
@@ -127,11 +197,171 @@ main                           # Production-ready code
 | 3 | - | `phase-3/mobile` | React Native mobile app |
 | 3 | - | `phase-3/social` | Strategy sharing, leaderboard |
 
+### Git Flow Diagram
+
+```mermaid
+gitGraph
+    commit id: "Initial"
+    branch develop
+    checkout develop
+    commit id: "Setup"
+
+    branch phase-1/infrastructure
+    checkout phase-1/infrastructure
+    commit id: "Data abstraction"
+    commit id: "Broker abstraction"
+    commit id: "Notification abstraction"
+    checkout develop
+    merge phase-1/infrastructure tag: "v0.1.0"
+
+    branch phase-1/indian-market
+    checkout phase-1/indian-market
+    commit id: "NSE provider"
+    commit id: "Instrument master"
+    checkout develop
+    merge phase-1/indian-market tag: "v0.2.0"
+
+    branch phase-1/trading-risk
+    checkout phase-1/trading-risk
+    commit id: "Order types"
+    commit id: "Risk limits"
+    checkout develop
+    merge phase-1/trading-risk tag: "v0.3.0"
+
+    branch phase-1/frontend
+    checkout phase-1/frontend
+    commit id: "Dashboard"
+    commit id: "Trading UI"
+    checkout develop
+    merge phase-1/frontend tag: "v0.4.0"
+
+    branch phase-1/notifications
+    checkout phase-1/notifications
+    commit id: "Email provider"
+    commit id: "WhatsApp provider"
+    checkout develop
+    merge phase-1/notifications tag: "v0.5.0"
+
+    branch phase-1/algo-trading
+    checkout phase-1/algo-trading
+    commit id: "Strategy framework"
+    commit id: "Built-in strategies"
+    checkout develop
+    merge phase-1/algo-trading tag: "v0.6.0"
+
+    branch phase-1/testing
+    checkout phase-1/testing
+    commit id: "Unit tests"
+    commit id: "E2E tests"
+    checkout develop
+    merge phase-1/testing
+
+    checkout main
+    merge develop tag: "v1.0.0 Phase 1"
+
+    checkout develop
+    branch phase-2/angelone
+    checkout phase-2/angelone
+    commit id: "Angel One API"
+    checkout develop
+    merge phase-2/angelone
+
+    branch phase-2/live-safety
+    checkout phase-2/live-safety
+    commit id: "Safety features"
+    checkout develop
+    merge phase-2/live-safety
+
+    checkout main
+    merge develop tag: "v2.0.0 Phase 2"
+```
+
 ---
 
-## �🎯 PHASE 1: Paper Trading Platform (Weeks 1-6)
+## 🎯 PHASE 1: Paper Trading Platform (Weeks 1-6)
 
 **Goal**: Complete trading platform with simulated execution using free data APIs
+
+### Phase 1 Overview Diagram
+
+```mermaid
+flowchart TB
+    subgraph Phase1["📊 PHASE 1: Paper Trading Platform (Weeks 1-7)"]
+        direction TB
+
+        subgraph Week1["Week 1: Infrastructure"]
+            W1A[Data Provider Abstraction]
+            W1B[Broker Abstraction]
+            W1C[Notification Abstraction]
+            W1D[Symbol System]
+        end
+
+        subgraph Week2["Week 2: Indian Market"]
+            W2A[NSE Data Provider]
+            W2B[Instrument Master]
+        end
+
+        subgraph Week3["Week 3: Trading + Risk"]
+            W3A[All Order Types]
+            W3B[Position Management]
+            W3C[Risk Limits]
+        end
+
+        subgraph Week4["Week 4: Frontend + Notifications"]
+            W4A[Dashboard]
+            W4B[Portfolio View]
+            W4C[Order Entry]
+            W4D[Charts]
+            W4E[Notification UI]
+        end
+
+        subgraph Week5["Week 5: Signals + Notifications"]
+            W5A[Signal Engine]
+            W5B[Backtesting]
+            W5C[Email Provider]
+            W5D[WhatsApp Provider]
+        end
+
+        subgraph Week6["Week 6: 🤖 Algo Trading"]
+            W6A[Strategy Framework]
+            W6B[Built-in Strategies]
+            W6C[Executor + Scheduler]
+            W6D[Safety Controls]
+        end
+
+        subgraph Week7["Week 7: Testing"]
+            W7A[Unit + E2E Tests]
+            W7B[Algo Validation]
+            W7C[Notification Testing]
+        end
+
+        Week1 --> Week2 --> Week3 --> Week4 --> Week5 --> Week6 --> Week7
+    end
+
+    subgraph Providers["🔌 Provider Abstraction Layer"]
+        DP[Data Providers]
+        BP[Broker Providers]
+        NP[Notification Providers]
+    end
+
+    DP --> |Yahoo/NSE| Phase1
+    BP --> |Paper Trading| Phase1
+    NP --> |Email/WhatsApp/UI| Phase1
+
+    subgraph Phase2["🚀 PHASE 2: Live Trading (Weeks 8-9)"]
+        P2A[Angel One Integration]
+        P2B[Live Safety Features]
+    end
+
+    Phase1 -->|"Validation ✅"| Phase2
+    DP --> |Angel One Data| Phase2
+    BP --> |Angel One Broker| Phase2
+
+    style Phase1 fill:#e8f5e9,stroke:#4caf50
+    style Week6 fill:#bbdefb,stroke:#1976d2
+    style Providers fill:#f3e5f5,stroke:#9c27b0
+    style Phase2 fill:#e3f2fd,stroke:#2196f3
+```
 
 ### Current Status Assessment
 
@@ -158,6 +388,64 @@ main                           # Production-ready code
 
 ### 1.1 Core Infrastructure (Week 1)
 > 🌿 **Branch:** `phase-1/infrastructure`
+
+#### Data Flow Diagram
+
+```mermaid
+flowchart LR
+    subgraph External["🌐 External Data Sources"]
+        Yahoo[Yahoo Finance API]
+        NSE[NSE India API]
+        Angel[Angel One API]
+    end
+
+    subgraph DataProviders["📊 Data Provider Layer"]
+        DP[DataProvider Interface]
+        YahooProvider[Yahoo Provider]
+        NSEProvider[NSE Provider]
+        AngelProvider[Angel Provider]
+        Factory[ProviderFactory]
+    end
+
+    subgraph Cache["⚡ Caching Layer"]
+        Redis[(Redis Cache)]
+        TTL[TTL Management]
+    end
+
+    subgraph Storage["💾 Persistent Storage"]
+        TimescaleDB[(TimescaleDB)]
+        OHLCV[OHLCV Tables]
+        Instruments[Instrument Master]
+    end
+
+    subgraph Consumers["🔄 Data Consumers"]
+        Trading[Trading Module]
+        Analysis[Analysis Module]
+        Algo[Algo Engine]
+        Signals[Signal Generator]
+    end
+
+    Yahoo --> YahooProvider
+    NSE --> NSEProvider
+    Angel --> AngelProvider
+
+    YahooProvider --> DP
+    NSEProvider --> DP
+    AngelProvider --> DP
+
+    Factory --> DP
+    DP --> Redis
+    Redis --> Storage
+
+    Storage --> Consumers
+    Redis --> Consumers
+
+    style External fill:#e3f2fd,stroke:#1976d2
+    style DataProviders fill:#f3e5f5,stroke:#9c27b0
+    style Cache fill:#fff3e0,stroke:#ff9800
+    style Storage fill:#e8f5e9,stroke:#4caf50
+    style Consumers fill:#fce4ec,stroke:#e91e63
+```
 
 #### 1.1.1 Abstract Data Provider Layer
 Create a pluggable data provider system so we can switch between Yahoo Finance, NSE, or Angel One.
@@ -262,6 +550,44 @@ Store all tradeable instruments.
 ### 1.3 Enhanced Trading System (Week 2-3)
 > 🌿 **Branch:** `phase-1/trading-risk`
 
+#### Order Lifecycle Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: Order Created
+
+    PENDING --> VALIDATING: Submit Order
+
+    VALIDATING --> REJECTED: Validation Failed
+    VALIDATING --> OPEN: Validation Passed
+
+    OPEN --> PARTIALLY_FILLED: Partial Execution
+    OPEN --> FILLED: Full Execution
+    OPEN --> CANCELLED: User Cancelled
+    OPEN --> EXPIRED: Time Expired
+
+    PARTIALLY_FILLED --> FILLED: Remaining Filled
+    PARTIALLY_FILLED --> CANCELLED: User Cancelled
+
+    REJECTED --> [*]
+    FILLED --> [*]
+    CANCELLED --> [*]
+    EXPIRED --> [*]
+
+    note right of VALIDATING
+        Checks:
+        - Risk limits
+        - Buying power
+        - Position limits
+        - Market hours
+    end note
+
+    note right of OPEN
+        Paper: Simulated execution
+        Live: Sent to broker
+    end note
+```
+
 #### 1.3.1 Order Management
 Enhance the order system to support all order types.
 
@@ -313,6 +639,66 @@ Track virtual funds for paper trading.
 ### 1.4 Risk Management (Week 3)
 > 🌿 **Branch:** `phase-1/trading-risk` *(continues from 1.3)*
 
+#### Risk Management Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 Order/Trade Input"]
+        NewOrder[New Order Request]
+        AlgoSignal[Algo Signal]
+    end
+
+    subgraph PreTrade["🔍 Pre-Trade Risk Checks"]
+        direction TB
+        PositionSize[Position Size Check<br/>Max % of portfolio]
+        BuyingPower[Buying Power Check<br/>Available funds]
+        DailyLimit[Daily Trade Limit<br/>Max trades/day]
+        SectorLimit[Sector Concentration<br/>Max % per sector]
+    end
+
+    subgraph Decision{{"✅ All Checks Pass?"}}
+    end
+
+    subgraph Execute["💹 Order Execution"]
+        PlaceOrder[Place Order]
+        UpdatePosition[Update Position]
+    end
+
+    subgraph PostTrade["📊 Post-Trade Monitoring"]
+        direction TB
+        PnLTracking[P&L Tracking]
+        DailyLoss[Daily Loss Check<br/>Max loss limit]
+        Drawdown[Drawdown Monitor<br/>Max drawdown %]
+        AutoSquareOff[Auto Square-Off<br/>Time-based]
+    end
+
+    subgraph Actions["⚠️ Risk Actions"]
+        Reject[Reject Order]
+        Alert[Send Alert]
+        StopTrading[Stop All Trading]
+        SquareOff[Square Off Positions]
+    end
+
+    Input --> PreTrade
+    PreTrade --> Decision
+    Decision -->|Yes| Execute
+    Decision -->|No| Reject
+    Reject --> Alert
+
+    Execute --> PostTrade
+    PostTrade -->|Loss Limit Hit| StopTrading
+    PostTrade -->|Drawdown Exceeded| Alert
+    PostTrade -->|Time Trigger| SquareOff
+    StopTrading --> Alert
+    SquareOff --> Alert
+
+    style Input fill:#e3f2fd,stroke:#1976d2
+    style PreTrade fill:#fff3e0,stroke:#ff9800
+    style Execute fill:#e8f5e9,stroke:#4caf50
+    style PostTrade fill:#f3e5f5,stroke:#9c27b0
+    style Actions fill:#ffebee,stroke:#c62828
+```
+
 #### 1.4.1 Position Risk
 **Tasks:**
 - [ ] Max position size per stock (% of portfolio)
@@ -338,6 +724,68 @@ Track virtual funds for paper trading.
 
 ### 1.5 Frontend Development (Week 3-4)
 > 🌿 **Branch:** `phase-1/frontend`
+
+#### Frontend Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph NextJS["🖥️ Next.js Frontend"]
+        subgraph Pages["📄 Pages/Routes"]
+            Dashboard["/dashboard"]
+            Portfolio["/portfolio"]
+            Trading["/trading"]
+            Charts["/charts"]
+            Watchlist["/watchlist"]
+            Algo["/algo"]
+            Backtest["/backtest"]
+            Settings["/settings"]
+        end
+
+        subgraph Components["🧩 Components"]
+            direction TB
+            subgraph UI["UI Components"]
+                Button[Buttons]
+                Cards[Cards]
+                Tables[Tables]
+                Modals[Modals]
+            end
+            subgraph Feature["Feature Components"]
+                PortfolioView[Portfolio View]
+                OrderForm[Order Entry Form]
+                ChartWidget[Chart Widget]
+                NotificationBell[Notification Bell]
+                StrategyCard[Strategy Card]
+            end
+        end
+
+        subgraph State["📦 State Management"]
+            ReactQuery[React Query<br/>Server State]
+            Zustand[Zustand<br/>Client State]
+        end
+
+        subgraph Services["🔌 API Services"]
+            APIClient[API Client]
+            WebSocketClient[WebSocket Client]
+        end
+    end
+
+    subgraph Backend["⚙️ Backend APIs"]
+        REST[REST API<br/>FastAPI]
+        WS[WebSocket<br/>Real-time]
+    end
+
+    Pages --> Components
+    Components --> State
+    State --> Services
+    Services --> Backend
+
+    style NextJS fill:#e3f2fd,stroke:#1976d2
+    style Pages fill:#e8f5e9,stroke:#4caf50
+    style Components fill:#f3e5f5,stroke:#9c27b0
+    style State fill:#fff3e0,stroke:#ff9800
+    style Services fill:#fce4ec,stroke:#e91e63
+    style Backend fill:#e0f2f1,stroke:#00897b
+```
 
 #### 1.5.1 Dashboard
 **Tasks:**
@@ -392,6 +840,67 @@ Track virtual funds for paper trading.
 > 🌿 **Branch:** `phase-1/notifications`
 
 **Goal**: Modular notification system that can send alerts via multiple channels. New channels can be added without changing core code.
+
+#### Notification Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph Triggers["📢 Notification Triggers"]
+        OrderEvents[Order Events<br/>placed/filled/cancelled]
+        PriceAlerts[Price Alerts<br/>target hit]
+        AlgoSignals[Algo Signals<br/>buy/sell generated]
+        RiskBreaches[Risk Breaches<br/>limits exceeded]
+        SystemAlerts[System Alerts<br/>errors/warnings]
+    end
+
+    subgraph NotificationService["🔔 Notification Service"]
+        Orchestrator[NotificationOrchestrator]
+        UserPrefs[(User Preferences)]
+        Templates[Message Templates]
+        RateLimiter[Rate Limiter]
+        QuietHours[Quiet Hours Check]
+    end
+
+    subgraph Providers["📤 Notification Providers"]
+        direction TB
+        EmailProvider[📧 Email Provider<br/>SMTP/SendGrid/SES]
+        WhatsAppProvider[💬 WhatsApp Provider<br/>Twilio API]
+        WebSocketProvider[🔌 WebSocket Provider<br/>Real-time UI]
+        SMSProvider[📱 SMS Provider<br/>Twilio/MSG91]
+        PushProvider[📲 Push Provider<br/>FCM/APNs]
+    end
+
+    subgraph Destinations["👤 User Channels"]
+        EmailInbox[Email Inbox]
+        WhatsAppChat[WhatsApp Chat]
+        UINotification[UI Notification Bell]
+        SMSMessage[SMS Message]
+        MobileApp[Mobile App]
+    end
+
+    Triggers --> Orchestrator
+    Orchestrator --> UserPrefs
+    Orchestrator --> Templates
+    Orchestrator --> RateLimiter
+    Orchestrator --> QuietHours
+
+    Orchestrator --> EmailProvider
+    Orchestrator --> WhatsAppProvider
+    Orchestrator --> WebSocketProvider
+    Orchestrator --> SMSProvider
+    Orchestrator --> PushProvider
+
+    EmailProvider --> EmailInbox
+    WhatsAppProvider --> WhatsAppChat
+    WebSocketProvider --> UINotification
+    SMSProvider --> SMSMessage
+    PushProvider --> MobileApp
+
+    style Triggers fill:#ffebee,stroke:#c62828
+    style NotificationService fill:#e3f2fd,stroke:#1976d2
+    style Providers fill:#f3e5f5,stroke:#9c27b0
+    style Destinations fill:#e8f5e9,stroke:#4caf50
+```
 
 #### 1.6.1 Notification Provider Abstraction
 
@@ -660,6 +1169,75 @@ Central service that routes notifications to appropriate channels.
 ### 1.7 Signal Generation & Backtesting (Week 5)
 > 🌿 **Branch:** `phase-1/signals-backtest`
 
+#### Signal & Backtest Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph DataInput["📊 Market Data"]
+        HistoricalData[(Historical OHLCV)]
+        LiveData[Live Price Feed]
+    end
+
+    subgraph Indicators["📈 Technical Indicators"]
+        RSI[RSI]
+        MACD[MACD]
+        MA[Moving Averages]
+        BB[Bollinger Bands]
+        ATR[ATR]
+    end
+
+    subgraph SignalEngine["🚦 Signal Engine"]
+        StrategyRunner[Strategy Runner]
+        SignalGen[Signal Generator]
+        SignalFilter[Signal Filter<br/>Strength threshold]
+    end
+
+    subgraph Signals["📢 Signals"]
+        BuySignal[🟢 BUY Signal]
+        SellSignal[🔴 SELL Signal]
+        HoldSignal[🟡 HOLD Signal]
+    end
+
+    subgraph Backtesting["🔬 Backtesting Framework"]
+        BacktestEngine[Backtest Engine]
+        SimulatedTrades[Simulated Trades]
+        PerformanceCalc[Performance Calculator]
+    end
+
+    subgraph Metrics["📊 Performance Metrics"]
+        TotalReturn[Total Return / CAGR]
+        Sharpe[Sharpe Ratio]
+        MaxDrawdown[Max Drawdown]
+        WinRate[Win Rate]
+        ProfitFactor[Profit Factor]
+    end
+
+    subgraph Validation["✅ Validation"]
+        PaperTrade[Paper Trading Test]
+        Compare[Compare Results]
+    end
+
+    DataInput --> Indicators
+    Indicators --> SignalEngine
+    SignalEngine --> Signals
+
+    HistoricalData --> Backtesting
+    SignalEngine --> Backtesting
+    Backtesting --> Metrics
+
+    Metrics --> Validation
+    Signals --> PaperTrade
+    PaperTrade --> Compare
+
+    style DataInput fill:#e3f2fd,stroke:#1976d2
+    style Indicators fill:#fff3e0,stroke:#ff9800
+    style SignalEngine fill:#e8f5e9,stroke:#4caf50
+    style Signals fill:#f3e5f5,stroke:#9c27b0
+    style Backtesting fill:#fce4ec,stroke:#e91e63
+    style Metrics fill:#e0f2f1,stroke:#00897b
+    style Validation fill:#f5f5f5,stroke:#616161
+```
+
 #### 1.7.1 Signal Engine
 **Tasks:**
 - [ ] Define Signal schema
@@ -707,6 +1285,80 @@ Central service that routes notifications to appropriate channels.
 > 🌿 **Branch:** `phase-1/algo-trading`
 
 **Goal**: Fully automated trading system that can run strategies without manual intervention
+
+#### Algo Trading Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph Scheduler["⏰ Strategy Scheduler"]
+        CronJob[Cron/Interval Trigger]
+        MarketHours[Market Hours Check]
+        ScheduleDB[(Strategy Schedules)]
+    end
+
+    subgraph DataLayer["📊 Data Layer"]
+        DataProvider[Data Provider]
+        OHLCV[OHLCV Data]
+        Indicators[Technical Indicators]
+    end
+
+    subgraph StrategyEngine["🧠 Strategy Engine"]
+        direction TB
+        subgraph Strategies["Available Strategies"]
+            RSI[RSI Strategy]
+            MACD[MACD Crossover]
+            MA[Moving Average]
+            BB[Bollinger Bands]
+            Custom[Custom Strategies]
+        end
+        SignalGen[Signal Generator]
+        PositionSizer[Position Sizer]
+    end
+
+    subgraph RiskLayer["⚠️ Risk Management"]
+        RiskCheck[Risk Validator]
+        DailyLoss[Daily Loss Limit]
+        PositionLimit[Position Limits]
+        CircuitBreaker[Circuit Breakers]
+    end
+
+    subgraph Execution["💹 Execution"]
+        OrderQueue[Order Queue]
+        Executor[Strategy Executor]
+        Broker[Broker Provider]
+    end
+
+    subgraph Safety["🛡️ Safety Controls"]
+        KillSwitch[Kill Switch]
+        RateLimiter[Rate Limiter]
+        AuditLog[(Audit Log)]
+    end
+
+    subgraph Notifications["📢 Notifications"]
+        NotifyService[Notification Service]
+        Email[Email]
+        WhatsApp[WhatsApp]
+        UI[UI Alerts]
+    end
+
+    Scheduler --> DataLayer
+    DataLayer --> StrategyEngine
+    StrategyEngine --> |Signals| RiskLayer
+    RiskLayer --> |Approved| Execution
+    RiskLayer --> |Rejected| Notifications
+    Execution --> Broker
+    Execution --> Safety
+    Broker --> Notifications
+    Safety --> AuditLog
+
+    style Scheduler fill:#fff3e0,stroke:#ff9800
+    style DataLayer fill:#e3f2fd,stroke:#1976d2
+    style StrategyEngine fill:#e8f5e9,stroke:#4caf50
+    style RiskLayer fill:#ffebee,stroke:#c62828
+    style Execution fill:#f3e5f5,stroke:#9c27b0
+    style Safety fill:#fce4ec,stroke:#e91e63
+    style Notifications fill:#e0f2f1,stroke:#00897b
+```
 
 #### 1.8.1 Strategy Framework
 Create a pluggable strategy system.
@@ -972,6 +1624,64 @@ Automated position sizing based on risk.
 ## 🚀 PHASE 2: Live Trading with Angel One (Weeks 8-9)
 
 **Goal**: Connect to Angel One API for real trading. Platform stays the same!
+
+### Phase 2 Architecture Diagram
+
+```mermaid
+flowchart TB
+    subgraph Phase1Complete["✅ Phase 1 Complete"]
+        PaperSystem[Paper Trading System<br/>Fully Validated]
+    end
+
+    subgraph ConfigChange["⚙️ Configuration Change"]
+        EnvSwitch["BROKER_TYPE=angelone<br/>DATA_PROVIDER=angelone"]
+    end
+
+    subgraph AngelOne["🏦 Angel One Integration"]
+        subgraph Auth["🔐 Authentication"]
+            Login[API Login]
+            TOTP[TOTP Generation]
+            Session[Session Management]
+        end
+
+        subgraph AngelDataProvider["📊 Angel One Data Provider"]
+            Quotes[Real-time Quotes]
+            Historical[Historical Data]
+            WebSocket[WebSocket Feed]
+        end
+
+        subgraph AngelBroker["💹 Angel One Broker"]
+            PlaceOrder[Place Orders]
+            OrderStatus[Order Status]
+            Positions[Positions]
+            Holdings[Holdings]
+        end
+    end
+
+    subgraph SafetyLayer["🛡️ Live Trading Safety"]
+        KillSwitch[Master Kill Switch]
+        StartSmall[Start Small<br/>₹1000 trades]
+        RealTimeMonitor[Real-time Monitoring]
+        AlertsActive[All Alerts Active]
+    end
+
+    subgraph LiveTrading["🚀 Live Trading"]
+        RealMoney[Real Money Trades]
+        RealPnL[Real P&L]
+        RealPositions[Real Positions]
+    end
+
+    Phase1Complete --> ConfigChange
+    ConfigChange --> AngelOne
+    AngelOne --> SafetyLayer
+    SafetyLayer --> LiveTrading
+
+    style Phase1Complete fill:#e8f5e9,stroke:#4caf50
+    style ConfigChange fill:#fff3e0,stroke:#ff9800
+    style AngelOne fill:#e3f2fd,stroke:#1976d2
+    style SafetyLayer fill:#ffebee,stroke:#c62828
+    style LiveTrading fill:#f3e5f5,stroke:#9c27b0
+```
 
 ### 2.1 Angel One Integration
 > 🌿 **Branch:** `phase-2/angelone`
