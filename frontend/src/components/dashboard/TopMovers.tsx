@@ -1,9 +1,11 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatPercent, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useUIStore } from '@/store';
 import type { Position } from '@/types';
 
 interface TopMoversProps {
@@ -12,7 +14,14 @@ interface TopMoversProps {
 }
 
 export function TopMovers({ positions, isLoading }: TopMoversProps) {
+  const router = useRouter();
   const { format: formatCurrency } = useCurrency();
+  const { setSelectedSymbol } = useUIStore();
+
+  const handleNavigateToAnalysis = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    router.push('/analysis');
+  };
 
   if (isLoading) {
     return (
@@ -68,12 +77,13 @@ export function TopMovers({ positions, isLoading }: TopMoversProps) {
           ) : (
             <div className="space-y-3">
               {topGainers.map((position) => (
-                <div
+                <button
                   key={position.id}
-                  className="flex items-center justify-between"
+                  onClick={() => handleNavigateToAnalysis(position.symbol)}
+                  className="flex items-center justify-between w-full hover:bg-muted/50 rounded-md px-2 py-1 -mx-2 transition-colors cursor-pointer text-left"
                 >
                   <div>
-                    <span className="font-medium">{position.symbol}</span>
+                    <span className="font-medium hover:underline underline-offset-2">{position.symbol}</span>
                     <span className="text-xs text-muted-foreground ml-2">
                       {position.quantity} shares
                     </span>
@@ -86,7 +96,7 @@ export function TopMovers({ positions, isLoading }: TopMoversProps) {
                       {formatCurrency(position.unrealized_pnl ?? 0)}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -109,12 +119,13 @@ export function TopMovers({ positions, isLoading }: TopMoversProps) {
           ) : (
             <div className="space-y-3">
               {topLosers.map((position) => (
-                <div
+                <button
                   key={position.id}
-                  className="flex items-center justify-between"
+                  onClick={() => handleNavigateToAnalysis(position.symbol)}
+                  className="flex items-center justify-between w-full hover:bg-muted/50 rounded-md px-2 py-1 -mx-2 transition-colors cursor-pointer text-left"
                 >
                   <div>
-                    <span className="font-medium">{position.symbol}</span>
+                    <span className="font-medium hover:underline underline-offset-2">{position.symbol}</span>
                     <span className="text-xs text-muted-foreground ml-2">
                       {position.quantity} shares
                     </span>
@@ -127,7 +138,7 @@ export function TopMovers({ positions, isLoading }: TopMoversProps) {
                       {formatCurrency(position.unrealized_pnl ?? 0)}
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

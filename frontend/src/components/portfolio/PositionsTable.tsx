@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ArrowUpDown, TrendingUp, TrendingDown, MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatPercent, cn } from '@/lib/utils';
-import { useTradingStore } from '@/store';
+import { useTradingStore, useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
 import type { Position } from '@/types';
 
@@ -20,8 +21,15 @@ interface PositionsTableProps {
 export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortField, setSortField] = useState<SortField>('market_value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const router = useRouter();
   const { quickBuy, quickSell } = useTradingStore();
+  const { setSelectedSymbol } = useUIStore();
   const { format: formatCurrency } = useCurrency();
+
+  const handleNavigateToAnalysis = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    router.push('/analysis');
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -133,14 +141,17 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
                   return (
                     <tr key={position.id} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleNavigateToAnalysis(position.symbol)}
+                          className="flex items-center gap-2 hover:text-primary transition-colors cursor-pointer"
+                        >
                           {isProfit ? (
                             <TrendingUp className="h-4 w-4 text-profit" />
                           ) : (
                             <TrendingDown className="h-4 w-4 text-loss" />
                           )}
-                          <span className="font-medium">{position.symbol}</span>
-                        </div>
+                          <span className="font-medium underline-offset-2 hover:underline">{position.symbol}</span>
+                        </button>
                       </td>
                       <td className="py-3 px-3">{position.quantity}</td>
                       <td className="text-right py-3 px-3">{formatCurrency(position.avg_cost)}</td>

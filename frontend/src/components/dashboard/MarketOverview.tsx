@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueries } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown, Activity, Settings2, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,13 @@ interface IndexQuote {
 
 export function MarketOverview() {
   const [mounted, setMounted] = useState(false);
-  const { selectedMarketIndices, toggleMarketIndex } = useUIStore();
+  const router = useRouter();
+  const { selectedMarketIndices, toggleMarketIndex, setSelectedSymbol } = useUIStore();
+
+  const handleNavigateToAnalysis = (symbol: string) => {
+    setSelectedSymbol(symbol);
+    router.push('/analysis');
+  };
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -152,9 +159,10 @@ export function MarketOverview() {
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {indices.map((index) => (
-              <div
+              <button
                 key={index.symbol}
-                className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                onClick={() => handleNavigateToAnalysis(index.symbol)}
+                className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer text-left"
               >
                 {index.isLoading ? (
                   <div className="animate-pulse space-y-2">
@@ -195,7 +203,7 @@ export function MarketOverview() {
                     </div>
                   </>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}
