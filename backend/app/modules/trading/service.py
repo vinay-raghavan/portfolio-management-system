@@ -15,6 +15,7 @@ from app.modules.portfolio.service import PortfolioService
 from app.modules.portfolio.funds_service import FundsService
 from app.providers.broker.factory import get_broker, BrokerFactory
 from app.providers.broker.base import Broker
+from app.providers.data.factory import get_data_provider
 from app.providers.schemas import (
     OrderRequest,
     OrderSide as ProviderOrderSide,
@@ -85,7 +86,8 @@ class TradingService:
         """Create a new order and execute via broker provider.
 
         For market orders, execution is immediate. For limit orders,
-        the order is stored as pending.
+        the order is stored as pending. For AMO (After Market Orders),
+        the order is queued for the next market session.
 
         Args:
             user_id: User placing the order
@@ -98,6 +100,13 @@ class TradingService:
         Raises:
             OrderValidationError: If order validation fails
         """
+        # Check if this is an AMO order
+        is_amo = getattr(order_data, 'is_amo', False)
+
+        # For AMO orders, we skip market hours check but still validate other things
+        # For regular orders outside market hours, they should be rejected unless is_amo=True
+        should_skip_market_hours = skip_market_hours_check or is_amo
+
         # Run validation unless explicitly skipped
         if not self._skip_validation:
             # Convert to provider schema for validation
@@ -114,7 +123,7 @@ class TradingService:
             validation_result = await self.validator.validate(
                 user_id=user_id,
                 order=provider_order,
-                skip_market_hours=skip_market_hours_check,
+                skip_market_hours=should_skip_market_hours,
                 skip_funds_check=(order_data.order_type.value != "MARKET"),
             )
 
@@ -130,6 +139,26 @@ class TradingService:
             if not validation_result.is_valid:
                 raise OrderValidationError(validation_result)
 
+        # Determine order status and scheduled time for AMO
+        scheduled_for = None
+        if is_amo:
+            data_provider = get_data_provider()
+            is_market_open = await data_provider.is_market_open()
+            if not is_market_open:
+                # Queue for next market open
+                initial_status = OrderStatus.AMO_PENDING.value
+                if hasattr(data_provider, 'get_next_market_open'):
+                    scheduled_for = data_provider.get_next_market_open()
+                logger.info(
+                    f"AMO order created for {order_data.symbol}, scheduled for {scheduled_for}"
+                )
+            else:
+                # Market is open, treat as regular order
+                initial_status = OrderStatus.PENDING.value
+                is_amo = False  # Reset since we're executing immediately
+        else:
+            initial_status = OrderStatus.PENDING.value
+
         # Create database record
         order = Order(
             user_id=user_id,
@@ -140,15 +169,17 @@ class TradingService:
             price=order_data.price,
             stop_loss=order_data.stop_loss,
             take_profit=order_data.take_profit,
-            status=OrderStatus.PENDING.value,
+            status=initial_status,
             notes=order_data.notes,
+            is_amo=is_amo,
+            scheduled_for=scheduled_for,
         )
         self.db.add(order)
         await self.db.flush()
         await self.db.refresh(order)
 
-        # Execute via broker provider for market orders
-        if order_data.order_type.value == "MARKET":
+        # Execute via broker provider for market orders (only if not AMO pending)
+        if order_data.order_type.value == "MARKET" and order.status != OrderStatus.AMO_PENDING.value:
             order = await self._execute_via_broker(user_id, order, order_data)
 
         return order
@@ -339,12 +370,12 @@ class TradingService:
         return orders, total_count
 
     async def cancel_order(self, user_id: str, order_id: str) -> Order | None:
-        """Cancel a pending order."""
+        """Cancel a pending or AMO pending order."""
         result = await self.db.execute(
             select(Order).where(
                 Order.id == order_id,
                 Order.user_id == user_id,
-                Order.status == OrderStatus.PENDING.value,
+                Order.status.in_([OrderStatus.PENDING.value, OrderStatus.AMO_PENDING.value]),
             )
         )
         order = result.scalar_one_or_none()
@@ -355,4 +386,109 @@ class TradingService:
             await self.db.refresh(order)
 
         return order
+
+    async def get_pending_amo_orders(self, user_id: str | None = None) -> list[Order]:
+        """Get all pending AMO orders.
+
+        Args:
+            user_id: Optional user ID to filter by. If None, returns all users' AMO orders.
+
+        Returns:
+            List of pending AMO orders
+        """
+        query = select(Order).where(Order.status == OrderStatus.AMO_PENDING.value)
+
+        if user_id:
+            query = query.where(Order.user_id == user_id)
+
+        query = query.order_by(Order.created_at.asc())  # Process oldest first
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def process_amo_order(self, order: Order) -> Order:
+        """Process a single AMO order when market opens.
+
+        Converts the AMO order to a regular order and attempts execution.
+
+        Args:
+            order: The AMO order to process
+
+        Returns:
+            Updated order after processing
+        """
+        if order.status != OrderStatus.AMO_PENDING.value:
+            logger.warning(f"Order {order.id} is not an AMO pending order")
+            return order
+
+        logger.info(f"Processing AMO order {order.id} for {order.symbol}")
+
+        # Update order status to PENDING for execution
+        order.status = OrderStatus.PENDING.value
+        order.notes = (order.notes or "") + f"\n[AMO] Processed at market open"
+
+        # Create order data from the order
+        from app.modules.trading.schemas import OrderCreate, OrderType as SchemaOrderType
+
+        order_data = OrderCreate(
+            symbol=order.symbol,
+            side=OrderSide(order.side),
+            order_type=SchemaOrderType(order.order_type),
+            quantity=order.quantity,
+            price=order.price,
+            stop_loss=order.stop_loss,
+            take_profit=order.take_profit,
+            notes=order.notes,
+            is_amo=False,  # No longer AMO, processing now
+        )
+
+        # Execute if it's a market order
+        if order.order_type == "MARKET":
+            try:
+                order = await self._execute_via_broker(order.user_id, order, order_data)
+            except Exception as e:
+                logger.error(f"Failed to execute AMO order {order.id}: {e}")
+                order.status = OrderStatus.REJECTED.value
+                order.notes = (order.notes or "") + f"\n[AMO] Execution failed: {str(e)}"
+
+        await self.db.flush()
+        await self.db.refresh(order)
+
+        return order
+
+    async def process_all_amo_orders(self) -> dict:
+        """Process all pending AMO orders.
+
+        Should be called at market open by a scheduled task.
+
+        Returns:
+            Dict with processing results
+        """
+        data_provider = get_data_provider()
+        if not await data_provider.is_market_open():
+            logger.info("Market not open, skipping AMO processing")
+            return {"status": "market_closed", "processed": 0}
+
+        amo_orders = await self.get_pending_amo_orders()
+        logger.info(f"Processing {len(amo_orders)} AMO orders")
+
+        processed = 0
+        failed = 0
+
+        for order in amo_orders:
+            try:
+                await self.process_amo_order(order)
+                if order.status != OrderStatus.REJECTED.value:
+                    processed += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                logger.error(f"Error processing AMO order {order.id}: {e}")
+                failed += 1
+
+        return {
+            "status": "success",
+            "processed": processed,
+            "failed": failed,
+            "total": len(amo_orders),
+        }
 

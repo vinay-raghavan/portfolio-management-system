@@ -387,7 +387,7 @@ flowchart TB
 | Instrument Sync | ✅ Done | Weekly scheduled sync + manual API endpoints |
 | Market Status | ✅ Done | NSE trading hours awareness |
 | Backtesting | ❌ Missing | Not implemented |
-| Risk Management | ❌ Missing | Not implemented |
+| Risk Management | ✅ Done | Position limits, sector concentration, SL/TP enforcement, auto square-off |
 | Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
 
 
@@ -597,47 +597,40 @@ stateDiagram-v2
 Enhance the order system to support all order types.
 
 **Tasks:**
-- [ ] Extend order types
-  - [ ] Market Order
-  - [ ] Limit Order
-  - [ ] Stop Loss (SL)
-  - [ ] Stop Loss Market (SL-M)
-- [ ] Order validation
-  - [ ] Check market hours
-  - [ ] Validate price vs LTP (circuit limits)
-  - [ ] Validate quantity (lot size for F&O)
-  - [ ] Check available funds/margin
-- [ ] Order lifecycle events
-  - [ ] PENDING → OPEN → FILLED/CANCELLED/REJECTED
-  - [ ] Partial fills tracking
-- [ ] GTT orders (simulated for paper trading)
+- [x] Extend order types
+  - [x] Market Order
+  - [x] Limit Order
+  - [x] Stop Loss (SL)
+  - [x] Stop Loss Market (SL-M)
+- [x] Order validation
+  - [x] Check market hours
+  - [x] Validate price vs LTP (circuit limits)
+  - [x] Validate quantity (lot size for F&O)
+  - [x] Check available funds/margin
+- [x] Order lifecycle events
+  - [x] PENDING → OPEN → FILLED/CANCELLED/REJECTED
+  - [x] Partial fills tracking
+- [x] GTT orders (simulated for paper trading)
 
 #### 1.3.2 Position Management
 Enhanced position tracking.
 
 **Tasks:**
-- [ ] Separate delivery vs intraday positions
-- [ ] Track P&L (realized + unrealized)
-- [ ] Day-wise P&L tracking
-- [ ] Average price calculation (FIFO method)
-- [ ] Position limits and warnings
+- [x] Separate delivery vs intraday positions
+- [x] Track P&L (realized + unrealized)
+- [x] Day-wise P&L tracking
+- [x] Average price calculation (FIFO method)
+- [x] Position limits and warnings
 
-#### 1.3.3 Funds & Margins
+#### 1.3.3 Funds & Margins ✅
 Track virtual funds for paper trading.
 
 **Tasks:**
-- [ ] Create `Funds` model
-  ```python
-  class Funds:
-      user_id: str
-      cash_balance: Decimal      # Available cash
-      margin_used: Decimal       # Blocked for positions
-      margin_available: Decimal  # Cash - Used
-      collateral: Decimal        # Stock collateral (future)
-  ```
-- [ ] Initialize new users with virtual cash
-- [ ] Update funds on trade execution
-- [ ] Margin calculation for F&O (basic)
+- [x] Create `Funds` model (`UserFunds` in `backend/app/modules/portfolio/models.py`)
+  - `user_id`, `cash_balance`, `margin_used`, `available_margin`, `collateral`
+- [x] Initialize new users with virtual cash (via `FundsService.initialize_funds()`)
+- [x] Update funds on trade execution (via `FundsService.process_trade_settlement()`)
+- [ ] Margin calculation for F&O (basic) - *deferred to F&O implementation*
 
 ---
 
@@ -706,24 +699,27 @@ flowchart TB
 
 #### 1.4.1 Position Risk
 **Tasks:**
-- [ ] Max position size per stock (% of portfolio)
-- [ ] Max sector concentration
-- [ ] Stop loss enforcement (auto square-off)
-- [ ] Take profit enforcement
+- [x] Max position size per stock (% of portfolio)
+- [x] Max sector concentration
+- [x] Stop loss enforcement (auto square-off)
+- [x] Take profit enforcement
 
 #### 1.4.2 Daily Risk Limits
 **Tasks:**
-- [ ] Max daily loss limit (stop trading for day)
-- [ ] Max number of trades per day
-- [ ] Max intraday exposure
-- [ ] Alert when approaching limits
+- [x] Max daily loss limit (stop trading for day)
+- [x] Max number of trades per day
+- [x] Max intraday exposure
+- [x] Alert when approaching limits
 
-#### 1.4.3 Market Hours & Auto Square-off
+#### 1.4.3 Market Hours & Auto Square-off ✅
 **Tasks:**
-- [ ] Define market hours per exchange
-- [ ] Block orders outside market hours (or queue them)
-- [ ] Auto square-off intraday positions at 3:15 PM
-- [ ] Pre-market/After-market order handling
+- [x] Define market hours per exchange
+- [x] Block orders outside market hours (or queue them)
+- [x] Auto square-off intraday positions at 3:15 PM
+- [x] Pre-market/After-market order handling (AMO - After Market Orders)
+  - `is_amo` flag in order creation
+  - `AMO_PENDING` status for queued orders
+  - Celery task to process AMO orders at market open (9:15 AM IST)
 
 ---
 

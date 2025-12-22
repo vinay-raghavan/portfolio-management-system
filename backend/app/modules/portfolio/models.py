@@ -43,6 +43,13 @@ class Position(Base):
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
 
+    # Position-level stop loss and take profit
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    # Sector classification for concentration tracking
+    sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -53,6 +60,7 @@ class Position(Base):
     __table_args__ = (
         Index("ix_positions_user_symbol", "user_id", "symbol", unique=True),
         Index("ix_positions_user_product", "user_id", "product_type"),
+        Index("ix_positions_user_sector", "user_id", "sector"),
     )
 
     def __repr__(self) -> str:
@@ -201,4 +209,46 @@ class Trade(Base):
 
     def __repr__(self) -> str:
         return f"<Trade {self.side} {self.quantity} {self.symbol} @ {self.price}>"
+
+
+class CostLot(Base):
+    """Cost lot for FIFO average price tracking.
+
+    Each buy creates a new lot. Sells consume lots in FIFO order.
+    """
+
+    __tablename__ = "cost_lots"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+
+    # Original purchase details
+    original_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    remaining_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    purchase_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+
+    # Reference to the buy trade that created this lot
+    trade_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
+    )
+
+    purchased_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_cost_lots_user_symbol", "user_id", "symbol"),
+        Index("ix_cost_lots_fifo", "user_id", "symbol", "purchased_at"),  # For FIFO ordering
+    )
+
+    def __repr__(self) -> str:
+        return f"<CostLot {self.symbol}: {self.remaining_quantity}/{self.original_quantity} @ {self.purchase_price}>"
 

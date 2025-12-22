@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.risk.models import RiskLimits, DailyRiskMetrics
 from app.modules.risk.schemas import RiskCheckResult, RiskSummary, RiskLimitsUpdate
 from app.modules.portfolio.funds_service import FundsService
-from app.modules.portfolio.models import Position
+from app.modules.portfolio.models import Position, ProductType
 from app.modules.trading.models import Order
+from app.modules.instruments.models import Instrument
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +185,39 @@ class RiskService:
             position_size_check.message = "Position size exceeds limit"
         checks.append(position_size_check)
 
+        # 6. Check sector concentration limit (for BUY orders)
+        if side == "BUY":
+            sector_check = await self._check_sector_concentration(
+                user_id, symbol, order_value, limits
+            )
+            if sector_check:
+                checks.append(sector_check)
+                if not sector_check.passed:
+                    warnings.append(f"Sector concentration warning: {sector_check.message}")
+
+        # 7. Check intraday exposure limit
+        intraday_exposure = await self._get_intraday_exposure(user_id)
+        intraday_check = RiskCheck(
+            name="max_intraday_exposure",
+            passed=intraday_exposure + order_value <= limits.max_intraday_exposure,
+            current_value=f"₹{intraday_exposure:.2f}",
+            limit_value=f"₹{limits.max_intraday_exposure:.2f}",
+        )
+        if not intraday_check.passed:
+            intraday_check.message = "Intraday exposure limit exceeded"
+        checks.append(intraday_check)
+
         # Add warnings for approaching limits
         if metrics.orders_count >= limits.max_orders_per_day * Decimal("0.8"):
             warnings.append(
                 f"Approaching daily order limit ({metrics.orders_count}/{limits.max_orders_per_day})"
+            )
+
+        # Warn if sector concentration is approaching limit
+        sector_concentration = await self._get_sector_concentration(user_id, symbol)
+        if sector_concentration and sector_concentration >= limits.max_sector_concentration * Decimal("0.8"):
+            warnings.append(
+                f"Approaching sector concentration limit ({sector_concentration:.1f}%/{limits.max_sector_concentration}%)"
             )
 
         # Determine overall result
@@ -309,4 +339,120 @@ class RiskService:
 
         largest_value = max(p.quantity * p.avg_cost for p in positions)
         return (largest_value / total_balance) * 100
+
+    async def _get_sector_for_symbol(self, symbol: str) -> str | None:
+        """Get sector for a symbol from instruments table."""
+        result = await self.db.execute(
+            select(Instrument.sector).where(
+                Instrument.symbol == symbol.upper(),
+                Instrument.exchange == "NSE"
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _get_sector_concentration(
+        self,
+        user_id: str,
+        symbol: str,
+    ) -> Decimal | None:
+        """Get current sector concentration for a symbol's sector.
+
+        Returns:
+            Sector concentration as percentage, or None if sector unknown
+        """
+        sector = await self._get_sector_for_symbol(symbol)
+        if not sector:
+            return None
+
+        # Get all positions with their sectors
+        result = await self.db.execute(
+            select(Position).where(
+                Position.user_id == user_id,
+                Position.quantity > 0
+            )
+        )
+        positions = list(result.scalars().all())
+
+        if not positions:
+            return Decimal("0")
+
+        total_value = Decimal("0")
+        sector_value = Decimal("0")
+
+        for pos in positions:
+            pos_value = pos.quantity * pos.avg_cost
+            total_value += pos_value
+
+            # Get sector for this position
+            pos_sector = pos.sector or await self._get_sector_for_symbol(pos.symbol)
+            if pos_sector == sector:
+                sector_value += pos_value
+
+        if total_value == 0:
+            return Decimal("0")
+
+        return (sector_value / total_value) * 100
+
+    async def _check_sector_concentration(
+        self,
+        user_id: str,
+        symbol: str,
+        order_value: Decimal,
+        limits: RiskLimits,
+    ) -> RiskCheck | None:
+        """Check if order would exceed sector concentration limit."""
+        sector = await self._get_sector_for_symbol(symbol)
+        if not sector:
+            # Unknown sector, skip check
+            return None
+
+        current_concentration = await self._get_sector_concentration(user_id, symbol)
+        if current_concentration is None:
+            return None
+
+        # Estimate new concentration after this order
+        funds = await self.funds_service.get_or_create_funds(user_id)
+        total_value = funds.total_balance
+        if total_value <= 0:
+            return None
+
+        # Get current sector value
+        result = await self.db.execute(
+            select(Position).where(
+                Position.user_id == user_id,
+                Position.quantity > 0
+            )
+        )
+        positions = list(result.scalars().all())
+
+        sector_value = Decimal("0")
+        for pos in positions:
+            pos_sector = pos.sector or await self._get_sector_for_symbol(pos.symbol)
+            if pos_sector == sector:
+                sector_value += pos.quantity * pos.avg_cost
+
+        new_sector_value = sector_value + order_value
+        new_total = total_value  # Assuming cash available covers the order
+        new_concentration = (new_sector_value / new_total) * 100 if new_total > 0 else Decimal("0")
+
+        return RiskCheck(
+            name="max_sector_concentration",
+            passed=new_concentration <= limits.max_sector_concentration,
+            current_value=f"{new_concentration:.1f}%",
+            limit_value=f"{limits.max_sector_concentration}%",
+            message=f"Sector '{sector}' concentration would reach {new_concentration:.1f}%" if new_concentration > limits.max_sector_concentration else None,
+        )
+
+    async def _get_intraday_exposure(self, user_id: str) -> Decimal:
+        """Get current intraday exposure (value of all INTRADAY positions)."""
+        result = await self.db.execute(
+            select(Position).where(
+                Position.user_id == user_id,
+                Position.quantity > 0,
+                Position.product_type == ProductType.INTRADAY.value
+            )
+        )
+        positions = list(result.scalars().all())
+
+        return sum(p.quantity * p.avg_cost for p in positions)
 

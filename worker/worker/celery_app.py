@@ -16,6 +16,7 @@ celery_app = Celery(
         "worker.tasks.portfolio",
         "worker.tasks.alerts",
         "worker.tasks.instruments",
+        "worker.tasks.trading",
     ],
 )
 
@@ -68,6 +69,31 @@ celery_app.conf.beat_schedule = {
     "sync-instruments-weekly": {
         "task": "worker.tasks.instruments.sync_instruments_weekly",
         "schedule": crontab(hour=0, minute=30, day_of_week=0),  # Sunday 00:30 UTC
+    },
+    # Trading tasks - SL/TP checking every minute during market hours
+    "check-sl-tp-orders-every-minute": {
+        "task": "worker.tasks.trading.check_sl_tp_orders",
+        "schedule": 60.0,  # Every minute
+    },
+    # GTT order checking every minute during market hours
+    "check-gtt-orders-every-minute": {
+        "task": "worker.tasks.trading.check_gtt_orders",
+        "schedule": 60.0,  # Every minute
+    },
+    # Pending trigger orders (SL/SL-M) every 30 seconds
+    "check-trigger-orders-every-30-seconds": {
+        "task": "worker.tasks.trading.check_pending_trigger_orders",
+        "schedule": 30.0,  # Every 30 seconds
+    },
+    # Auto square-off intraday positions at 3:15 PM IST (9:45 UTC)
+    "auto-square-off-intraday": {
+        "task": "worker.tasks.trading.auto_square_off_intraday",
+        "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
+    },
+    # Process AMO (After Market Orders) at market open - 9:15 AM IST (3:45 UTC)
+    "process-amo-orders-at-market-open": {
+        "task": "worker.tasks.trading.process_amo_orders",
+        "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
     },
 }
 

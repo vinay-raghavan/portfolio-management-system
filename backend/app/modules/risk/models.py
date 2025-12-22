@@ -41,7 +41,12 @@ class RiskLimits(Base):
     max_positions: Mapped[int] = mapped_column(
         Integer, nullable=False, default=20  # Max 20 open positions
     )
-    
+
+    # Sector concentration limits
+    max_sector_concentration: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("40")  # Max 40% in one sector
+    )
+
     # Daily loss limits
     max_daily_loss: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, default=Decimal("50000")  # ₹50K default
@@ -49,7 +54,12 @@ class RiskLimits(Base):
     max_daily_loss_pct: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("5")  # 5% of portfolio
     )
-    
+
+    # Intraday limits
+    max_intraday_exposure: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("500000")  # ₹5 Lakh default intraday exposure
+    )
+
     # Order limits
     max_order_value: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, default=Decimal("50000")  # ₹50K per order
@@ -57,10 +67,11 @@ class RiskLimits(Base):
     max_orders_per_day: Mapped[int] = mapped_column(
         Integer, nullable=False, default=50  # Max 50 orders per day
     )
-    
+
     # Feature flags
     allow_intraday: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     allow_short_selling: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_square_off_intraday: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)  # Auto square-off at 3:15 PM
     
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
