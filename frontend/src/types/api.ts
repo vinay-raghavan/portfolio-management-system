@@ -492,3 +492,127 @@ export interface ApiError {
   detail: string;
   status_code?: number;
 }
+
+// ============== Algo Trading Types ==============
+
+export type StrategyStatus = 'ACTIVE' | 'DISABLED' | 'PAUSED' | 'ERROR' | 'KILLED';
+export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' | 'CONTINUOUS';
+export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
+export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface AlgoStrategy {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  strategy_type: string;
+  strategy_config: Record<string, unknown> | null;
+  status: StrategyStatus;
+  universe_id: string | null;
+  symbols: string[] | null;
+  schedule_type: ScheduleType;
+  interval_seconds: number | null;
+  cron_expression: string | null;
+  position_sizing_method: PositionSizingMethod;
+  position_size_value: number;
+  max_position_value: number | null;
+  max_daily_loss: number;
+  max_consecutive_losses: number;
+  is_paper_trading: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  total_trades: number;
+  winning_trades: number;
+  total_pnl: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlgoStrategyCreate {
+  name: string;
+  description?: string;
+  strategy_type: string;
+  strategy_config?: Record<string, unknown>;
+  universe_id?: string;
+  symbols?: string[];
+  schedule_type?: ScheduleType;
+  interval_seconds?: number;
+  cron_expression?: string;
+  position_sizing_method?: PositionSizingMethod;
+  position_size_value?: number;
+  max_position_value?: number;
+  max_daily_loss?: number;
+  max_consecutive_losses?: number;
+  is_paper_trading?: boolean;
+}
+
+export interface AlgoStrategyUpdate {
+  name?: string;
+  description?: string;
+  strategy_config?: Record<string, unknown>;
+  universe_id?: string;
+  symbols?: string[];
+  schedule_type?: ScheduleType;
+  interval_seconds?: number;
+  cron_expression?: string;
+  position_sizing_method?: PositionSizingMethod;
+  position_size_value?: number;
+  max_position_value?: number;
+  max_daily_loss?: number;
+  max_consecutive_losses?: number;
+  is_paper_trading?: boolean;
+}
+
+export interface StrategyExecution {
+  id: string;
+  strategy_id: string;
+  status: ExecutionStatus;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  symbols_analyzed: number;
+  signals_generated: number;
+  orders_placed: number;
+  orders_filled: number;
+  orders_rejected: number;
+  error_message: string | null;
+}
+
+export interface Universe {
+  id: string;
+  user_id: string | null;
+  name: string;
+  description: string | null;
+  symbols: string[] | null;
+  filter_criteria: Record<string, unknown> | null;
+  is_system: boolean;
+  is_dynamic: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UniverseCreate {
+  name: string;
+  description?: string;
+  symbols?: string[];
+  filter_criteria?: Record<string, unknown>;
+  is_dynamic?: boolean;
+}
+
+export interface KillSwitchState {
+  is_active: boolean;
+  activated_at: string | null;
+  reason: string | null;
+  square_off_initiated: boolean;
+}
+
+export interface CircuitBreakerStatus {
+  strategy_id: string;
+  is_triggered: boolean;
+  trigger_reason: string | null;
+  daily_loss: number;
+  consecutive_losses: number;
+  triggered_at: string | null;
+  max_daily_loss: number;
+  max_consecutive_losses: number;
+}
