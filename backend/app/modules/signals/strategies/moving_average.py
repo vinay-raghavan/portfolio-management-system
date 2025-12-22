@@ -178,6 +178,40 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 )
             )
 
+        # HOLD signal - no crossover detected
+        else:
+            # Determine trend direction from MA positions
+            if current_fast > current_slow:
+                trend_note = f"Fast {self.ma_type} above slow (bullish trend)"
+            else:
+                trend_note = f"Fast {self.ma_type} below slow (bearish trend)"
+
+            # Strength based on how far apart MAs are (further = stronger trend)
+            separation_pct = abs(current_fast - current_slow) / current_slow * 100
+            strength = Decimal(str(min(0.8, 0.5 + separation_pct / 10))).quantize(
+                Decimal("0.0001")
+            )
+
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.6"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={
+                        f"fast_{self.ma_type.lower()}_{self.fast_period}": round(current_fast, 4),
+                        f"slow_{self.ma_type.lower()}_{self.slow_period}": round(current_slow, 4),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"No {self.ma_type} crossover - {trend_note}",
+                )
+            )
+
         return signals
 
     def _calculate_strength(self, fast_ma: float, slow_ma: float, price: Decimal) -> Decimal:

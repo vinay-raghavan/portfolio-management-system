@@ -157,6 +157,34 @@ class RSIStrategy(BaseStrategy):
                 )
             )
 
+        # HOLD signal - RSI in neutral zone
+        else:
+            # Calculate strength based on distance from thresholds
+            mid_point = (self.oversold_threshold + self.overbought_threshold) / 2
+            distance_from_mid = abs(current_rsi - mid_point)
+            max_distance = (self.overbought_threshold - self.oversold_threshold) / 2
+            # Closer to middle = stronger hold (less likely to trigger buy/sell soon)
+            strength = Decimal(str(1.0 - (distance_from_mid / max_distance) * 0.5)).quantize(
+                Decimal("0.0001")
+            )
+            confidence = Decimal("0.7")  # Moderate confidence for hold
+
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
+                    notes=f"RSI neutral at {current_rsi:.2f} (between {self.oversold_threshold}-{self.overbought_threshold})",
+                )
+            )
+
         return signals
 
     def _calculate_strength(self, rsi: float, is_buy: bool) -> Decimal:

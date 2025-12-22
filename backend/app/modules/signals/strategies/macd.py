@@ -197,6 +197,41 @@ class MACDCrossoverStrategy(BaseStrategy):
                 )
             )
 
+        # HOLD signal - no crossover detected
+        else:
+            # Determine trend direction from MACD position
+            if current_macd > current_signal:
+                trend_note = "MACD above signal (bullish bias)"
+            else:
+                trend_note = "MACD below signal (bearish bias)"
+
+            # Strength based on histogram momentum
+            hist_momentum = abs(current_hist) / (abs(current_signal) + 0.001)
+            strength = Decimal(str(min(0.8, 0.5 + hist_momentum * 0.3))).quantize(
+                Decimal("0.0001")
+            )
+
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.6"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={
+                        "macd": round(current_macd, 4),
+                        "signal": round(current_signal, 4),
+                        "histogram": round(current_hist, 4),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"No MACD crossover - {trend_note}",
+                )
+            )
+
         return signals
 
     def _calculate_strength(self, macd: float, signal: float, is_buy: bool) -> Decimal:

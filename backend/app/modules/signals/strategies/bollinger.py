@@ -118,9 +118,6 @@ class BollingerSqueezeStrategy(BaseStrategy):
         was_in_squeeze = bw_percentile < self.squeeze_percentile
         is_expanding = current_bw > prev_bw if prev_bw else False
 
-        if not (was_in_squeeze and is_expanding):
-            return []
-
         # Calculate ATR for stop loss
         atr = None
         if len(df) >= self.atr_period:
@@ -133,8 +130,11 @@ class BollingerSqueezeStrategy(BaseStrategy):
 
         signals = []
 
+        # Only check for breakouts if in squeeze and expanding
+        in_breakout_condition = was_in_squeeze and is_expanding
+
         # Breakout above upper band - BUY
-        if float(prev_price) <= prev_upper and float(current_price) > current_upper:
+        if in_breakout_condition and float(prev_price) <= prev_upper and float(current_price) > current_upper:
             strength = self._calculate_strength(current_bw, recent_bw)
             confidence = self._calculate_confidence(bandwidth, is_buy=True)
 
@@ -168,7 +168,7 @@ class BollingerSqueezeStrategy(BaseStrategy):
             )
 
         # Breakout below lower band - SELL
-        elif float(prev_price) >= prev_lower and float(current_price) < current_lower:
+        elif in_breakout_condition and float(prev_price) >= prev_lower and float(current_price) < current_lower:
             strength = self._calculate_strength(current_bw, recent_bw)
             confidence = self._calculate_confidence(bandwidth, is_buy=False)
 
@@ -198,6 +198,47 @@ class BollingerSqueezeStrategy(BaseStrategy):
                         "atr": float(atr) if atr else None,
                     },
                     notes=f"Bollinger squeeze breakout (downside), BW percentile: {bw_percentile:.0f}%",
+                )
+            )
+
+        # HOLD signal - no breakout or not in squeeze
+        else:
+            # Determine position within bands
+            band_range = current_upper - current_lower
+            price_position = (float(current_price) - current_lower) / band_range * 100
+
+            if price_position > 80:
+                position_note = "Price near upper band"
+            elif price_position < 20:
+                position_note = "Price near lower band"
+            else:
+                position_note = "Price within middle of bands"
+
+            # Strength based on position (closer to middle = stronger hold)
+            distance_from_mid = abs(price_position - 50)
+            strength = Decimal(str(max(0.5, 0.8 - distance_from_mid / 100))).quantize(
+                Decimal("0.0001")
+            )
+
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.6"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={
+                        "bb_upper": round(current_upper, 4),
+                        "bb_lower": round(current_lower, 4),
+                        "bandwidth": round(current_bw, 4),
+                        "price_position_pct": round(price_position, 2),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"No Bollinger breakout - {position_note}",
                 )
             )
 

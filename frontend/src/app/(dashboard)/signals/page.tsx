@@ -236,16 +236,16 @@ export default function SignalsPage() {
                           <div
                             className={cn(
                               'h-full rounded-full',
-                              signal.confidence >= 70
+                              signal.confidence * 100 >= 70
                                 ? 'bg-green-500'
-                                : signal.confidence >= 50
+                                : signal.confidence * 100 >= 50
                                 ? 'bg-yellow-500'
                                 : 'bg-red-500'
                             )}
-                            style={{ width: `${signal.confidence}%` }}
+                            style={{ width: `${signal.confidence * 100}%` }}
                           />
                         </div>
-                        <span className="text-sm">{signal.confidence.toFixed(0)}%</span>
+                        <span className="text-sm">{(signal.confidence * 100).toFixed(0)}%</span>
                       </div>
                     </TableCell>
                     <TableCell>
