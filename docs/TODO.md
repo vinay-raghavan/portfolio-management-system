@@ -377,7 +377,7 @@ flowchart TB
 | Paper Trading Service | ✅ Done | Basic implementation |
 | Technical Analysis | ✅ Done | RSI, MACD, BB, ATR |
 | yfinance Integration | ✅ Done | US stocks working |
-| Frontend | 🟡 Partial | Basic dashboard only |
+| Frontend | ✅ Done | Dashboard, Portfolio, Orders, Watchlist, Signals, Backtest pages |
 | Indian Stock Data | ✅ Done | NSE provider with 2220+ stocks, industry data for Nifty 500 |
 | Abstracted Data Layer | ✅ Done | DataProvider + YahooDataProvider + NSEDataProvider + Factory |
 | Abstracted Broker Layer | ✅ Done | Broker + PaperBroker + Factory |
@@ -386,7 +386,8 @@ flowchart TB
 | Instrument Master | ✅ Done | 2220+ NSE stocks with ISIN, industry, series |
 | Instrument Sync | ✅ Done | Weekly scheduled sync + manual API endpoints |
 | Market Status | ✅ Done | NSE trading hours awareness |
-| Backtesting | ❌ Missing | Not implemented |
+| Signal Engine | ✅ Done | 4 strategies (RSI, MACD, MA Crossover, Bollinger) with HOLD support |
+| Backtesting | ✅ Done | BacktestRunner with full metrics (Sharpe, Sortino, Max DD, Win Rate) |
 | Risk Management | ✅ Done | Position limits, sector concentration, SL/TP enforcement, auto square-off |
 | Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
 
@@ -1241,9 +1242,9 @@ flowchart TB
     style Validation fill:#f5f5f5,stroke:#616161
 ```
 
-#### 1.7.1 Signal Engine
+#### 1.7.1 Signal Engine ✅
 **Tasks:**
-- [ ] Define Signal schema
+- [x] Define Signal schema
   ```python
   class Signal:
       symbol: str
@@ -1253,34 +1254,40 @@ flowchart TB
       indicators: dict  # Supporting data
       generated_at: datetime
   ```
-- [ ] Strategy runner framework
-- [ ] Built-in strategies:
-  - [ ] RSI Oversold/Overbought
-  - [ ] MACD Crossover
-  - [ ] Moving Average Crossover
-  - [ ] Bollinger Band Squeeze
-- [ ] Signal persistence and history
+- [x] Strategy runner framework (BaseStrategy ABC + StrategyRegistry)
+- [x] Built-in strategies:
+  - [x] RSI Oversold/Overbought
+  - [x] MACD Crossover
+  - [x] Moving Average Crossover (SMA/EMA)
+  - [x] Bollinger Band Squeeze
+- [x] Signal persistence and history
+- [x] HOLD signal support for all strategies
+- [x] API endpoints for signal generation and listing
+- [x] Celery tasks for scheduled signal generation
 
-#### 1.7.2 Backtesting Framework
+#### 1.7.2 Backtesting Framework ✅
 **Tasks:**
-- [ ] Historical data loader
-- [ ] Strategy backtester
+- [x] Historical data loader (via yfinance)
+- [x] Strategy backtester (BacktestRunner)
   - Apply strategy to historical data
   - Track simulated trades
   - Calculate returns
-- [ ] Performance metrics
+- [x] Performance metrics
   - Total return, CAGR
   - Sharpe ratio, Sortino ratio
   - Max drawdown
   - Win rate, Profit factor
-- [ ] Backtest results visualization
+- [x] Backtest results visualization (equity curve chart)
+- [x] Backtest API endpoints
+- [x] Backtest Celery tasks for async execution
 
-#### 1.7.3 Paper Trading Verification
+#### 1.7.3 Frontend UI ✅
 **Tasks:**
-- [ ] Run strategies on paper trading
-- [ ] Compare paper results with backtest
-- [ ] Track slippage and execution quality
-- [ ] Generate paper trading reports
+- [x] Signals page with signal listing and generation
+- [x] Backtest page with configuration form
+- [x] Equity curve visualization
+- [x] Strategy selection dropdown
+- [x] Confidence display fix (0-1 to percentage conversion)
 
 ---
 
