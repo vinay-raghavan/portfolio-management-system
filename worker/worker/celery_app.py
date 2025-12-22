@@ -17,6 +17,8 @@ celery_app = Celery(
         "worker.tasks.alerts",
         "worker.tasks.instruments",
         "worker.tasks.trading",
+        "worker.tasks.signals",
+        "worker.tasks.backtest",
     ],
 )
 
@@ -94,5 +96,15 @@ celery_app.conf.beat_schedule = {
     "process-amo-orders-at-market-open": {
         "task": "worker.tasks.trading.process_amo_orders",
         "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
+    },
+    # Signal generation - after market close 4 PM IST (10:30 UTC)
+    "generate-daily-signals": {
+        "task": "worker.tasks.signals.generate_daily_signals",
+        "schedule": crontab(hour=10, minute=30),  # 4:00 PM IST = 10:30 UTC
+    },
+    # Signal expiration check - every hour
+    "expire-old-signals-hourly": {
+        "task": "worker.tasks.signals.expire_old_signals",
+        "schedule": 3600.0,  # Every hour
     },
 }
