@@ -14,6 +14,7 @@ from app.modules.signals.strategies.moving_average import MovingAverageCrossover
 from app.modules.signals.strategies.orb import ORBStrategy
 from app.modules.signals.strategies.registry import StrategyRegistry
 from app.modules.signals.strategies.rsi import RSIStrategy
+from app.modules.signals.strategies.twap import TWAPStrategy
 from app.modules.signals.strategies.vwap import VWAPReversionStrategy
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "ORBStrategy",
     "VWAPReversionStrategy",
     "GapAndGoStrategy",
+    "TWAPStrategy",
     # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",
