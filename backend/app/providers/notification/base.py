@@ -146,4 +146,3 @@ class NotificationProvider(ABC):
             return template.format(**kwargs)
         except KeyError:
             return template
-

@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import DbSession, CurrentUser
-from app.modules.auth.schemas import UserCreate, UserLogin, UserResponse, AuthResponse
+from app.api.deps import CurrentUser, DbSession
+from app.modules.auth.schemas import AuthResponse, UserCreate, UserLogin, UserResponse
 from app.modules.auth.service import AuthService
 
 router = APIRouter()
@@ -49,4 +49,3 @@ async def login(login_data: UserLogin, db: DbSession) -> AuthResponse:
 async def get_current_user_info(current_user: CurrentUser) -> UserResponse:
     """Get current user information."""
     return UserResponse.model_validate(current_user)
-

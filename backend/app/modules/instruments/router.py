@@ -34,7 +34,7 @@ async def search_instruments(
     db: AsyncSession = Depends(get_db),
 ) -> InstrumentSearchResponse:
     """Search instruments with filters.
-    
+
     Examples:
     - Search by symbol: /search?query=RELIANCE
     - Filter by exchange: /search?exchange=NSE
@@ -52,7 +52,7 @@ async def search_instruments(
         offset=offset,
     )
     results, total = await service.search(params)
-    
+
     return InstrumentSearchResponse(
         total=total,
         results=[InstrumentResponse.model_validate(i) for i in results],
@@ -67,13 +67,13 @@ async def get_instrument(
     """Get instrument by ID."""
     service = InstrumentService(db)
     instrument = await service.get_by_id(instrument_id)
-    
+
     if not instrument:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Instrument not found: {instrument_id}",
         )
-    
+
     return InstrumentResponse.model_validate(instrument)
 
 
@@ -84,18 +84,18 @@ async def get_instrument_by_symbol(
     db: AsyncSession = Depends(get_db),
 ) -> InstrumentResponse:
     """Get instrument by symbol.
-    
+
     If exchange is not specified, returns the first match.
     """
     service = InstrumentService(db)
     instrument = await service.get_by_symbol(symbol, exchange)
-    
+
     if not instrument:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Instrument not found: {symbol}",
         )
-    
+
     return InstrumentResponse.model_validate(instrument)
 
 
@@ -211,8 +211,9 @@ async def sync_nifty_index_constituents(
 
     Example: POST /api/v1/instruments/sync/nifty/NIFTY500
     """
-    from app.providers.data.nse import NSEDataProvider
     from decimal import Decimal
+
+    from app.providers.data.nse import NSEDataProvider
 
     try:
         # Use NSE provider to fetch constituents
@@ -294,8 +295,9 @@ async def sync_all_nse_stocks(
     """
     import csv
     import io
-    import httpx
     from decimal import Decimal
+
+    import httpx
 
     NSE_EQUITY_CSV_URL = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
 
@@ -305,7 +307,9 @@ async def sync_all_nse_stocks(
             # First visit NSE homepage to get cookies
             await client.get(
                 "https://www.nseindia.com/",
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                },
             )
 
             # Download CSV
@@ -325,6 +329,7 @@ async def sync_all_nse_stocks(
 
         # Get existing instruments to preserve industry data
         from sqlalchemy import select
+
         from app.modules.instruments.models import Instrument
 
         service = InstrumentService(db)

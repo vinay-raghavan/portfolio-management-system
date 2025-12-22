@@ -44,9 +44,12 @@ def check_price_alerts(self) -> dict:
 
             # Check if alert should trigger
             should_trigger = False
-            if alert_type == "above" and current_price >= target_price:
-                should_trigger = True
-            elif alert_type == "below" and current_price <= target_price:
+            if (
+                alert_type == "above"
+                and current_price >= target_price
+                or alert_type == "below"
+                and current_price <= target_price
+            ):
                 should_trigger = True
 
             if should_trigger:
@@ -132,4 +135,3 @@ def create_price_alert(
     logger.info(f"Created price alert {alert_id} for {symbol} at ${target_price}")
 
     return {"status": "success", "alert_id": alert_id}
-

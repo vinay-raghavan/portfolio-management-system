@@ -1,15 +1,15 @@
 """Tests for provider factories."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from app.providers.data.base import DataProvider
-from app.providers.data.yahoo import YahooDataProvider
-from app.providers.data.factory import DataProviderFactory, get_data_provider
 from app.providers.broker.base import Broker
+from app.providers.broker.factory import BrokerFactory
 from app.providers.broker.paper import PaperBroker
-from app.providers.broker.factory import BrokerFactory, get_broker
+from app.providers.data.base import DataProvider
+from app.providers.data.factory import DataProviderFactory, get_data_provider
+from app.providers.data.yahoo import YahooDataProvider
 
 
 class TestDataProviderFactory:
@@ -157,4 +157,3 @@ class TestBrokerFactory:
 
         broker = BrokerFactory.get_broker("custom")
         assert isinstance(broker, CustomBroker)
-

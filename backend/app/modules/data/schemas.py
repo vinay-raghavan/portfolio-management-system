@@ -7,7 +7,9 @@ from typing import Annotated
 from pydantic import BaseModel, PlainSerializer
 
 # Custom type that serializes Decimal as float for JSON
-DecimalAsFloat = Annotated[Decimal, PlainSerializer(lambda v: float(v) if v is not None else None, return_type=float)]
+DecimalAsFloat = Annotated[
+    Decimal, PlainSerializer(lambda v: float(v) if v is not None else None, return_type=float)
+]
 
 
 class StockQuote(BaseModel):

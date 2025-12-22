@@ -1,15 +1,15 @@
 """API routes for risk management."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 
-from app.api.deps import DbSession, CurrentUser
-from app.modules.risk.service import RiskService
+from app.api.deps import CurrentUser, DbSession
 from app.modules.risk.schemas import (
+    DailyRiskMetricsResponse,
     RiskLimitsResponse,
     RiskLimitsUpdate,
     RiskSummary,
-    DailyRiskMetricsResponse,
 )
+from app.modules.risk.service import RiskService
 
 router = APIRouter()
 
@@ -87,4 +87,3 @@ async def reset_daily_metrics(
     await db.refresh(metrics)
 
     return DailyRiskMetricsResponse.model_validate(metrics)
-

@@ -15,10 +15,8 @@ from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.modules.portfolio.funds_service import FundsService
 from app.modules.instruments.service import InstrumentService
-from app.modules.instruments.schemas import InstrumentSearchParams
+from app.modules.portfolio.funds_service import FundsService
 from app.providers.data.factory import get_data_provider
 from app.providers.schemas import OrderRequest, OrderSide
 
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ValidationErrorCode(str, Enum):
     """Validation error codes."""
-    
+
     MARKET_CLOSED = "MARKET_CLOSED"
     INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
     INVALID_QUANTITY = "INVALID_QUANTITY"
@@ -41,25 +39,25 @@ class ValidationErrorCode(str, Enum):
 @dataclass
 class ValidationError:
     """A single validation error."""
-    
+
     code: ValidationErrorCode
     message: str
     field: str | None = None
 
 
-@dataclass 
+@dataclass
 class ValidationResult:
     """Result of order validation."""
-    
+
     is_valid: bool
     errors: list[ValidationError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    
+
     def add_error(self, code: ValidationErrorCode, message: str, field: str | None = None):
         """Add a validation error."""
         self.errors.append(ValidationError(code=code, message=message, field=field))
         self.is_valid = False
-    
+
     def add_warning(self, message: str):
         """Add a validation warning (doesn't fail validation)."""
         self.warnings.append(message)
@@ -67,14 +65,14 @@ class ValidationResult:
 
 class OrderValidator:
     """Service for validating orders before execution.
-    
+
     Performs various pre-trade checks to ensure orders are valid
     and can be executed safely.
     """
 
     # Default circuit limit percentage (price can move +/- 20% from previous close)
     DEFAULT_CIRCUIT_LIMIT_PCT = Decimal("20")
-    
+
     def __init__(self, db: AsyncSession):
         """Initialize with database session."""
         self.db = db
@@ -97,13 +95,13 @@ class OrderValidator:
         skip_funds_check: bool = False,
     ) -> ValidationResult:
         """Run all validations on an order.
-        
+
         Args:
             user_id: User placing the order
             order: Order request to validate
             skip_market_hours: Skip market hours check (for testing)
             skip_funds_check: Skip funds check (for limit orders)
-            
+
         Returns:
             ValidationResult with errors/warnings
         """
@@ -112,47 +110,41 @@ class OrderValidator:
         # Get current price for calculations (convert to Decimal for precision)
         raw_price = await self.data_provider.get_current_price(order.symbol)
         current_price = Decimal(str(raw_price)) if raw_price is not None else None
-        
+
         # 1. Validate symbol exists
         if not await self._validate_symbol(order.symbol, result):
             return result  # Can't continue without valid symbol
-        
+
         # 2. Check market hours (unless skipped)
         if not skip_market_hours:
             await self._validate_market_hours(result)
-        
+
         # 3. Check funds for BUY orders
         if order.side == OrderSide.BUY and not skip_funds_check:
             await self._validate_funds(user_id, order, current_price, result)
-        
+
         # 4. Validate quantity
         await self._validate_quantity(order, result)
-        
+
         # 5. Check price circuit limits (for limit orders)
         if order.price is not None and current_price is not None:
             await self._validate_circuit_limits(order, current_price, result)
-        
+
         return result
 
-    async def _validate_symbol(
-        self, 
-        symbol: str, 
-        result: ValidationResult
-    ) -> bool:
+    async def _validate_symbol(self, symbol: str, result: ValidationResult) -> bool:
         """Validate symbol exists in instrument master."""
         instrument = await self.instrument_service.get_by_symbol(symbol)
-        
+
         if instrument is None:
             # Try to get quote from data provider as fallback
             quote = await self.data_provider.get_quote(symbol)
             if quote is None:
                 result.add_error(
-                    ValidationErrorCode.INVALID_SYMBOL,
-                    f"Symbol '{symbol}' not found",
-                    "symbol"
+                    ValidationErrorCode.INVALID_SYMBOL, f"Symbol '{symbol}' not found", "symbol"
                 )
                 return False
-        
+
         return True
 
     async def _validate_market_hours(self, result: ValidationResult) -> bool:
@@ -162,7 +154,7 @@ class OrderValidator:
         if not is_open:
             result.add_error(
                 ValidationErrorCode.MARKET_CLOSED,
-                "Market is currently closed. Orders can only be placed during market hours."
+                "Market is currently closed. Orders can only be placed during market hours.",
             )
             return False
 
@@ -173,7 +165,7 @@ class OrderValidator:
         user_id: str,
         order: OrderRequest,
         current_price: Decimal | None,
-        result: ValidationResult
+        result: ValidationResult,
     ) -> bool:
         """Validate user has sufficient funds for the order."""
         # Use order price for limit orders, current price for market orders
@@ -196,47 +188,41 @@ class OrderValidator:
                 ValidationErrorCode.INSUFFICIENT_FUNDS,
                 f"Insufficient funds. Required: ₹{required_amount:.2f}, "
                 f"Available: ₹{funds.available_cash:.2f}",
-                "quantity"
+                "quantity",
             )
             return False
 
         return True
 
-    async def _validate_quantity(
-        self,
-        order: OrderRequest,
-        result: ValidationResult
-    ) -> bool:
+    async def _validate_quantity(self, order: OrderRequest, result: ValidationResult) -> bool:
         """Validate order quantity is valid."""
         # Check minimum quantity
         if order.quantity <= 0:
             result.add_error(
-                ValidationErrorCode.INVALID_QUANTITY,
-                "Quantity must be greater than 0",
-                "quantity"
+                ValidationErrorCode.INVALID_QUANTITY, "Quantity must be greater than 0", "quantity"
             )
             return False
 
         # Check lot size for the instrument
         instrument = await self.instrument_service.get_by_symbol(order.symbol)
 
-        if instrument is not None and instrument.lot_size > 1:
-            # Check if quantity is a multiple of lot size
-            if order.quantity % instrument.lot_size != 0:
-                result.add_error(
-                    ValidationErrorCode.INVALID_LOT_SIZE,
-                    f"Quantity must be a multiple of lot size ({instrument.lot_size})",
-                    "quantity"
-                )
-                return False
+        # Check if quantity is a multiple of lot size
+        if (
+            instrument is not None
+            and instrument.lot_size > 1
+            and order.quantity % instrument.lot_size != 0
+        ):
+            result.add_error(
+                ValidationErrorCode.INVALID_LOT_SIZE,
+                f"Quantity must be a multiple of lot size ({instrument.lot_size})",
+                "quantity",
+            )
+            return False
 
         return True
 
     async def _validate_circuit_limits(
-        self,
-        order: OrderRequest,
-        current_price: Decimal,
-        result: ValidationResult
+        self, order: OrderRequest, current_price: Decimal, result: ValidationResult
     ) -> bool:
         """Validate order price is within circuit limits."""
         # Calculate circuit limits (default +/- 20%)
@@ -249,18 +235,14 @@ class OrderValidator:
                 ValidationErrorCode.PRICE_OUTSIDE_CIRCUIT,
                 f"Price ₹{order.price} is outside circuit limits "
                 f"(₹{lower_limit:.2f} - ₹{upper_limit:.2f})",
-                "price"
+                "price",
             )
             return False
 
         return True
 
     async def validate_sell_quantity(
-        self,
-        user_id: str,
-        symbol: str,
-        quantity: Decimal,
-        result: ValidationResult
+        self, user_id: str, symbol: str, quantity: Decimal, result: ValidationResult
     ) -> bool:
         """Validate user has sufficient position to sell.
 
@@ -283,7 +265,7 @@ class OrderValidator:
             result.add_error(
                 ValidationErrorCode.SELL_QUANTITY_EXCEEDS_POSITION,
                 f"Cannot sell {quantity} shares. Available: {available}",
-                "quantity"
+                "quantity",
             )
             return False
 
@@ -302,13 +284,8 @@ def create_validation_error_response(result: ValidationResult) -> dict:
     return {
         "message": "Order validation failed",
         "errors": [
-            {
-                "code": error.code.value,
-                "message": error.message,
-                "field": error.field
-            }
+            {"code": error.code.value, "message": error.message, "field": error.field}
             for error in result.errors
         ],
-        "warnings": result.warnings
+        "warnings": result.warnings,
     }
-

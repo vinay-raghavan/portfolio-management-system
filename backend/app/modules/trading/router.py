@@ -1,13 +1,11 @@
 """Trading API routes."""
 
-from decimal import Decimal
-
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import DbSession, CurrentUser
-from app.modules.trading.schemas import OrderCreate, OrderResponse, OrderListResponse
-from app.modules.trading.service import TradingService, OrderValidationError
+from app.api.deps import CurrentUser, DbSession
 from app.modules.data.service import MarketDataService
+from app.modules.trading.schemas import OrderCreate, OrderListResponse, OrderResponse
+from app.modules.trading.service import OrderValidationError, TradingService
 
 router = APIRouter()
 
@@ -61,9 +59,7 @@ async def get_orders(
 ) -> OrderListResponse:
     """Get orders with optional status filter."""
     service = TradingService(db)
-    orders, total_count = await service.get_orders(
-        current_user.id, status_filter, page, page_size
-    )
+    orders, total_count = await service.get_orders(current_user.id, status_filter, page, page_size)
 
     return OrderListResponse(
         orders=[OrderResponse.model_validate(o) for o in orders],

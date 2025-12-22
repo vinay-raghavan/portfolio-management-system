@@ -1,26 +1,36 @@
 """Trading service layer with broker provider abstraction."""
 
-from datetime import datetime, timezone
-from decimal import Decimal
 import logging
+from datetime import UTC, datetime
+from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.portfolio.funds_service import FundsService
+from app.modules.portfolio.models import Trade
+from app.modules.portfolio.service import PortfolioService
 from app.modules.trading.models import Order, OrderStatus
 from app.modules.trading.schemas import OrderCreate, OrderSide
-from app.modules.trading.validator import OrderValidator, ValidationResult, create_validation_error_response
-from app.modules.portfolio.models import Position, Trade
-from app.modules.portfolio.service import PortfolioService
-from app.modules.portfolio.funds_service import FundsService
-from app.providers.broker.factory import get_broker, BrokerFactory
+from app.modules.trading.validator import (
+    OrderValidator,
+    ValidationResult,
+    create_validation_error_response,
+)
 from app.providers.broker.base import Broker
+from app.providers.broker.factory import BrokerFactory, get_broker
 from app.providers.data.factory import get_data_provider
 from app.providers.schemas import (
     OrderRequest,
+)
+from app.providers.schemas import (
     OrderSide as ProviderOrderSide,
-    OrderType as ProviderOrderType,
+)
+from app.providers.schemas import (
     OrderStatus as ProviderOrderStatus,
+)
+from app.providers.schemas import (
+    OrderType as ProviderOrderType,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,10 +56,7 @@ class TradingService:
     TRADING_FEE_PCT = Decimal("0.001")
 
     def __init__(
-        self,
-        db: AsyncSession,
-        broker: Broker | None = None,
-        skip_validation: bool = False
+        self, db: AsyncSession, broker: Broker | None = None, skip_validation: bool = False
     ) -> None:
         """Initialize trading service.
 
@@ -78,10 +85,7 @@ class TradingService:
         return BrokerFactory.is_paper_trading()
 
     async def create_order(
-        self,
-        user_id: str,
-        order_data: OrderCreate,
-        skip_market_hours_check: bool = False
+        self, user_id: str, order_data: OrderCreate, skip_market_hours_check: bool = False
     ) -> Order:
         """Create a new order and execute via broker provider.
 
@@ -101,7 +105,7 @@ class TradingService:
             OrderValidationError: If order validation fails
         """
         # Check if this is an AMO order
-        is_amo = getattr(order_data, 'is_amo', False)
+        is_amo = getattr(order_data, "is_amo", False)
 
         # For AMO orders, we skip market hours check but still validate other things
         # For regular orders outside market hours, they should be rejected unless is_amo=True
@@ -147,7 +151,7 @@ class TradingService:
             if not is_market_open:
                 # Queue for next market open
                 initial_status = OrderStatus.AMO_PENDING.value
-                if hasattr(data_provider, 'get_next_market_open'):
+                if hasattr(data_provider, "get_next_market_open"):
                     scheduled_for = data_provider.get_next_market_open()
                 logger.info(
                     f"AMO order created for {order_data.symbol}, scheduled for {scheduled_for}"
@@ -179,7 +183,10 @@ class TradingService:
         await self.db.refresh(order)
 
         # Execute via broker provider for market orders (only if not AMO pending)
-        if order_data.order_type.value == "MARKET" and order.status != OrderStatus.AMO_PENDING.value:
+        if (
+            order_data.order_type.value == "MARKET"
+            and order.status != OrderStatus.AMO_PENDING.value
+        ):
             order = await self._execute_via_broker(user_id, order, order_data)
 
         return order
@@ -217,7 +224,7 @@ class TradingService:
             order.filled_quantity = Decimal(str(response.filled_quantity))
             order.filled_price = response.filled_price
             order.fees = response.fees
-            order.filled_at = response.filled_at or datetime.now(timezone.utc)
+            order.filled_at = response.filled_at or datetime.now(UTC)
 
             # Create trade record for persistence
             trade = Trade(
@@ -262,9 +269,7 @@ class TradingService:
         await self.db.refresh(order)
         return order
 
-    async def execute_market_order(
-        self, order: Order, current_price: Decimal
-    ) -> Order:
+    async def execute_market_order(self, order: Order, current_price: Decimal) -> Order:
         """Execute a market order immediately (legacy method for backward compatibility).
 
         Prefer using create_order() which handles broker execution automatically.
@@ -278,7 +283,7 @@ class TradingService:
         order.filled_quantity = order.quantity
         order.filled_price = current_price
         order.fees = fees
-        order.filled_at = datetime.now(timezone.utc)
+        order.filled_at = datetime.now(UTC)
 
         # Create trade record
         trade = Trade(
@@ -318,9 +323,7 @@ class TradingService:
         if side == "BUY":
             if position is None:
                 # New position
-                await self.portfolio_service.update_position(
-                    user_id, symbol, quantity, price
-                )
+                await self.portfolio_service.update_position(user_id, symbol, quantity, price)
             else:
                 # Average up/down
                 total_cost = (position.quantity * position.avg_cost) + (quantity * price)
@@ -424,10 +427,11 @@ class TradingService:
 
         # Update order status to PENDING for execution
         order.status = OrderStatus.PENDING.value
-        order.notes = (order.notes or "") + f"\n[AMO] Processed at market open"
+        order.notes = (order.notes or "") + "\n[AMO] Processed at market open"
 
         # Create order data from the order
-        from app.modules.trading.schemas import OrderCreate, OrderType as SchemaOrderType
+        from app.modules.trading.schemas import OrderCreate
+        from app.modules.trading.schemas import OrderType as SchemaOrderType
 
         order_data = OrderCreate(
             symbol=order.symbol,
@@ -491,4 +495,3 @@ class TradingService:
             "failed": failed,
             "total": len(amo_orders),
         }
-

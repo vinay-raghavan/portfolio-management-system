@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -196,4 +196,3 @@ class TestRateLimiterWithRedis:
         mock_redis.pipeline.assert_called()
         # Should fall back to allow on error
         assert result is True
-

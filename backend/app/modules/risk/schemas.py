@@ -77,4 +77,3 @@ class RiskSummary(BaseModel):
     largest_position_pct: Decimal
     is_trading_blocked: bool
     block_reason: str | None = None
-

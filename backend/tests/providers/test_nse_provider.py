@@ -1,15 +1,12 @@
 """Tests for NSE data provider."""
 
-from datetime import datetime, time
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
-from zoneinfo import ZoneInfo
 
 import pytest
-import httpx
 
-from app.providers.data.nse import NSEDataProvider, IST, MARKET_OPEN, MARKET_CLOSE
-from app.providers.schemas import Quote, OHLCV
+from app.providers.data.nse import IST, NSEDataProvider
 
 
 class TestNSEDataProvider:
@@ -90,9 +87,9 @@ class TestNSEDataProvider:
 
         with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_request:
             mock_request.return_value = mock_quote_response
-            
+
             quote = await provider.get_quote("RELIANCE")
-            
+
             assert quote is not None
             assert quote.symbol == "RELIANCE"
             assert quote.price == Decimal("2450.5")
@@ -105,7 +102,7 @@ class TestNSEDataProvider:
         """Test quote not found returns None."""
         with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_request:
             mock_request.return_value = None
-            
+
             quote = await provider.get_quote("INVALID")
             assert quote is None
 
@@ -114,7 +111,7 @@ class TestNSEDataProvider:
         """Test getting current price."""
         with patch.object(provider, "_make_request", new_callable=AsyncMock) as mock_request:
             mock_request.return_value = mock_quote_response
-            
+
             price = await provider.get_current_price("RELIANCE")
             assert price == 2450.5
 
@@ -142,7 +139,7 @@ class TestNSEDataProvider:
     async def test_session_creation(self, provider):
         """Test HTTP session is created on first request."""
         assert provider._session is None
-        
+
         # Mock the session methods
         with patch("httpx.AsyncClient") as mock_client:
             mock_instance = AsyncMock()
@@ -151,7 +148,7 @@ class TestNSEDataProvider:
             mock_response.cookies = {}
             mock_instance.get.return_value = mock_response
             mock_client.return_value = mock_instance
-            
+
             session = await provider._get_session()
             assert session is not None
 
@@ -159,7 +156,7 @@ class TestNSEDataProvider:
     async def test_cookie_refresh(self, provider):
         """Test cookie refresh logic."""
         provider._last_cookie_refresh = None
-        
+
         with patch("httpx.AsyncClient") as mock_client:
             mock_instance = AsyncMock()
             mock_response = MagicMock()
@@ -167,9 +164,8 @@ class TestNSEDataProvider:
             mock_instance.get = AsyncMock(return_value=mock_response)
             mock_client.return_value = mock_instance
             provider._session = mock_instance
-            
+
             await provider._refresh_cookies()
-            
+
             assert provider._cookies == {"cookie1": "value1"}
             assert provider._last_cookie_refresh is not None
-

@@ -136,4 +136,3 @@ class SymbolMapper:
             return symbol[:-3], Exchange.NSE
         else:
             return symbol, None
-

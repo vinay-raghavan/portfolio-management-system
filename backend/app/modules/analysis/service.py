@@ -1,21 +1,21 @@
 """Technical analysis service using ta library."""
 
-from decimal import Decimal
 import logging
+from decimal import Decimal
 
 import pandas as pd
 import yfinance as yf
-from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.momentum import RSIIndicator
-from ta.volatility import BollingerBands, AverageTrueRange
+from ta.trend import MACD, EMAIndicator, SMAIndicator
+from ta.volatility import AverageTrueRange, BollingerBands
 
-from app.modules.analysis.schemas import (
-    TechnicalIndicators,
-    SignalStrength,
-    AnalysisResult,
-    StockInfo,
-)
 from app.core.config import settings
+from app.modules.analysis.schemas import (
+    AnalysisResult,
+    SignalStrength,
+    StockInfo,
+    TechnicalIndicators,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +36,12 @@ class AnalysisService:
             return symbol
 
         # Check if default market is Indian
-        default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
-        if default_market in ('NSE', 'IN', 'INDIA'):
+        default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+        if default_market in ("NSE", "IN", "INDIA"):
             # First try to check if it's a valid US stock by testing without suffix
             # Common US stocks don't need suffix - return as-is if it looks like US stock
             return f"{symbol}.NS"
-        elif default_market == 'BSE':
+        elif default_market == "BSE":
             return f"{symbol}.BO"
 
         return symbol
@@ -63,10 +63,10 @@ class AnalysisService:
             return symbol, False
 
         # For Indian market default, we need to try Indian first, then US
-        default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
-        if default_market in ('NSE', 'IN', 'INDIA'):
+        default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+        if default_market in ("NSE", "IN", "INDIA"):
             return f"{symbol}.NS", True
-        elif default_market == 'BSE':
+        elif default_market == "BSE":
             return f"{symbol}.BO", True
 
         return symbol, False
@@ -95,13 +95,13 @@ class AnalysisService:
                 hist = self._try_get_history(symbol_upper, period)
             else:
                 # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
-                if default_market in ('NSE', 'IN', 'INDIA'):
+                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+                if default_market in ("NSE", "IN", "INDIA"):
                     hist = self._try_get_history(f"{symbol_upper}.NS", period)
                     if hist is None:
                         # Fallback to US (no suffix)
                         hist = self._try_get_history(symbol_upper, period)
-                elif default_market == 'BSE':
+                elif default_market == "BSE":
                     hist = self._try_get_history(f"{symbol_upper}.BO", period)
                     if hist is None:
                         hist = self._try_get_history(symbol_upper, period)
@@ -120,7 +120,11 @@ class AnalysisService:
             # Moving Averages
             sma_20 = SMAIndicator(close, window=20).sma_indicator().iloc[-1]
             sma_50 = SMAIndicator(close, window=50).sma_indicator().iloc[-1]
-            sma_200 = SMAIndicator(close, window=200).sma_indicator().iloc[-1] if len(close) >= 200 else None
+            sma_200 = (
+                SMAIndicator(close, window=200).sma_indicator().iloc[-1]
+                if len(close) >= 200
+                else None
+            )
             ema_12 = EMAIndicator(close, window=12).ema_indicator().iloc[-1]
             ema_26 = EMAIndicator(close, window=26).ema_indicator().iloc[-1]
 
@@ -181,12 +185,12 @@ class AnalysisService:
                 info = self._try_get_ticker_info(symbol_upper)
             else:
                 # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
-                if default_market in ('NSE', 'IN', 'INDIA'):
+                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+                if default_market in ("NSE", "IN", "INDIA"):
                     info = self._try_get_ticker_info(f"{symbol_upper}.NS")
                     if not info:
                         info = self._try_get_ticker_info(symbol_upper)
-                elif default_market == 'BSE':
+                elif default_market == "BSE":
                     info = self._try_get_ticker_info(f"{symbol_upper}.BO")
                     if not info:
                         info = self._try_get_ticker_info(symbol_upper)
@@ -239,13 +243,12 @@ class AnalysisService:
             return None
         try:
             from datetime import datetime
+
             return datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d")
         except (ValueError, TypeError, OSError):
             return None
 
-    def _calculate_signal(
-        self, price: Decimal, indicators: TechnicalIndicators
-    ) -> SignalStrength:
+    def _calculate_signal(self, price: Decimal, indicators: TechnicalIndicators) -> SignalStrength:
         """Calculate trading signal based on indicators."""
         buy_signals = 0
         sell_signals = 0
@@ -278,21 +281,27 @@ class AnalysisService:
         # Calculate overall signal
         if buy_signals > sell_signals:
             signal = "BUY"
-            strength = Decimal(str(buy_signals / total_signals * 100)) if total_signals else Decimal("50")
+            strength = (
+                Decimal(str(buy_signals / total_signals * 100)) if total_signals else Decimal("50")
+            )
         elif sell_signals > buy_signals:
             signal = "SELL"
-            strength = Decimal(str(sell_signals / total_signals * 100)) if total_signals else Decimal("50")
+            strength = (
+                Decimal(str(sell_signals / total_signals * 100)) if total_signals else Decimal("50")
+            )
         else:
             signal = "HOLD"
             strength = Decimal("50")
 
-        confidence = Decimal(str(abs(buy_signals - sell_signals) / total_signals * 100)) if total_signals else Decimal("0")
+        confidence = (
+            Decimal(str(abs(buy_signals - sell_signals) / total_signals * 100))
+            if total_signals
+            else Decimal("0")
+        )
 
         return SignalStrength(signal=signal, strength=strength, confidence=confidence)
 
-    def _determine_trend(
-        self, price: Decimal, indicators: TechnicalIndicators
-    ) -> str:
+    def _determine_trend(self, price: Decimal, indicators: TechnicalIndicators) -> str:
         """Determine overall trend."""
         bullish = 0
         bearish = 0
@@ -336,13 +345,13 @@ class AnalysisService:
                 info = self._try_get_ticker_info(symbol_upper)
             else:
                 # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
-                if default_market in ('NSE', 'IN', 'INDIA'):
+                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+                if default_market in ("NSE", "IN", "INDIA"):
                     info = self._try_get_ticker_info(f"{symbol_upper}.NS")
                     if not info:
                         # Fallback to US (no suffix)
                         info = self._try_get_ticker_info(symbol_upper)
-                elif default_market == 'BSE':
+                elif default_market == "BSE":
                     info = self._try_get_ticker_info(f"{symbol_upper}.BO")
                     if not info:
                         info = self._try_get_ticker_info(symbol_upper)
@@ -393,4 +402,3 @@ class AnalysisService:
         except Exception as e:
             logger.error(f"Error getting stock info for {symbol}: {e}")
             return None
-

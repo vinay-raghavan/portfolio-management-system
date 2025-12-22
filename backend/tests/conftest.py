@@ -1,10 +1,11 @@
 """Test fixtures and configuration."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-from unittest.mock import AsyncMock, MagicMock
 
 from app.core.database import Base, get_db
 from app.main import app
@@ -87,4 +88,3 @@ def mock_http_client():
     mock.post = AsyncMock()
     mock.aclose = AsyncMock()
     return mock
-

@@ -2,7 +2,6 @@
 
 import logging
 from functools import lru_cache
-from typing import Type
 
 from app.core.config import settings
 from app.providers.broker.base import Broker
@@ -18,7 +17,7 @@ class BrokerFactory:
     """
 
     # Registry of available brokers
-    _brokers: dict[str, Type[Broker]] = {
+    _brokers: dict[str, type[Broker]] = {
         "paper": PaperBroker,
         # "angelone": AngelOneBroker,  # TODO: Phase 2
         # "dhan": DhanBroker,  # TODO: Phase 3
@@ -28,7 +27,7 @@ class BrokerFactory:
     _instances: dict[str, Broker] = {}
 
     @classmethod
-    def register(cls, name: str, broker_class: Type[Broker]) -> None:
+    def register(cls, name: str, broker_class: type[Broker]) -> None:
         """Register a new broker.
 
         Args:
@@ -55,9 +54,7 @@ class BrokerFactory:
 
         if broker_name not in cls._brokers:
             available = ", ".join(cls._brokers.keys())
-            raise ValueError(
-                f"Unknown broker: {broker_name}. Available: {available}"
-            )
+            raise ValueError(f"Unknown broker: {broker_name}. Available: {available}")
 
         # Return existing instance if available
         if broker_name in cls._instances:
@@ -105,4 +102,3 @@ def get_broker() -> Broker:
         Broker instance based on settings.BROKER_TYPE
     """
     return BrokerFactory.get_broker()
-

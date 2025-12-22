@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.watchlist.models import Watchlist, WatchlistItem
-from app.modules.watchlist.schemas import WatchlistCreate, WatchlistUpdate, WatchlistItemCreate
+from app.modules.watchlist.schemas import WatchlistCreate, WatchlistItemCreate, WatchlistUpdate
 
 
 class WatchlistService:
@@ -95,9 +95,7 @@ class WatchlistService:
         await self.db.refresh(item)
         return item
 
-    async def remove_item(
-        self, user_id: str, watchlist_id: str, symbol: str
-    ) -> bool:
+    async def remove_item(self, user_id: str, watchlist_id: str, symbol: str) -> bool:
         """Remove an item from a watchlist."""
         watchlist = await self.get_watchlist(user_id, watchlist_id)
         if watchlist is None:
@@ -110,4 +108,3 @@ class WatchlistService:
                 return True
 
         return False
-

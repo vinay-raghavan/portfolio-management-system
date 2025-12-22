@@ -1,19 +1,18 @@
 """Tests for instruments module."""
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.modules.instruments.models import Instrument
 from app.modules.instruments.schemas import (
-    InstrumentCreate,
-    InstrumentResponse,
-    InstrumentSearchParams,
     Exchange,
-    Segment,
+    InstrumentCreate,
+    InstrumentSearchParams,
     InstrumentType,
+    Segment,
 )
 
 
@@ -183,6 +182,7 @@ class TestInstrumentService:
     def service(self, mock_db):
         """Create instrument service with mock db."""
         from app.modules.instruments.service import InstrumentService
+
         return InstrumentService(mock_db)
 
     @pytest.mark.asyncio
@@ -194,7 +194,7 @@ class TestInstrumentService:
             exchange="NSE",
         )
 
-        instrument = await service.create(data)
+        await service.create(data)
 
         mock_db.add.assert_called_once()
         mock_db.flush.assert_called_once()
@@ -295,4 +295,3 @@ class TestInstrumentService:
 
         assert total == 1
         assert results[0].segment == "FO"
-

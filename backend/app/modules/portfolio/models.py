@@ -1,11 +1,11 @@
 """Portfolio database models."""
 
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import String, DateTime, Date, Numeric, ForeignKey, Index, JSON, Boolean
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -38,9 +38,7 @@ class Portfolio(Base):
     # Portfolio-level settings
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -95,17 +93,13 @@ class Position(Base):
     # Sector classification for concentration tracking
     sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
     # Relationships
-    portfolio: Mapped["Portfolio | None"] = relationship(
-        "Portfolio", back_populates="positions"
-    )
+    portfolio: Mapped["Portfolio | None"] = relationship("Portfolio", back_populates="positions")
 
     __table_args__ = (
         Index("ix_positions_portfolio_symbol", "portfolio_id", "symbol", unique=True),
@@ -134,7 +128,7 @@ class UserFunds(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
-        index=True
+        index=True,
     )
 
     # Cash available for trading
@@ -152,9 +146,7 @@ class UserFunds(Base):
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -190,34 +182,22 @@ class DailyPnL(Base):
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
     )
     user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
 
     # Date of the snapshot
     date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Portfolio values at end of day
-    total_value: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False
-    )
-    total_cost: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False
-    )
-    total_pnl: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False
-    )
+    total_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    total_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
 
     # Cash balance at end of day
-    cash_balance: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False
-    )
+    cash_balance: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
 
     # Daily change
-    day_pnl: Mapped[Decimal] = mapped_column(
-        Numeric(18, 4), nullable=False, default=Decimal("0")
-    )
+    day_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
 
     # Number of trades executed that day
     trades_count: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -225,13 +205,9 @@ class DailyPnL(Base):
     # Snapshot of positions as JSON for historical reference
     positions_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (
-        Index("ix_daily_pnl_user_date", "user_id", "date", unique=True),
-    )
+    __table_args__ = (Index("ix_daily_pnl_user_date", "user_id", "date", unique=True),)
 
 
 class Trade(Base):
@@ -258,9 +234,7 @@ class Trade(Base):
     )
 
     # Relationships
-    portfolio: Mapped["Portfolio | None"] = relationship(
-        "Portfolio", back_populates="trades"
-    )
+    portfolio: Mapped["Portfolio | None"] = relationship("Portfolio", back_populates="trades")
 
     __table_args__ = (
         Index("ix_trades_user_executed", "user_id", "executed_at"),
@@ -303,9 +277,7 @@ class CostLot(Base):
     purchased_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("ix_cost_lots_user_symbol", "user_id", "symbol"),
@@ -315,4 +287,3 @@ class CostLot(Base):
 
     def __repr__(self) -> str:
         return f"<CostLot {self.symbol}: {self.remaining_quantity}/{self.original_quantity} @ {self.purchase_price}>"
-

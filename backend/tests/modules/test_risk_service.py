@@ -4,11 +4,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.modules.risk.models import RiskLimits, DailyRiskMetrics
-from app.modules.risk.service import RiskService
-from app.modules.risk.schemas import RiskLimitsUpdate
-from app.modules.auth.models import User
 from app.core.security import get_password_hash
+from app.modules.auth.models import User
+from app.modules.risk.models import RiskLimits
+from app.modules.risk.schemas import RiskLimitsUpdate
+from app.modules.risk.service import RiskService
 
 
 class TestRiskService:
@@ -56,7 +56,7 @@ class TestRiskService:
         )
         db_session.add(custom_limits)
         await db_session.flush()
-        
+
         limits = await risk_service.get_limits(test_user.id)
         assert limits.max_position_size == Decimal("50000")
         assert limits.max_daily_loss == Decimal("10000")
@@ -65,15 +65,15 @@ class TestRiskService:
         """Test updating risk limits."""
         # First create default limits
         await risk_service.get_limits(test_user.id)
-        
+
         updates = RiskLimitsUpdate(
             max_position_size=Decimal("75000"),
             max_daily_loss=Decimal("25000"),
             max_orders_per_day=50,
         )
-        
+
         limits = await risk_service.update_limits(test_user.id, updates)
-        
+
         assert limits.max_position_size == Decimal("75000")
         assert limits.max_daily_loss == Decimal("25000")
         assert limits.max_orders_per_day == 50
@@ -85,7 +85,7 @@ class TestRiskService:
     async def test_get_daily_metrics_creates_default(self, risk_service, test_user):
         """Test get_daily_metrics creates default if not exists."""
         metrics = await risk_service.get_daily_metrics(test_user.id)
-        
+
         assert metrics is not None
         assert metrics.user_id == test_user.id
         assert metrics.orders_count == 0
@@ -218,7 +218,7 @@ class TestRiskService:
         )
 
         # Should have sector concentration check in the checks
-        check_names = [c["name"] for c in result.checks]
+        [c["name"] for c in result.checks]
         # Sector check may not be present if symbol has no sector in DB
         # But the check should pass overall
         assert result.passed is True
