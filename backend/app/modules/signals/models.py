@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -24,6 +24,7 @@ class SignalType(str, Enum):
 class SignalStatus(str, Enum):
     """Signal status enum."""
 
+    PENDING = "PENDING"  # Signal is awaiting action
     ACTIVE = "ACTIVE"  # Signal is still valid
     EXPIRED = "EXPIRED"  # Signal has expired
     EXECUTED = "EXECUTED"  # Signal was acted upon
@@ -48,9 +49,13 @@ class Signal(Base):
 
     # Signal identification
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    signal_type: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY, SELL, HOLD
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=SignalStatus.ACTIVE.value
+    signal_type: Mapped[SignalType] = mapped_column(
+        SQLEnum(SignalType, name="signaltype", create_type=False), nullable=False
+    )
+    status: Mapped[SignalStatus] = mapped_column(
+        SQLEnum(SignalStatus, name="signalstatus", create_type=False),
+        nullable=False,
+        default=SignalStatus.PENDING,
     )
 
     # Signal quality metrics
