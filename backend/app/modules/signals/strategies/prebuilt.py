@@ -150,3 +150,127 @@ def create_triple_confirmation() -> CompositeStrategy:
         risk_reward_ratio=2.0,
     )
 
+
+def create_intraday_momentum() -> CompositeStrategy:
+    """Intraday Momentum Strategy.
+
+    Combines ORB breakout with VWAP trend confirmation.
+
+    BUY: ORB breakout up AND price above VWAP
+    SELL: ORB breakout down AND price below VWAP
+
+    Best for: Intraday trading on 5m charts
+    """
+    return CompositeStrategyFactory.create(
+        name="intraday_momentum",
+        description="Intraday Momentum - ORB + VWAP confirmation",
+        components=[
+            {
+                "strategy": "orb",
+                "params": {"range_minutes": 15},
+                "weight": 1.5,
+                "required": True,
+            },
+            {
+                "strategy": "vwap_reversion",
+                "params": {"require_band_touch": False},
+                "weight": 1.0,
+                "required": False,
+            },
+        ],
+        combine_logic="AND",
+        min_combined_confidence=0.5,
+        risk_reward_ratio=2.0,
+    )
+
+
+def create_gap_momentum() -> CompositeStrategy:
+    """Gap + Momentum Strategy.
+
+    Trades gaps with RSI momentum confirmation.
+
+    BUY: Gap up AND RSI > 50 (bullish momentum)
+    SELL: Gap down AND RSI < 50 (bearish momentum)
+
+    Best for: Morning gap trades with confirmation
+    """
+    return CompositeStrategyFactory.create(
+        name="gap_momentum",
+        description="Gap + Momentum - Gaps with RSI confirmation",
+        components=[
+            {
+                "strategy": "gap_go",
+                "params": {"min_gap_pct": 1.0, "max_gap_pct": 5.0},
+                "weight": 1.5,
+                "required": True,
+            },
+            {
+                "strategy": "rsi",
+                "params": {"oversold": 45, "overbought": 55},
+                "weight": 1.0,
+                "required": False,
+            },
+        ],
+        combine_logic="AND",
+        min_combined_confidence=0.5,
+        risk_reward_ratio=2.0,
+    )
+
+
+# Registry of all pre-built strategies
+PREBUILT_STRATEGIES = {
+    "rsi_macd_confluence": create_rsi_macd_confluence,
+    "trend_momentum_pullback": create_trend_momentum_pullback,
+    "bollinger_rsi_squeeze": create_bollinger_rsi_squeeze,
+    "triple_confirmation": create_triple_confirmation,
+    "intraday_momentum": create_intraday_momentum,
+    "gap_momentum": create_gap_momentum,
+}
+
+
+def register_all_prebuilt_strategies() -> list[CompositeStrategy]:
+    """Register all pre-built strategies with the StrategyRegistry.
+
+    Returns:
+        List of registered CompositeStrategy instances
+    """
+    registered = []
+    for name, factory_fn in PREBUILT_STRATEGIES.items():
+        strategy = factory_fn()
+        CompositeStrategyFactory.register(strategy)
+        registered.append(strategy)
+    return registered
+
+
+def get_prebuilt_strategy(name: str) -> CompositeStrategy | None:
+    """Get a pre-built strategy by name.
+
+    Args:
+        name: Strategy name
+
+    Returns:
+        CompositeStrategy instance or None if not found
+    """
+    factory_fn = PREBUILT_STRATEGIES.get(name)
+    if factory_fn:
+        return factory_fn()
+    return None
+
+
+def list_prebuilt_strategies() -> list[dict]:
+    """List all available pre-built strategies.
+
+    Returns:
+        List of strategy info dicts
+    """
+    strategies = []
+    for name, factory_fn in PREBUILT_STRATEGIES.items():
+        strategy = factory_fn()
+        strategies.append({
+            "name": strategy.name,
+            "description": strategy.description,
+            "components": [c.strategy_name for c in strategy.components],
+            "combine_logic": strategy.combine_logic.value,
+        })
+    return strategies
+

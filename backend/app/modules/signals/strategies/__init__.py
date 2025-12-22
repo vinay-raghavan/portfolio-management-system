@@ -12,6 +12,12 @@ from app.modules.signals.strategies.gap_go import GapAndGoStrategy
 from app.modules.signals.strategies.macd import MACDCrossoverStrategy
 from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
 from app.modules.signals.strategies.orb import ORBStrategy
+from app.modules.signals.strategies.prebuilt import (
+    PREBUILT_STRATEGIES,
+    get_prebuilt_strategy,
+    list_prebuilt_strategies,
+    register_all_prebuilt_strategies,
+)
 from app.modules.signals.strategies.registry import StrategyRegistry
 from app.modules.signals.strategies.rsi import RSIStrategy
 from app.modules.signals.strategies.twap import TWAPStrategy
@@ -34,4 +40,9 @@ __all__ = [
     "CompositeStrategyFactory",
     "StrategyComponent",
     "CombineLogic",
+    # Pre-built combined strategies
+    "PREBUILT_STRATEGIES",
+    "register_all_prebuilt_strategies",
+    "get_prebuilt_strategy",
+    "list_prebuilt_strategies",
 ]
