@@ -116,4 +116,3 @@ class SignalExecuteResponse(BaseModel):
     signal_id: str
     order_id: str
     message: str
-

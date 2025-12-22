@@ -165,44 +165,41 @@ class MACDCrossoverStrategy(BaseStrategy):
                     )
                 )
 
-        elif bearish_crossover:
-            if not self.require_histogram_confirmation or hist_bearish:
-                strength = self._calculate_strength(current_macd, current_signal, is_buy=False)
-                confidence = self._calculate_confidence(histogram, is_buy=False)
+        elif bearish_crossover and (not self.require_histogram_confirmation or hist_bearish):
+            strength = self._calculate_strength(current_macd, current_signal, is_buy=False)
+            confidence = self._calculate_confidence(histogram, is_buy=False)
 
-                stop_loss = self.calculate_stop_loss(
-                    current_price, SignalType.SELL, atr, self.atr_multiplier
-                )
-                take_profit = self.calculate_take_profit(
-                    current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
-                )
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
-                signals.append(
-                    SignalData(
-                        symbol=symbol,
-                        signal_type=SignalType.SELL,
-                        strength=strength,
-                        confidence=confidence,
-                        price_at_signal=current_price,
-                        entry_price=current_price,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
-                        risk_reward_ratio=self.risk_reward_ratio,
-                        indicators={
-                            "macd": round(current_macd, 4),
-                            "signal": round(current_signal, 4),
-                            "histogram": round(current_hist, 4),
-                            "atr": float(atr) if atr else None,
-                        },
-                        notes="MACD bearish crossover",
-                    )
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.SELL,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "macd": round(current_macd, 4),
+                        "signal": round(current_signal, 4),
+                        "histogram": round(current_hist, 4),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes="MACD bearish crossover",
                 )
+            )
 
         return signals
 
-    def _calculate_strength(
-        self, macd: float, signal: float, is_buy: bool
-    ) -> Decimal:
+    def _calculate_strength(self, macd: float, signal: float, is_buy: bool) -> Decimal:
         """Calculate signal strength based on MACD divergence from signal line.
 
         Larger divergence = stronger signal.
@@ -236,4 +233,3 @@ class MACDCrossoverStrategy(BaseStrategy):
             confidence = 0.4
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

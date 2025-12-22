@@ -1,27 +1,25 @@
 """Unit tests for backtest performance metrics."""
 
-import pytest
-import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import numpy as np
+import pytest
+
 from app.modules.backtest.metrics import (
-    calculate_total_return,
-    calculate_annualized_return,
-    calculate_daily_returns,
+    calculate_calmar_ratio,
+    calculate_max_drawdown,
     calculate_sharpe_ratio,
     calculate_sortino_ratio,
-    calculate_max_drawdown,
-    calculate_calmar_ratio,
+    calculate_total_return,
     calculate_trade_statistics,
-    calculate_metrics,
 )
 
 
 def make_equity_curve(equities: list[float]) -> list[dict]:
     """Helper to create equity curve with dates."""
-    start = datetime.now(timezone.utc) - timedelta(days=len(equities))
+    start = datetime.now(UTC) - timedelta(days=len(equities))
     return [
         {"date": (start + timedelta(days=i)).isoformat(), "equity": e}
         for i, e in enumerate(equities)
@@ -240,4 +238,3 @@ class TestTradeStatistics:
         stats = calculate_trade_statistics(trades)
         assert float(stats["largest_win"]) == pytest.approx(200.0, rel=0.01)
         assert float(stats["largest_loss"]) == pytest.approx(-50.0, rel=0.01)
-

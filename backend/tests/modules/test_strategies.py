@@ -1,15 +1,14 @@
 """Unit tests for trading strategies."""
 
-import pytest
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from app.modules.signals.models import SignalType
-from app.modules.signals.strategies.rsi import RSIStrategy
+import numpy as np
+import pandas as pd
+
+from app.modules.signals.strategies.bollinger import BollingerSqueezeStrategy
 from app.modules.signals.strategies.macd import MACDCrossoverStrategy
 from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
-from app.modules.signals.strategies.bollinger import BollingerSqueezeStrategy
+from app.modules.signals.strategies.rsi import RSIStrategy
 
 
 def create_price_data(
@@ -22,7 +21,7 @@ def create_price_data(
     Uses capitalized column names to match ta library expectations.
     """
     if start_date is None:
-        start_date = datetime.now(timezone.utc) - timedelta(days=len(prices))
+        start_date = datetime.now(UTC) - timedelta(days=len(prices))
 
     if volumes is None:
         volumes = [1000000.0] * len(prices)
@@ -32,11 +31,11 @@ def create_price_data(
     # Create simple OHLCV data where close = price
     # Use capitalized column names for ta library
     data = {
-        'Open': [p * 0.99 for p in prices],
-        'High': [p * 1.01 for p in prices],
-        'Low': [p * 0.98 for p in prices],
-        'Close': prices,
-        'Volume': volumes,
+        "Open": [p * 0.99 for p in prices],
+        "High": [p * 1.01 for p in prices],
+        "Low": [p * 0.98 for p in prices],
+        "Close": prices,
+        "Volume": volumes,
     }
 
     df = pd.DataFrame(data, index=pd.DatetimeIndex(dates))
@@ -279,6 +278,6 @@ class TestStrategyRegistry:
         assert len(strategies) >= 4
 
         for strategy in strategies:
-            assert hasattr(strategy, 'generate_signals')
-            assert hasattr(strategy, 'name')
-            assert hasattr(strategy, 'description')
+            assert hasattr(strategy, "generate_signals")
+            assert hasattr(strategy, "name")
+            assert hasattr(strategy, "description")

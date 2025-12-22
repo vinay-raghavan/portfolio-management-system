@@ -180,9 +180,7 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
 
         return signals
 
-    def _calculate_strength(
-        self, fast_ma: float, slow_ma: float, price: Decimal
-    ) -> Decimal:
+    def _calculate_strength(self, fast_ma: float, slow_ma: float, price: Decimal) -> Decimal:
         """Calculate signal strength based on MA separation.
 
         Larger separation between MAs = stronger trend.
@@ -224,4 +222,3 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 confidence = 0.5
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

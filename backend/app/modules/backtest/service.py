@@ -1,7 +1,6 @@
 """Backtest service for managing and running backtests."""
 
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -22,9 +21,7 @@ class BacktestService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_backtest(
-        self, user_id: str, request: BacktestRequest
-    ) -> BacktestResult:
+    async def create_backtest(self, user_id: str, request: BacktestRequest) -> BacktestResult:
         """Create a new backtest record.
 
         Args:
@@ -69,7 +66,7 @@ class BacktestService:
 
         # Update status to running
         backtest.status = BacktestStatus.RUNNING.value
-        backtest.started_at = datetime.now(timezone.utc)
+        backtest.started_at = datetime.now(UTC)
         await self.db.commit()
 
         try:
@@ -108,7 +105,7 @@ class BacktestService:
         except Exception as e:
             backtest.status = BacktestStatus.FAILED.value
             backtest.error_message = str(e)
-            backtest.completed_at = datetime.now(timezone.utc)
+            backtest.completed_at = datetime.now(UTC)
             await self.db.commit()
             raise
 
@@ -167,12 +164,10 @@ class BacktestService:
         data.columns = [c.lower() for c in data.columns]
         return data
 
-    async def _update_backtest_results(
-        self, backtest: BacktestResult, result: Any
-    ) -> None:
+    async def _update_backtest_results(self, backtest: BacktestResult, result: Any) -> None:
         """Update backtest record with results from runner."""
         backtest.status = BacktestStatus.COMPLETED.value
-        backtest.completed_at = datetime.now(timezone.utc)
+        backtest.completed_at = datetime.now(UTC)
 
         # Performance metrics
         backtest.final_capital = result.final_capital
@@ -221,4 +216,3 @@ class BacktestService:
 
         await self.db.commit()
         await self.db.refresh(backtest)
-

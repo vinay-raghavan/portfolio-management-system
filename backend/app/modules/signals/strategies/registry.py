@@ -1,7 +1,6 @@
 """Strategy registry for dynamic strategy loading and management."""
 
 import logging
-from typing import Type
 
 from app.modules.signals.strategies.base import BaseStrategy
 
@@ -15,10 +14,10 @@ class StrategyRegistry:
     Strategies are registered by name and can be instantiated on demand.
     """
 
-    _strategies: dict[str, Type[BaseStrategy]] = {}
+    _strategies: dict[str, type[BaseStrategy]] = {}
 
     @classmethod
-    def register(cls, strategy_class: Type[BaseStrategy]) -> Type[BaseStrategy]:
+    def register(cls, strategy_class: type[BaseStrategy]) -> type[BaseStrategy]:
         """Register a strategy class.
 
         Can be used as a decorator:
@@ -55,7 +54,7 @@ class StrategyRegistry:
         return None
 
     @classmethod
-    def get_class(cls, name: str) -> Type[BaseStrategy] | None:
+    def get_class(cls, name: str) -> type[BaseStrategy] | None:
         """Get a strategy class by name.
 
         Args:
@@ -108,4 +107,3 @@ class StrategyRegistry:
     def clear(cls) -> None:
         """Clear all registered strategies. Mainly for testing."""
         cls._strategies.clear()
-

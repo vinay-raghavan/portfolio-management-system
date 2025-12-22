@@ -1,6 +1,6 @@
 """Database models for backtesting module."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
@@ -69,7 +69,9 @@ class BacktestResult(Base):
 
     # Performance metrics
     final_capital: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
-    total_return: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)  # As percentage
+    total_return: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # As percentage
     annualized_return: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     sharpe_ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     sortino_ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
@@ -140,7 +142,9 @@ class BacktestTrade(Base):
 
     # Additional info
     signal_indicators: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    exit_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)  # SL, TP, SIGNAL, etc.
+    exit_reason: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # SL, TP, SIGNAL, etc.
 
     # Relationship
     backtest: Mapped["BacktestResult"] = relationship("BacktestResult", back_populates="trades")
@@ -149,4 +153,3 @@ class BacktestTrade(Base):
         Index("ix_backtest_trades_backtest_id", "backtest_id"),
         Index("ix_backtest_trades_entry_date", "entry_date"),
     )
-

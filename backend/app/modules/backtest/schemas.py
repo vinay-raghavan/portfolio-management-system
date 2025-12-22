@@ -6,8 +6,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.modules.backtest.models import BacktestStatus, TradeSide
-
 
 class BacktestRequest(BaseModel):
     """Request schema for running a backtest."""
@@ -64,7 +62,9 @@ class PerformanceMetrics(BaseModel):
     total_return: Decimal | None = Field(None, description="Total return percentage")
     annualized_return: Decimal | None = Field(None, description="Annualized return percentage")
     sharpe_ratio: Decimal | None = Field(None, description="Sharpe ratio (risk-adjusted return)")
-    sortino_ratio: Decimal | None = Field(None, description="Sortino ratio (downside risk-adjusted)")
+    sortino_ratio: Decimal | None = Field(
+        None, description="Sortino ratio (downside risk-adjusted)"
+    )
     max_drawdown: Decimal | None = Field(None, description="Maximum drawdown percentage")
     calmar_ratio: Decimal | None = Field(None, description="Calmar ratio (return/max drawdown)")
 
@@ -150,4 +150,3 @@ class BacktestCompareRequest(BaseModel):
     """Request to compare multiple backtests."""
 
     backtest_ids: list[str] = Field(..., min_length=2, max_length=10)
-

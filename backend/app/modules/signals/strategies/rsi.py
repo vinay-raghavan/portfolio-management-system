@@ -171,7 +171,9 @@ class RSIStrategy(BaseStrategy):
         else:
             # RSI 70-100: strength increases as RSI increases
             # RSI 70 -> 0.5, RSI 80 -> 0.67, RSI 90 -> 0.83, RSI 100 -> 1.0
-            strength = (rsi - self.overbought_threshold) / (100 - self.overbought_threshold) * 0.5 + 0.5
+            strength = (rsi - self.overbought_threshold) / (
+                100 - self.overbought_threshold
+            ) * 0.5 + 0.5
 
         return Decimal(str(max(0.0, min(1.0, strength)))).quantize(Decimal("0.0001"))
 
@@ -193,12 +195,14 @@ class RSIStrategy(BaseStrategy):
 
         # For oversold, we want RSI to have been falling (negative change)
         # For overbought, we want RSI to have been rising (positive change)
-        if current_rsi < self.oversold_threshold and rsi_change < 0:
-            confidence = 0.6 + min(0.3, abs(rsi_change) / 30)
-        elif current_rsi > self.overbought_threshold and rsi_change > 0:
+        if (
+            current_rsi < self.oversold_threshold
+            and rsi_change < 0
+            or current_rsi > self.overbought_threshold
+            and rsi_change > 0
+        ):
             confidence = 0.6 + min(0.3, abs(rsi_change) / 30)
         else:
             confidence = 0.5
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

@@ -36,9 +36,7 @@ def calculate_metrics(
     """
     # Calculate returns
     total_return = calculate_total_return(initial_capital, final_capital)
-    annualized_return = calculate_annualized_return(
-        total_return, start_date, end_date
-    )
+    annualized_return = calculate_annualized_return(total_return, start_date, end_date)
 
     # Calculate risk metrics from equity curve
     returns = calculate_daily_returns(equity_curve)
@@ -97,9 +95,7 @@ def calculate_daily_returns(equity_curve: list[dict[str, Any]]) -> np.ndarray:
     return returns
 
 
-def calculate_sharpe_ratio(
-    returns: np.ndarray, risk_free_rate: float = 0.05
-) -> float:
+def calculate_sharpe_ratio(returns: np.ndarray, risk_free_rate: float = 0.05) -> float:
     """Calculate Sharpe ratio.
 
     Sharpe = (Mean Return - Risk Free Rate) / Std Dev of Returns
@@ -121,9 +117,7 @@ def calculate_sharpe_ratio(
     return float(sharpe)
 
 
-def calculate_sortino_ratio(
-    returns: np.ndarray, risk_free_rate: float = 0.05
-) -> float:
+def calculate_sortino_ratio(returns: np.ndarray, risk_free_rate: float = 0.05) -> float:
     """Calculate Sortino ratio.
 
     Sortino = (Mean Return - Risk Free Rate) / Downside Deviation
@@ -149,7 +143,7 @@ def calculate_sortino_ratio(
 
 
 def calculate_max_drawdown(
-    equity_curve: list[dict[str, Any]]
+    equity_curve: list[dict[str, Any]],
 ) -> tuple[float, list[dict[str, Any]]]:
     """Calculate maximum drawdown and drawdown curve.
 
@@ -173,10 +167,12 @@ def calculate_max_drawdown(
         drawdown = ((peak - equity) / peak) * 100 if peak > 0 else 0
         max_dd = max(max_dd, drawdown)
 
-        drawdown_curve.append({
-            "date": dates[i],
-            "drawdown": round(drawdown, 4),
-        })
+        drawdown_curve.append(
+            {
+                "date": dates[i],
+                "drawdown": round(drawdown, 4),
+            }
+        )
 
     return max_dd, drawdown_curve
 
@@ -241,7 +237,9 @@ def calculate_trade_statistics(trades: list) -> dict[str, Any]:
     # Profit factor = gross profit / gross loss
     gross_profit = sum(wins) if wins else 0
     gross_loss = abs(sum(losses)) if losses else 0
-    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
+    profit_factor = (
+        gross_profit / gross_loss if gross_loss > 0 else float("inf") if gross_profit > 0 else 0
+    )
 
     # Average metrics
     avg_win = sum(wins) / len(wins) if wins else 0
@@ -257,11 +255,12 @@ def calculate_trade_statistics(trades: list) -> dict[str, Any]:
         "winning_trades": winning_trades,
         "losing_trades": losing_trades,
         "win_rate": Decimal(str(round(win_rate, 4))),
-        "profit_factor": Decimal(str(round(profit_factor, 4))) if profit_factor != float("inf") else Decimal("999.9999"),
+        "profit_factor": Decimal(str(round(profit_factor, 4)))
+        if profit_factor != float("inf")
+        else Decimal("999.9999"),
         "avg_win": Decimal(str(round(avg_win, 4))),
         "avg_loss": Decimal(str(round(avg_loss, 4))),
         "avg_trade": Decimal(str(round(avg_trade, 4))),
         "largest_win": Decimal(str(round(largest_win, 4))),
         "largest_loss": Decimal(str(round(largest_loss, 4))),
     }
-

@@ -105,9 +105,7 @@ async def get_backtest(
     backtest = await service.get_backtest(backtest_id)
 
     if not backtest:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest not found")
 
     if backtest.user_id != current_user.id:
         raise HTTPException(
@@ -200,4 +198,3 @@ def _format_backtest_response(backtest, include_trades: bool = True) -> Backtest
         started_at=backtest.started_at,
         completed_at=backtest.completed_at,
     )
-

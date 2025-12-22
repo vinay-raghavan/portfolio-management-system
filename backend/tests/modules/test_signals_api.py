@@ -1,10 +1,11 @@
 """Integration tests for Signals API endpoints."""
 
-import pytest
-from httpx import AsyncClient
 import uuid
 
-from app.modules.signals.models import SignalType, SignalStatus
+import pytest
+from httpx import AsyncClient
+
+from app.modules.signals.models import SignalStatus, SignalType
 
 
 class TestSignalsAPI:
@@ -112,4 +113,3 @@ class TestSignalModel:
         assert SignalStatus.EXECUTED.value == "EXECUTED"
         assert SignalStatus.EXPIRED.value == "EXPIRED"
         assert SignalStatus.CANCELLED.value == "CANCELLED"
-

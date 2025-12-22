@@ -5,7 +5,7 @@ based on strategy signals and calculates performance metrics.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -115,9 +115,7 @@ class BacktestRunner:
         data = data.sort_index()
 
         # Filter data to date range
-        data = data[
-            (data.index >= self.config.start_date) & (data.index <= self.config.end_date)
-        ]
+        data = data[(data.index >= self.config.start_date) & (data.index <= self.config.end_date)]
 
         if data.empty:
             raise ValueError("No data in specified date range")
@@ -142,10 +140,11 @@ class BacktestRunner:
             # Check for exit signal if in position
             elif self.position and i < len(signals):
                 signal = signals[i]
-                if signal:
-                    if (self.position.side == "LONG" and signal.signal_type == "SELL") or \
-                       (self.position.side == "SHORT" and signal.signal_type == "BUY"):
-                        self._exit_position(date, current_price, "SIGNAL")
+                if signal and (
+                    (self.position.side == "LONG" and signal.signal_type == "SELL")
+                    or (self.position.side == "SHORT" and signal.signal_type == "BUY")
+                ):
+                    self._exit_position(date, current_price, "SIGNAL")
 
             # Record equity
             self._record_equity(date, current_price)
@@ -164,17 +163,13 @@ class BacktestRunner:
             # Use data up to current point for signal generation
             historical_data = data.iloc[: i + 1]
             if len(historical_data) >= 20:  # Minimum data for indicators
-                signal = self.config.strategy.generate_signal(
-                    self.config.symbol, historical_data
-                )
+                signal = self.config.strategy.generate_signal(self.config.symbol, historical_data)
                 signals.append(signal)
             else:
                 signals.append(None)
         return signals
 
-    def _enter_position(
-        self, date: datetime, price: Decimal, signal: SignalData
-    ) -> None:
+    def _enter_position(self, date: datetime, price: Decimal, signal: SignalData) -> None:
         """Enter a new position."""
         # Apply slippage
         slippage = price * self.config.slippage_pct
@@ -200,9 +195,7 @@ class BacktestRunner:
             signal_indicators=signal.indicators,
         )
 
-    def _exit_position(
-        self, date: datetime, price: Decimal, reason: str
-    ) -> None:
+    def _exit_position(self, date: datetime, price: Decimal, reason: str) -> None:
         """Exit current position."""
         if not self.position:
             return
@@ -292,10 +285,12 @@ class BacktestRunner:
         if drawdown > self.max_drawdown:
             self.max_drawdown = drawdown
 
-        self.equity_curve.append({
-            "date": date.isoformat() if hasattr(date, "isoformat") else str(date),
-            "equity": float(equity),
-        })
+        self.equity_curve.append(
+            {
+                "date": date.isoformat() if hasattr(date, "isoformat") else str(date),
+                "equity": float(equity),
+            }
+        )
 
     def _calculate_results(self, data: pd.DataFrame) -> BacktestResult:
         """Calculate final backtest results and metrics."""
@@ -322,4 +317,3 @@ class BacktestRunner:
             drawdown_curve=metrics.get("drawdown_curve", []),
             **metrics,
         )
-

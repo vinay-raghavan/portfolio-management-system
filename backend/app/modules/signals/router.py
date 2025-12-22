@@ -157,4 +157,3 @@ async def expire_signals(
     service = SignalService(db)
     count = await service.expire_old_signals(current_user.id)
     return {"expired_count": count, "message": f"Expired {count} signals"}
-

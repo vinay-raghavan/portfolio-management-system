@@ -54,12 +54,8 @@ class Signal(Base):
     )
 
     # Signal quality metrics
-    strength: Mapped[Decimal] = mapped_column(
-        Numeric(5, 4), nullable=False
-    )  # 0.0000 to 1.0000
-    confidence: Mapped[Decimal] = mapped_column(
-        Numeric(5, 4), nullable=False
-    )  # 0.0000 to 1.0000
+    strength: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)  # 0.0000 to 1.0000
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)  # 0.0000 to 1.0000
 
     # Strategy that generated this signal
     strategy_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
@@ -103,4 +99,3 @@ class Signal(Base):
 
     def __repr__(self) -> str:
         return f"<Signal {self.signal_type} {self.symbol} ({self.strategy_name}) strength={self.strength}>"
-

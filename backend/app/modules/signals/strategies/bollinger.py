@@ -237,4 +237,3 @@ class BollingerSqueezeStrategy(BaseStrategy):
             confidence = 0.5
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

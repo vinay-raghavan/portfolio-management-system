@@ -1,8 +1,8 @@
 """Signal generation and management service."""
 
 import logging
-from datetime import datetime, timezone
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pandas as pd
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.modules.signals.models import Signal, SignalStatus, SignalType
-from app.modules.signals.strategies import BaseStrategy, SignalData, StrategyRegistry
+from app.modules.signals.strategies import SignalData, StrategyRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,10 @@ class SignalService:
             ticker = yf.Ticker(yahoo_symbol)
             hist = ticker.history(period=period, interval=interval)
 
-            if hist.empty or len(hist) < 50:
+            if (hist.empty or len(hist) < 50) and yahoo_symbol.endswith((".NS", ".BO")):
                 # Try without suffix if Indian market
-                if yahoo_symbol.endswith((".NS", ".BO")):
-                    ticker = yf.Ticker(symbol.upper().strip())
-                    hist = ticker.history(period=period, interval=interval)
+                ticker = yf.Ticker(symbol.upper().strip())
+                hist = ticker.history(period=period, interval=interval)
 
             if hist.empty:
                 logger.warning(f"No data found for {symbol}")
@@ -131,9 +130,7 @@ class SignalService:
                         signals.append(signal)
 
                 except Exception as e:
-                    logger.error(
-                        f"Error generating signals for {symbol} with {strategy.name}: {e}"
-                    )
+                    logger.error(f"Error generating signals for {symbol} with {strategy.name}: {e}")
 
         if signals:
             await self.db.commit()
@@ -251,7 +248,7 @@ class SignalService:
         if is_executed is not None:
             signal.is_executed = is_executed
             if is_executed:
-                signal.executed_at = datetime.now(timezone.utc)
+                signal.executed_at = datetime.now(UTC)
         if executed_order_id is not None:
             signal.executed_order_id = executed_order_id
         if notes is not None:
@@ -292,7 +289,7 @@ class SignalService:
         query = select(Signal).where(
             Signal.status == SignalStatus.PENDING,
             Signal.expires_at.isnot(None),
-            Signal.expires_at < datetime.now(timezone.utc),
+            Signal.expires_at < datetime.now(UTC),
         )
 
         if user_id:
@@ -316,4 +313,3 @@ class SignalService:
             List of strategy info dictionaries
         """
         return StrategyRegistry.list_strategies()
-

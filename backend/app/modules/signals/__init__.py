@@ -5,4 +5,3 @@ from app.modules.signals.router import router
 from app.modules.signals.service import SignalService
 
 __all__ = ["Signal", "SignalType", "SignalStatus", "SignalService", "router"]
-

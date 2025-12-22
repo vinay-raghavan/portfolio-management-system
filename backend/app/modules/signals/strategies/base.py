@@ -90,10 +90,7 @@ class BaseStrategy(ABC):
         Returns:
             Stop loss price
         """
-        if atr:
-            stop_distance = atr * atr_multiplier
-        else:
-            stop_distance = entry_price * fallback_pct
+        stop_distance = atr * atr_multiplier if atr else entry_price * fallback_pct
 
         if signal_type == SignalType.BUY:
             return entry_price - stop_distance
@@ -160,4 +157,3 @@ class BaseStrategy(ABC):
         if value is None or pd.isna(value):
             return None
         return Decimal(str(round(float(value), 4)))
-
