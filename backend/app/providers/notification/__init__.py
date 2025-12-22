@@ -1,8 +1,8 @@
 """Notification provider abstraction layer."""
 
 from app.providers.notification.base import (
-    NotificationProvider,
     NotificationPriority,
+    NotificationProvider,
     NotificationType,
 )
 
@@ -11,4 +11,3 @@ __all__ = [
     "NotificationPriority",
     "NotificationType",
 ]
-

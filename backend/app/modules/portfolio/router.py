@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import DbSession, CurrentUser
+from app.api.deps import CurrentUser, DbSession
 from app.modules.portfolio.schemas import (
     PortfolioCreate,
     PortfolioDetailResponse,
@@ -149,4 +149,3 @@ async def get_trade_history(
         page=page,
         page_size=page_size,
     )
-

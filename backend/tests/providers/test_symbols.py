@@ -1,7 +1,5 @@
 """Tests for unified symbol system."""
 
-import pytest
-
 from app.providers.symbols import (
     Exchange,
     Segment,
@@ -147,4 +145,3 @@ class TestSymbolMapper:
         symbol, exchange = SymbolMapper.from_any("AAPL")
         assert symbol == "AAPL"
         assert exchange is None
-

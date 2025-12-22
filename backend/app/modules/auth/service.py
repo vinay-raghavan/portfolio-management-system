@@ -5,9 +5,9 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_password_hash, verify_password, create_access_token
+from app.core.security import create_access_token, get_password_hash, verify_password
 from app.modules.auth.models import User
-from app.modules.auth.schemas import UserCreate, TokenResponse
+from app.modules.auth.schemas import TokenResponse, UserCreate
 from app.modules.portfolio.funds_service import FundsService
 
 logger = logging.getLogger(__name__)
@@ -68,4 +68,3 @@ class AuthService:
         """Create JWT token for user."""
         access_token = create_access_token(subject=user.id)
         return TokenResponse(access_token=access_token)
-

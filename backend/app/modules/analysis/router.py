@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.modules.analysis.schemas import TechnicalIndicators, AnalysisResult, StockInfo
+from app.modules.analysis.schemas import AnalysisResult, StockInfo, TechnicalIndicators
 from app.modules.analysis.service import AnalysisService
 
 router = APIRouter()
@@ -51,4 +51,3 @@ async def get_analysis(symbol: str) -> AnalysisResult:
         )
 
     return analysis
-

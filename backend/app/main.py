@@ -1,7 +1,7 @@
 """FastAPI application entry point."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +12,7 @@ from app.core.database import init_db
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Application lifespan handler."""
     # Startup
     if not settings.SKIP_DB_INIT:
@@ -46,4 +46,3 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "version": settings.VERSION}
-

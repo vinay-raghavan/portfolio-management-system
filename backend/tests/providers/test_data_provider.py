@@ -1,14 +1,12 @@
 """Tests for data provider abstraction and implementations."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.providers.data.base import DataProvider
 from app.providers.data.yahoo import YahooDataProvider
-from app.providers.data.factory import DataProviderFactory, get_data_provider
-from app.providers.schemas import Quote, OHLCV, InstrumentInfo, SearchResult
 
 
 class TestDataProviderABC:
@@ -155,4 +153,3 @@ class TestYahooDataProvider:
             assert len(results) == 1
             assert results[0].symbol == "AAPL"
             assert results[0].name == "Apple Inc."
-

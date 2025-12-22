@@ -10,9 +10,8 @@ It handles:
 - Rate limiting to avoid blocks
 """
 
-import json
 import logging
-from datetime import datetime, time, timedelta, date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -21,7 +20,7 @@ import httpx
 
 from app.providers.data.base import DataProvider
 from app.providers.data.rate_limiter import RateLimiter
-from app.providers.schemas import Quote, OHLCV, InstrumentInfo, SearchResult
+from app.providers.schemas import OHLCV, InstrumentInfo, Quote, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +36,21 @@ PRE_MARKET_CLOSE = time(9, 8)  # 9:08 AM IST
 # NSE trading holidays (to be updated annually)
 NSE_HOLIDAYS_2024 = [
     date(2024, 1, 26),  # Republic Day
-    date(2024, 3, 8),   # Mahashivratri
+    date(2024, 3, 8),  # Mahashivratri
     date(2024, 3, 25),  # Holi
     date(2024, 3, 29),  # Good Friday
     date(2024, 4, 11),  # Id-Ul-Fitr
     date(2024, 4, 17),  # Ram Navami
     date(2024, 4, 21),  # Mahavir Jayanti
-    date(2024, 5, 1),   # May Day
+    date(2024, 5, 1),  # May Day
     date(2024, 5, 23),  # Buddha Purnima
     date(2024, 6, 17),  # Eid-ul-Adha
     date(2024, 7, 17),  # Muharram
     date(2024, 8, 15),  # Independence Day
     date(2024, 10, 2),  # Gandhi Jayanti
     date(2024, 11, 1),  # Diwali Laxmi Pujan
-    date(2024, 11, 15), # Guru Nanak Jayanti
-    date(2024, 12, 25), # Christmas
+    date(2024, 11, 15),  # Guru Nanak Jayanti
+    date(2024, 12, 25),  # Christmas
 ]
 
 # NSE API endpoints
@@ -61,7 +60,7 @@ NSE_API_BASE = "https://www.nseindia.com/api"
 
 class NSEDataProvider(DataProvider):
     """Data provider for NSE India.
-    
+
     Uses NSE's public APIs to fetch market data for Indian stocks.
     Implements rate limiting and caching to avoid blocks.
     """
@@ -119,10 +118,7 @@ class NSEDataProvider(DataProvider):
     async def _refresh_cookies(self) -> None:
         """Refresh NSE cookies by visiting the main page."""
         now = datetime.now(IST)
-        if (
-            self._last_cookie_refresh is None
-            or now - self._last_cookie_refresh > self._cookie_ttl
-        ):
+        if self._last_cookie_refresh is None or now - self._last_cookie_refresh > self._cookie_ttl:
             try:
                 session = self._session or httpx.AsyncClient(
                     timeout=httpx.Timeout(30.0),
@@ -187,7 +183,7 @@ class NSEDataProvider(DataProvider):
     async def get_quote(self, symbol: str) -> Quote | None:
         """Get real-time quote for an NSE stock."""
         symbol = self.normalize_symbol(symbol)
-        
+
         # Check cache first
         if self._redis:
             cached = await self._get_cached_quote(symbol)
@@ -223,6 +219,7 @@ class NSEDataProvider(DataProvider):
             return None
         try:
             import json
+
             cached = await self._redis.get(f"nse:quote:{symbol}")
             if cached:
                 data = json.loads(cached)
@@ -236,7 +233,6 @@ class NSEDataProvider(DataProvider):
         if not self._redis:
             return
         try:
-            import json
             await self._redis.setex(
                 f"nse:quote:{symbol}",
                 ttl,
@@ -437,7 +433,7 @@ class NSEDataProvider(DataProvider):
         }
         index_name = index_mapping.get(index.upper(), index.upper())
 
-        data = await self._make_request(f"/allIndices")
+        data = await self._make_request("/allIndices")
         if not data or "data" not in data:
             return None
 
@@ -511,6 +507,7 @@ class NSEDataProvider(DataProvider):
 
         # URL encode the index name
         from urllib.parse import quote
+
         encoded_index = quote(index_name)
 
         data = await self._make_request(f"/equity-stockIndices?index={encoded_index}")
@@ -530,24 +527,26 @@ class NSEDataProvider(DataProvider):
                     continue
 
                 meta = item.get("meta", {})
-                constituents.append({
-                    "symbol": symbol,
-                    "name": meta.get("companyName", ""),
-                    "industry": meta.get("industry", ""),
-                    "isin": meta.get("isin", ""),
-                    "series": item.get("series", "EQ"),
-                    "is_fno": meta.get("isFNOSec", False),
-                    "last_price": item.get("lastPrice"),
-                    "change": item.get("change"),
-                    "change_pct": item.get("pChange"),
-                    "open": item.get("open"),
-                    "high": item.get("dayHigh"),
-                    "low": item.get("dayLow"),
-                    "previous_close": item.get("previousClose"),
-                    "volume": item.get("totalTradedVolume"),
-                    "year_high": item.get("yearHigh"),
-                    "year_low": item.get("yearLow"),
-                })
+                constituents.append(
+                    {
+                        "symbol": symbol,
+                        "name": meta.get("companyName", ""),
+                        "industry": meta.get("industry", ""),
+                        "isin": meta.get("isin", ""),
+                        "series": item.get("series", "EQ"),
+                        "is_fno": meta.get("isFNOSec", False),
+                        "last_price": item.get("lastPrice"),
+                        "change": item.get("change"),
+                        "change_pct": item.get("pChange"),
+                        "open": item.get("open"),
+                        "high": item.get("dayHigh"),
+                        "low": item.get("dayLow"),
+                        "previous_close": item.get("previousClose"),
+                        "volume": item.get("totalTradedVolume"),
+                        "year_high": item.get("yearHigh"),
+                        "year_low": item.get("yearLow"),
+                    }
+                )
 
             logger.info(f"Fetched {len(constituents)} constituents for {index_name}")
             return constituents
@@ -560,4 +559,3 @@ class NSEDataProvider(DataProvider):
         if self._session:
             await self._session.aclose()
             self._session = None
-

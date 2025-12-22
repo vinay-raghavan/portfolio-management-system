@@ -1,18 +1,18 @@
 """Market data service using provider abstraction."""
 
-from decimal import Decimal
 import logging
+from decimal import Decimal
 
-from app.providers.data.factory import get_data_provider
-from app.providers.data.base import DataProvider
 from app.modules.data.schemas import (
-    StockQuote,
-    StockInfo,
     HistoricalDataPoint,
     HistoricalDataResponse,
     IndexConstituent,
     IndexConstituentsResponse,
+    StockInfo,
+    StockQuote,
 )
+from app.providers.data.base import DataProvider
+from app.providers.data.factory import get_data_provider
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,7 @@ class MarketDataService:
             Dict with market status information.
         """
         from datetime import datetime
+
         from app.core.config import settings
 
         # Check if provider has market status method
@@ -155,7 +156,9 @@ class MarketDataService:
         """
         # Check if provider supports index constituents
         if not hasattr(self._provider, "get_index_constituents"):
-            logger.warning(f"Provider {type(self._provider).__name__} does not support index constituents")
+            logger.warning(
+                f"Provider {type(self._provider).__name__} does not support index constituents"
+            )
             return None
 
         constituents_data = await self._provider.get_index_constituents(index)

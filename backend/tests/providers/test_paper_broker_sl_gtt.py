@@ -9,8 +9,8 @@ from app.providers.broker.paper import PaperBroker
 from app.providers.schemas import (
     OrderRequest,
     OrderSide,
-    OrderType,
     OrderStatus,
+    OrderType,
 )
 
 
@@ -93,6 +93,7 @@ class TestPaperBrokerStopLossOrders:
         # First need a position to sell
         broker._ensure_user("user1")
         from app.providers.schemas import Position
+
         broker._positions["user1"]["RELIANCE"] = Position(
             symbol="RELIANCE",
             quantity=Decimal("20"),
@@ -120,6 +121,7 @@ class TestPaperBrokerStopLossOrders:
         # First need a position to sell
         broker._ensure_user("user1")
         from app.providers.schemas import Position
+
         broker._positions["user1"]["RELIANCE"] = Position(
             symbol="RELIANCE",
             quantity=Decimal("20"),
@@ -263,6 +265,7 @@ class TestPaperBrokerTriggerCheck:
         # First need a position to sell
         broker._ensure_user("user1")
         from app.providers.schemas import Position
+
         broker._positions["user1"]["RELIANCE"] = Position(
             symbol="RELIANCE",
             quantity=Decimal("20"),
@@ -294,6 +297,7 @@ class TestPaperBrokerTriggerCheck:
 
         broker._ensure_user("user1")
         from app.providers.schemas import Position
+
         broker._positions["user1"]["RELIANCE"] = Position(
             symbol="RELIANCE",
             quantity=Decimal("20"),
@@ -313,7 +317,8 @@ class TestPaperBrokerTriggerCheck:
     async def test_extract_trigger_price(self, broker):
         """Test extracting trigger price from order message."""
         assert broker._extract_trigger_price("Trigger price: 100.50") == Decimal("100.50")
-        assert broker._extract_trigger_price("GTT: Trigger at 150, Valid till: 2025-12-31") == Decimal("150")
+        assert broker._extract_trigger_price(
+            "GTT: Trigger at 150, Valid till: 2025-12-31"
+        ) == Decimal("150")
         assert broker._extract_trigger_price(None) is None
         assert broker._extract_trigger_price("No trigger info") is None
-

@@ -1,2 +1,1 @@
 """Module tests package."""
-

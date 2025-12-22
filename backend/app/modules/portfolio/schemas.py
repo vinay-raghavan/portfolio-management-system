@@ -1,6 +1,6 @@
 """Pydantic schemas for portfolio module."""
 
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -188,4 +188,3 @@ class TradeHistoryResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
-

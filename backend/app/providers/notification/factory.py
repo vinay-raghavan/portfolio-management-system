@@ -1,7 +1,6 @@
 """Factory for creating notification provider instances."""
 
 import logging
-from typing import Type
 
 from app.providers.notification.base import NotificationProvider
 
@@ -16,7 +15,7 @@ class NotificationProviderFactory:
     """
 
     # Registry of available providers
-    _providers: dict[str, Type[NotificationProvider]] = {
+    _providers: dict[str, type[NotificationProvider]] = {
         # "email": EmailNotificationProvider,  # TODO: Phase 1, Week 4-5
         # "whatsapp": WhatsAppNotificationProvider,  # TODO: Phase 1, Week 4-5
         # "websocket": WebSocketNotificationProvider,  # TODO: Phase 1, Week 4-5
@@ -28,7 +27,7 @@ class NotificationProviderFactory:
     _instances: dict[str, NotificationProvider] = {}
 
     @classmethod
-    def register(cls, name: str, provider_class: Type[NotificationProvider]) -> None:
+    def register(cls, name: str, provider_class: type[NotificationProvider]) -> None:
         """Register a new notification provider.
 
         Args:
@@ -86,4 +85,3 @@ class NotificationProviderFactory:
     def list_providers(cls) -> list[str]:
         """List all registered provider names."""
         return list(cls._providers.keys())
-

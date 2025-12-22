@@ -1,17 +1,17 @@
 """Tests for AMO (After Market Orders) functionality."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.security import get_password_hash
+from app.modules.auth.models import User
+from app.modules.portfolio.models import UserFunds
 from app.modules.trading.models import Order, OrderStatus
 from app.modules.trading.schemas import OrderCreate, OrderSide, OrderType
 from app.modules.trading.service import TradingService
-from app.modules.auth.models import User
-from app.modules.portfolio.models import UserFunds
-from app.core.security import get_password_hash
 
 
 class TestAMOOrders:
@@ -51,7 +51,7 @@ class TestAMOOrders:
 
     async def test_amo_order_status_enum_exists(self):
         """Test that AMO_PENDING status exists in OrderStatus enum."""
-        assert hasattr(OrderStatus, 'AMO_PENDING')
+        assert hasattr(OrderStatus, "AMO_PENDING")
         assert OrderStatus.AMO_PENDING.value == "AMO_PENDING"
 
     async def test_order_create_schema_has_is_amo_field(self):
@@ -89,17 +89,15 @@ class TestAMOOrders:
         )
 
         # Mock market as closed
-        with patch('app.modules.trading.service.get_data_provider') as mock_provider:
+        with patch("app.modules.trading.service.get_data_provider") as mock_provider:
             mock_data_provider = MagicMock()
             mock_data_provider.is_market_open = AsyncMock(return_value=False)
             mock_data_provider.get_next_market_open = MagicMock(
-                return_value=datetime(2025, 12, 23, 9, 15, tzinfo=timezone.utc)
+                return_value=datetime(2025, 12, 23, 9, 15, tzinfo=UTC)
             )
             mock_provider.return_value = mock_data_provider
 
-            order = await trading_service.create_order(
-                test_user_with_funds.id, order_data
-            )
+            order = await trading_service.create_order(test_user_with_funds.id, order_data)
 
         assert order.status == OrderStatus.AMO_PENDING.value
         assert order.is_amo is True
@@ -119,23 +117,19 @@ class TestAMOOrders:
         )
 
         # Mock market as open
-        with patch('app.modules.trading.service.get_data_provider') as mock_provider:
+        with patch("app.modules.trading.service.get_data_provider") as mock_provider:
             mock_data_provider = MagicMock()
             mock_data_provider.is_market_open = AsyncMock(return_value=True)
             mock_provider.return_value = mock_data_provider
 
-            order = await trading_service.create_order(
-                test_user_with_funds.id, order_data
-            )
+            order = await trading_service.create_order(test_user_with_funds.id, order_data)
 
         # Should be PENDING (not AMO_PENDING) since market is open
         assert order.status == OrderStatus.PENDING.value
         # is_amo should be False since it was executed immediately
         assert order.is_amo is False
 
-    async def test_get_pending_amo_orders(
-        self, trading_service, test_user_with_funds, db_session
-    ):
+    async def test_get_pending_amo_orders(self, trading_service, test_user_with_funds, db_session):
         """Test retrieving pending AMO orders."""
         # Create an AMO pending order directly
         amo_order = Order(
@@ -147,7 +141,7 @@ class TestAMOOrders:
             price=Decimal("1500.00"),
             status=OrderStatus.AMO_PENDING.value,
             is_amo=True,
-            scheduled_for=datetime(2025, 12, 23, 9, 15, tzinfo=timezone.utc),
+            scheduled_for=datetime(2025, 12, 23, 9, 15, tzinfo=UTC),
         )
         db_session.add(amo_order)
         await db_session.flush()
@@ -179,9 +173,7 @@ class TestAMOOrders:
         await db_session.refresh(amo_order)
 
         # Cancel the AMO order
-        cancelled = await trading_service.cancel_order(
-            test_user_with_funds.id, str(amo_order.id)
-        )
+        cancelled = await trading_service.cancel_order(test_user_with_funds.id, str(amo_order.id))
 
         assert cancelled is not None
         assert cancelled.status == OrderStatus.CANCELLED.value
@@ -243,11 +235,9 @@ class TestAMOOrders:
         assert processed.status == OrderStatus.PENDING.value
         assert "[AMO] Processed at market open" in (processed.notes or "")
 
-    async def test_process_all_amo_orders_when_market_closed(
-        self, trading_service, db_session
-    ):
+    async def test_process_all_amo_orders_when_market_closed(self, trading_service, db_session):
         """Test that AMO processing is skipped when market is closed."""
-        with patch('app.modules.trading.service.get_data_provider') as mock_provider:
+        with patch("app.modules.trading.service.get_data_provider") as mock_provider:
             mock_data_provider = MagicMock()
             mock_data_provider.is_market_open = AsyncMock(return_value=False)
             mock_provider.return_value = mock_data_provider
@@ -259,7 +249,7 @@ class TestAMOOrders:
 
     async def test_order_model_has_amo_fields(self, db_session, test_user_with_funds):
         """Test that Order model has is_amo and scheduled_for fields."""
-        scheduled_time = datetime(2025, 12, 23, 9, 15, tzinfo=timezone.utc)
+        scheduled_time = datetime(2025, 12, 23, 9, 15, tzinfo=UTC)
         order = Order(
             user_id=test_user_with_funds.id,
             symbol="AXISBANK",
@@ -282,4 +272,3 @@ class TestAMOOrders:
         assert order.scheduled_for.day == 23
         assert order.scheduled_for.hour == 9
         assert order.scheduled_for.minute == 15
-

@@ -47,7 +47,7 @@ class OrderCreate(BaseModel):
     notes: str | None = None
     is_amo: bool = Field(
         default=False,
-        description="After Market Order - if True, order will be queued for next market open"
+        description="After Market Order - if True, order will be queued for next market open",
     )
 
 
@@ -82,4 +82,3 @@ class OrderListResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
-
