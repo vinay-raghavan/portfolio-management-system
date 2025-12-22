@@ -17,7 +17,7 @@ from app.modules.backtest.schemas import (
 from app.modules.backtest.service import BacktestService
 from app.modules.signals.strategies.registry import StrategyRegistry
 
-router = APIRouter(prefix="/backtest", tags=["backtest"])
+router = APIRouter(tags=["backtest"])
 
 
 @router.post("", response_model=BacktestResponse, status_code=status.HTTP_201_CREATED)

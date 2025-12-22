@@ -47,9 +47,7 @@ class TestBacktestAPI:
     @pytest.mark.asyncio
     async def test_list_backtest_strategies_no_auth(self, client: AsyncClient):
         """Test listing available backtest strategies (no auth required)."""
-        # Note: backtest router has prefix="/backtest" and is included with prefix="/backtest"
-        # So the actual path is /api/v1/backtest/backtest/strategies
-        response = await client.get("/api/v1/backtest/backtest/strategies")
+        response = await client.get("/api/v1/backtest/strategies")
 
         # This endpoint doesn't require auth
         assert response.status_code == 200
@@ -57,9 +55,8 @@ class TestBacktestAPI:
     @pytest.mark.asyncio
     async def test_run_backtest_requires_auth(self, client: AsyncClient):
         """Test that running backtest requires authentication."""
-        # Note: double prefix due to router configuration
         response = await client.post(
-            "/api/v1/backtest/backtest",
+            "/api/v1/backtest",
             json={
                 "symbol": "AAPL",
                 "strategy_name": "rsi",
@@ -74,7 +71,7 @@ class TestBacktestAPI:
     @pytest.mark.asyncio
     async def test_get_backtests_requires_auth(self, client: AsyncClient):
         """Test that getting backtests requires authentication."""
-        response = await client.get("/api/v1/backtest/backtest")
+        response = await client.get("/api/v1/backtest")
 
         # Should require authentication
         assert response.status_code == 401
@@ -83,7 +80,7 @@ class TestBacktestAPI:
     async def test_get_backtest_by_id_requires_auth(self, client: AsyncClient):
         """Test that getting a specific backtest requires authentication."""
         backtest_id = str(uuid.uuid4())
-        response = await client.get(f"/api/v1/backtest/backtest/{backtest_id}")
+        response = await client.get(f"/api/v1/backtest/{backtest_id}")
 
         # Should require authentication
         assert response.status_code == 401
@@ -92,7 +89,7 @@ class TestBacktestAPI:
     async def test_delete_backtest_requires_auth(self, client: AsyncClient):
         """Test that deleting a backtest requires authentication."""
         backtest_id = str(uuid.uuid4())
-        response = await client.delete(f"/api/v1/backtest/backtest/{backtest_id}")
+        response = await client.delete(f"/api/v1/backtest/{backtest_id}")
 
         # Should require authentication
         assert response.status_code == 401

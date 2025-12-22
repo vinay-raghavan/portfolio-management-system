@@ -58,10 +58,12 @@ export default function SignalsPage() {
         .then((res) => res.data),
   });
 
-  const { data: strategies } = useQuery({
+  const { data: strategiesData } = useQuery({
     queryKey: ['signal-strategies'],
     queryFn: () => signalsApi.getStrategies().then((res) => res.data),
   });
+
+  const strategies = strategiesData?.strategies || [];
 
   const generateMutation = useMutation({
     mutationFn: (symbols: string[]) =>

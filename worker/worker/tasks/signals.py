@@ -41,7 +41,9 @@ def is_market_hours() -> bool:
 
 
 @celery_app.task(bind=True, name="worker.tasks.signals.generate_signals_for_user")
-def generate_signals_for_user(self, user_id: str, symbols: list[str], strategy_name: str | None = None) -> dict:
+def generate_signals_for_user(
+    self, user_id: str, symbols: list[str], strategy_name: str | None = None
+) -> dict:
     """Generate signals for a user's watchlist symbols.
 
     Args:
@@ -77,7 +79,9 @@ def generate_signals_for_user(self, user_id: str, symbols: list[str], strategy_n
 
             if response.status_code == 200:
                 result = response.json()
-                logger.info(f"Generated {result.get('signals_generated', 0)} signals for user {user_id}")
+                logger.info(
+                    f"Generated {result.get('signals_generated', 0)} signals for user {user_id}"
+                )
                 return {
                     "status": "success",
                     "user_id": user_id,
@@ -156,4 +160,3 @@ def expire_old_signals(self) -> dict:
     except Exception as e:
         logger.error(f"Error expiring signals: {e}")
         return {"status": "error", "message": str(e)}
-

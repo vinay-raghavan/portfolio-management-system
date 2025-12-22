@@ -102,27 +102,33 @@ def run_batch_backtests(
 
                 if response.status_code == 201:
                     result = response.json()
-                    results.append({
-                        "strategy": strategy_name,
-                        "status": "success",
-                        "backtest_id": result.get("id"),
-                        "total_return": result.get("performance", {}).get("total_return"),
-                        "sharpe_ratio": result.get("performance", {}).get("sharpe_ratio"),
-                    })
+                    results.append(
+                        {
+                            "strategy": strategy_name,
+                            "status": "success",
+                            "backtest_id": result.get("id"),
+                            "total_return": result.get("performance", {}).get("total_return"),
+                            "sharpe_ratio": result.get("performance", {}).get("sharpe_ratio"),
+                        }
+                    )
                 else:
-                    results.append({
-                        "strategy": strategy_name,
-                        "status": "error",
-                        "message": f"API error: {response.status_code}",
-                    })
+                    results.append(
+                        {
+                            "strategy": strategy_name,
+                            "status": "error",
+                            "message": f"API error: {response.status_code}",
+                        }
+                    )
 
         except Exception as e:
             logger.error(f"Error running backtest for {strategy_name}: {e}")
-            results.append({
-                "strategy": strategy_name,
-                "status": "error",
-                "message": str(e),
-            })
+            results.append(
+                {
+                    "strategy": strategy_name,
+                    "status": "error",
+                    "message": str(e),
+                }
+            )
 
     logger.info(f"Batch backtest completed: {len(results)} strategies tested")
     return {
@@ -131,4 +137,3 @@ def run_batch_backtests(
         "strategies_tested": len(results),
         "results": results,
     }
-
