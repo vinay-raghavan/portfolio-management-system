@@ -14,10 +14,53 @@ class ProductType(str, Enum):
     INTRADAY = "INTRADAY"
 
 
+# ============== Portfolio Schemas ==============
+
+
+class PortfolioCreate(BaseModel):
+    """Schema for creating a portfolio."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    currency: str = Field("INR", pattern="^[A-Z]{3}$")
+    is_default: bool = False
+
+
+class PortfolioUpdate(BaseModel):
+    """Schema for updating a portfolio."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    currency: str | None = Field(None, pattern="^[A-Z]{3}$")
+    is_default: bool | None = None
+
+
+class PortfolioInfo(BaseModel):
+    """Schema for portfolio info response."""
+
+    id: str
+    name: str
+    description: str | None = None
+    currency: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PortfolioListResponse(BaseModel):
+    """Schema for list of portfolios."""
+
+    portfolios: list[PortfolioInfo]
+    total_count: int
+
+
 class PositionResponse(BaseModel):
     """Schema for position response."""
 
     id: str
+    portfolio_id: str | None = None
     symbol: str
     quantity: Decimal
     avg_cost: Decimal
@@ -96,6 +139,7 @@ class TradeResponse(BaseModel):
     """Schema for trade response."""
 
     id: str
+    portfolio_id: str | None = None
     symbol: str
     side: str
     quantity: Decimal
@@ -110,6 +154,8 @@ class TradeResponse(BaseModel):
 class PortfolioSummary(BaseModel):
     """Schema for portfolio summary."""
 
+    portfolio_id: str | None = None
+    portfolio_name: str | None = None
     total_value: Decimal
     total_cost: Decimal
     total_pnl: Decimal
@@ -120,8 +166,16 @@ class PortfolioSummary(BaseModel):
     day_change_pct: Decimal | None = None
 
 
+class PortfolioDetailResponse(BaseModel):
+    """Schema for full portfolio response with positions."""
+
+    portfolio: PortfolioInfo
+    summary: PortfolioSummary
+    positions: list[PositionResponse]
+
+
 class PortfolioResponse(BaseModel):
-    """Schema for full portfolio response."""
+    """Schema for full portfolio response (legacy, all positions)."""
 
     summary: PortfolioSummary
     positions: list[PositionResponse]

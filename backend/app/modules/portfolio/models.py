@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import String, DateTime, Date, Numeric, ForeignKey, Index, JSON
+from sqlalchemy import String, DateTime, Date, Numeric, ForeignKey, Index, JSON, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -20,6 +20,48 @@ class ProductType(str, Enum):
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
 
 
+class Portfolio(Base):
+    """Portfolio model for organizing positions into separate portfolios."""
+
+    __tablename__ = "portfolios"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Portfolio-level settings
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    positions: Mapped[list["Position"]] = relationship(
+        "Position", back_populates="portfolio", cascade="all, delete-orphan"
+    )
+    trades: Mapped[list["Trade"]] = relationship(
+        "Trade", back_populates="portfolio", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_portfolios_user", "user_id"),
+        Index("ix_portfolios_user_default", "user_id", "is_default"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Portfolio {self.name} (user={self.user_id})>"
+
+
 class Position(Base):
     """Portfolio position model."""
 
@@ -30,6 +72,9 @@ class Position(Base):
     )
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
@@ -57,8 +102,14 @@ class Position(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Relationships
+    portfolio: Mapped["Portfolio | None"] = relationship(
+        "Portfolio", back_populates="positions"
+    )
+
     __table_args__ = (
-        Index("ix_positions_user_symbol", "user_id", "symbol", unique=True),
+        Index("ix_positions_portfolio_symbol", "portfolio_id", "symbol", unique=True),
+        Index("ix_positions_user_symbol", "user_id", "symbol"),
         Index("ix_positions_user_product", "user_id", "product_type"),
         Index("ix_positions_user_sector", "user_id", "sector"),
     )
@@ -194,6 +245,9 @@ class Trade(Base):
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
+    )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     side: Mapped[str] = mapped_column(String(4), nullable=False)  # BUY or SELL
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
@@ -203,8 +257,14 @@ class Trade(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Relationships
+    portfolio: Mapped["Portfolio | None"] = relationship(
+        "Portfolio", back_populates="trades"
+    )
+
     __table_args__ = (
         Index("ix_trades_user_executed", "user_id", "executed_at"),
+        Index("ix_trades_portfolio_executed", "portfolio_id", "executed_at"),
     )
 
     def __repr__(self) -> str:
@@ -224,6 +284,9 @@ class CostLot(Base):
     )
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
 
@@ -246,6 +309,7 @@ class CostLot(Base):
 
     __table_args__ = (
         Index("ix_cost_lots_user_symbol", "user_id", "symbol"),
+        Index("ix_cost_lots_portfolio_symbol", "portfolio_id", "symbol"),
         Index("ix_cost_lots_fifo", "user_id", "symbol", "purchased_at"),  # For FIFO ordering
     )
 
