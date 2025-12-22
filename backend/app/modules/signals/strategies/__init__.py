@@ -2,6 +2,12 @@
 
 from app.modules.signals.strategies.base import BaseStrategy, SignalData
 from app.modules.signals.strategies.bollinger import BollingerSqueezeStrategy
+from app.modules.signals.strategies.composite import (
+    CombineLogic,
+    CompositeStrategy,
+    CompositeStrategyFactory,
+    StrategyComponent,
+)
 from app.modules.signals.strategies.macd import MACDCrossoverStrategy
 from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
 from app.modules.signals.strategies.registry import StrategyRegistry
@@ -15,4 +21,9 @@ __all__ = [
     "MACDCrossoverStrategy",
     "MovingAverageCrossoverStrategy",
     "BollingerSqueezeStrategy",
+    # Composite strategies
+    "CompositeStrategy",
+    "CompositeStrategyFactory",
+    "StrategyComponent",
+    "CombineLogic",
 ]
