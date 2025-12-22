@@ -338,16 +338,16 @@ class StrategyResponse(BaseModel):
     user_id: str
     name: str
     description: str | None
-    strategy_type: str
-    strategy_config: dict | None
+    strategy_type: str  # Maps from strategy_name
+    strategy_config: dict | None  # Maps from strategy_params
     status: StrategyStatus
     universe_id: str | None
-    symbols: list[str] | None
+    symbols: list[str] | None  # Maps from custom_symbols
     schedule_type: ScheduleType
     interval_seconds: int | None
     cron_expression: str | None
     position_sizing_method: PositionSizingMethod
-    position_size_value: Decimal
+    position_size_value: Decimal  # Maps from portfolio_percent (default sizing)
     max_position_value: Decimal | None
     max_daily_loss: Decimal
     max_consecutive_losses: int
@@ -360,8 +360,42 @@ class StrategyResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Custom validation to map model fields to response fields."""
+        if hasattr(obj, "strategy_name"):
+            # It's a UserStrategy model, map fields
+            data = {
+                "id": obj.id,
+                "user_id": obj.user_id,
+                "name": obj.name,
+                "description": obj.description,
+                "strategy_type": obj.strategy_name,
+                "strategy_config": obj.strategy_params,
+                "status": obj.status,
+                "universe_id": obj.universe_id,
+                "symbols": obj.custom_symbols,
+                "schedule_type": obj.schedule_type,
+                "interval_seconds": obj.interval_seconds,
+                "cron_expression": obj.cron_expression,
+                "position_sizing_method": obj.position_sizing_method,
+                "position_size_value": obj.portfolio_percent,
+                "max_position_value": obj.max_position_value,
+                "max_daily_loss": obj.max_daily_loss,
+                "max_consecutive_losses": obj.max_consecutive_losses,
+                "is_paper_trading": obj.is_paper_trading,
+                "last_run_at": obj.last_run_at,
+                "next_run_at": obj.next_run_at,
+                "total_trades": obj.total_trades,
+                "winning_trades": obj.winning_trades,
+                "total_pnl": obj.total_pnl,
+                "created_at": obj.created_at,
+                "updated_at": obj.updated_at,
+            }
+            return cls(**data)
+        return super().model_validate(obj, **kwargs)
 
 
 class ExecutionHistoryResponse(BaseModel):

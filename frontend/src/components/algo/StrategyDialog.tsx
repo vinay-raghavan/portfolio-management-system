@@ -227,12 +227,12 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           <TabsContent value="universe" className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label htmlFor="universe">Universe</Label>
-              <Select value={universeId} onValueChange={setUniverseId}>
+              <Select value={universeId || 'none'} onValueChange={(v) => setUniverseId(v === 'none' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a universe (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {universes?.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name} {u.is_system && '(System)'}
