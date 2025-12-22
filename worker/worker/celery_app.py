@@ -18,6 +18,7 @@ celery_app = Celery(
         "worker.tasks.instruments",
         "worker.tasks.trading",
         "worker.tasks.signals",
+        "worker.tasks.backtest",
     ],
 )
 
