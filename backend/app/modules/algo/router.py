@@ -23,10 +23,14 @@ from app.modules.algo.schemas import (
     UniverseResponse,
     UniverseUpdate,
 )
+from app.modules.algo.notifications import AlgoNotificationService
 from app.modules.algo.service import AlgoService
 from app.modules.algo.universe_service import UniverseService
 
 logger = logging.getLogger(__name__)
+
+# Notification service instance
+_notification_service = AlgoNotificationService()
 
 router = APIRouter()
 
@@ -248,6 +252,11 @@ async def toggle_kill_switch(
             square_off=data.square_off,
         )
         logger.warning(f"Kill switch ACTIVATED by user {current_user.id}")
+        # Send notification
+        await _notification_service.notify_kill_switch_activated(
+            user_id=current_user.id,
+            reason=data.reason,
+        )
     else:
         state = await kill_switch.deactivate(current_user.id)
         logger.info(f"Kill switch DEACTIVATED by user {current_user.id}")
@@ -281,6 +290,13 @@ async def emergency_stop(
     await db.commit()
 
     logger.critical(f"EMERGENCY STOP by user {current_user.id}: {disabled_count} strategies disabled")
+
+    # Send notification
+    await _notification_service.notify_kill_switch_activated(
+        user_id=current_user.id,
+        reason="Emergency stop triggered",
+        strategies_disabled=disabled_count,
+    )
 
     return {
         "status": "emergency_stop_activated",

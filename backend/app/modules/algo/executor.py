@@ -118,6 +118,13 @@ class StrategyExecutor:
         )
 
         try:
+            # Notify strategy started
+            await self.notification_service.notify_strategy_started(
+                user_id=user_strategy.user_id,
+                strategy_name=user_strategy.name,
+                strategy_id=user_strategy.id,
+            )
+
             # Get strategy from registry
             strategy = StrategyRegistry.get_strategy(
                 user_strategy.strategy_name,
@@ -178,6 +185,14 @@ class StrategyExecutor:
             result.status = ExecutionStatus.FAILED
             result.error_message = str(e)
             await self._finalize_execution(execution, result, start_time)
+
+            # Notify strategy error
+            await self.notification_service.notify_strategy_error(
+                user_id=user_strategy.user_id,
+                strategy_name=user_strategy.name,
+                strategy_id=user_strategy.id,
+                error=str(e),
+            )
 
         return result
 
