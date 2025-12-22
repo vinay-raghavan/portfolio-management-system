@@ -13,14 +13,27 @@ import {
   TradeHistory,
   SectorAllocation,
   PerformanceChart,
+  PortfolioSelector,
+  PortfolioDialog,
 } from '@/components/portfolio';
+import { usePortfolioStore } from '@/store';
+import type { PortfolioInfo } from '@/types';
 
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState('positions');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPortfolio, setEditingPortfolio] = useState<PortfolioInfo | null>(null);
+  const { selectedPortfolioId } = usePortfolioStore();
 
+  // Fetch portfolio data based on selection
   const { data: portfolio, isLoading } = useQuery({
-    queryKey: ['portfolio'],
-    queryFn: () => portfolioApi.getPortfolio().then((res) => res.data),
+    queryKey: ['portfolio', selectedPortfolioId],
+    queryFn: () => {
+      if (selectedPortfolioId) {
+        return portfolioApi.getPortfolioDetail(selectedPortfolioId).then((res) => res.data);
+      }
+      return portfolioApi.getPortfolio().then((res) => res.data);
+    },
     refetchInterval: 30000,
   });
 
@@ -43,12 +56,28 @@ export default function PortfolioPage() {
     }
   };
 
+  const handleCreateClick = () => {
+    setEditingPortfolio(null);
+    setDialogOpen(true);
+  };
+
+  const handleManageClick = (portfolio: PortfolioInfo) => {
+    setEditingPortfolio(portfolio);
+    setDialogOpen(true);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Portfolio</h1>
-          <p className="text-muted-foreground">Manage your positions and view trade history</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Portfolio</h1>
+            <p className="text-muted-foreground">Manage your positions and view trade history</p>
+          </div>
+          <PortfolioSelector
+            onCreateClick={handleCreateClick}
+            onManageClick={handleManageClick}
+          />
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportPositions}>
@@ -61,6 +90,12 @@ export default function PortfolioPage() {
           </Button>
         </div>
       </div>
+
+      <PortfolioDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        portfolio={editingPortfolio}
+      />
 
       {/* Portfolio Summary */}
       <PortfolioSummary summary={summary} isLoading={isLoading} />

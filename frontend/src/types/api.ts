@@ -29,8 +29,38 @@ export interface AuthResponse {
 
 // ============== Portfolio Types ==============
 
+export interface PortfolioInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  currency: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioCreate {
+  name: string;
+  description?: string | null;
+  currency?: string;
+  is_default?: boolean;
+}
+
+export interface PortfolioUpdate {
+  name?: string;
+  description?: string | null;
+  currency?: string;
+  is_default?: boolean;
+}
+
+export interface PortfolioListResponse {
+  portfolios: PortfolioInfo[];
+  total_count: number;
+}
+
 export interface Position {
   id: string;
+  portfolio_id?: string | null;
   symbol: string;
   quantity: number;
   avg_cost: number;
@@ -44,6 +74,8 @@ export interface Position {
 }
 
 export interface PortfolioSummary {
+  portfolio_id?: string | null;
+  portfolio_name?: string | null;
   total_value: number;
   total_cost: number;
   total_pnl: number;
@@ -55,6 +87,12 @@ export interface PortfolioSummary {
 }
 
 export interface PortfolioResponse {
+  summary: PortfolioSummary;
+  positions: Position[];
+}
+
+export interface PortfolioDetailResponse {
+  portfolio: PortfolioInfo;
   summary: PortfolioSummary;
   positions: Position[];
 }
