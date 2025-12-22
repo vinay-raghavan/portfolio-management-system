@@ -13,6 +13,7 @@ from app.modules.analysis.schemas import (
     TechnicalIndicators,
     SignalStrength,
     AnalysisResult,
+    StockInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,16 @@ class AnalysisService:
             return None
         return Decimal(str(round(value, 4)))
 
+    def _format_timestamp(self, value) -> str | None:
+        """Convert Unix timestamp to ISO date string."""
+        if value is None or pd.isna(value):
+            return None
+        try:
+            from datetime import datetime
+            return datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d")
+        except (ValueError, TypeError, OSError):
+            return None
+
     def _calculate_signal(
         self, price: Decimal, indicators: TechnicalIndicators
     ) -> SignalStrength:
@@ -202,4 +213,54 @@ class AnalysisService:
         elif bearish > bullish:
             return "BEARISH"
         return "NEUTRAL"
+
+    async def get_stock_info(self, symbol: str) -> StockInfo | None:
+        """Get detailed stock information."""
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+
+            if not info or info.get("regularMarketPrice") is None:
+                return None
+
+            return StockInfo(
+                symbol=symbol.upper(),
+                name=info.get("longName") or info.get("shortName"),
+                exchange=info.get("exchange"),
+                currency=info.get("currency"),
+                sector=info.get("sector"),
+                industry=info.get("industry"),
+                current_price=self._to_decimal(info.get("regularMarketPrice")),
+                previous_close=self._to_decimal(info.get("previousClose")),
+                open=self._to_decimal(info.get("open")),
+                day_high=self._to_decimal(info.get("dayHigh")),
+                day_low=self._to_decimal(info.get("dayLow")),
+                week_52_high=self._to_decimal(info.get("fiftyTwoWeekHigh")),
+                week_52_low=self._to_decimal(info.get("fiftyTwoWeekLow")),
+                volume=info.get("volume"),
+                avg_volume=info.get("averageVolume"),
+                avg_volume_10d=info.get("averageVolume10days"),
+                market_cap=self._to_decimal(info.get("marketCap")),
+                shares_outstanding=info.get("sharesOutstanding"),
+                float_shares=info.get("floatShares"),
+                pe_ratio=self._to_decimal(info.get("trailingPE")),
+                forward_pe=self._to_decimal(info.get("forwardPE")),
+                peg_ratio=self._to_decimal(info.get("pegRatio")),
+                price_to_book=self._to_decimal(info.get("priceToBook")),
+                eps=self._to_decimal(info.get("trailingEps")),
+                forward_eps=self._to_decimal(info.get("forwardEps")),
+                dividend_yield=self._to_decimal(info.get("dividendYield")),
+                dividend_rate=self._to_decimal(info.get("dividendRate")),
+                ex_dividend_date=self._format_timestamp(info.get("exDividendDate")),
+                target_mean_price=self._to_decimal(info.get("targetMeanPrice")),
+                target_high_price=self._to_decimal(info.get("targetHighPrice")),
+                target_low_price=self._to_decimal(info.get("targetLowPrice")),
+                recommendation=info.get("recommendationKey"),
+                num_analyst_opinions=info.get("numberOfAnalystOpinions"),
+                beta=self._to_decimal(info.get("beta")),
+                trailing_annual_return=self._to_decimal(info.get("trailingAnnualDividendYield")),
+            )
+        except Exception as e:
+            logger.error(f"Error getting stock info for {symbol}: {e}")
+            return None
 

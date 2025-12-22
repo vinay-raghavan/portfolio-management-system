@@ -2,5 +2,5 @@ export { useAuthStore } from './auth';
 export { useWebSocketStore } from './websocket';
 export { useNotificationStore, type Notification, type NotificationType } from './notifications';
 export { useTradingStore } from './trading';
-export { useUIStore } from './ui';
+export { useUIStore, type Currency } from './ui';
 

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.modules.analysis.schemas import TechnicalIndicators, AnalysisResult
+from app.modules.analysis.schemas import TechnicalIndicators, AnalysisResult, StockInfo
 from app.modules.analysis.service import AnalysisService
 
 router = APIRouter()
@@ -21,6 +21,21 @@ async def get_technical_indicators(symbol: str) -> TechnicalIndicators:
         )
 
     return indicators
+
+
+@router.get("/{symbol}/info", response_model=StockInfo)
+async def get_stock_info(symbol: str) -> StockInfo:
+    """Get detailed stock information including fundamentals."""
+    service = AnalysisService()
+    info = await service.get_stock_info(symbol)
+
+    if info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Could not get info for symbol: {symbol}",
+        )
+
+    return info
 
 
 @router.get("/{symbol}", response_model=AnalysisResult)

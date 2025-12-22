@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
+import { GlobalSearch } from '@/components/search';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -79,7 +80,8 @@ export default function DashboardLayout({
       {/* Main content */}
       <main className="flex-1 overflow-auto">
         {/* Header */}
-        <header className="h-16 border-b bg-card flex items-center justify-end px-8">
+        <header className="h-16 border-b bg-card flex items-center justify-between px-8">
+          <GlobalSearch />
           <NotificationBell />
         </header>
         <div className="p-8">{children}</div>

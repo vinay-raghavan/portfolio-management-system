@@ -307,6 +307,60 @@ export interface AnalysisResult {
   trend: TrendType;
 }
 
+export interface StockInfo {
+  symbol: string;
+  name: string | null;
+  exchange: string | null;
+  currency: string | null;
+  sector: string | null;
+  industry: string | null;
+
+  // Price info
+  current_price: number | null;
+  previous_close: number | null;
+  open: number | null;
+  day_high: number | null;
+  day_low: number | null;
+
+  // 52-week range
+  week_52_high: number | null;
+  week_52_low: number | null;
+
+  // Volume
+  volume: number | null;
+  avg_volume: number | null;
+  avg_volume_10d: number | null;
+
+  // Market cap and shares
+  market_cap: number | null;
+  shares_outstanding: number | null;
+  float_shares: number | null;
+
+  // Fundamentals
+  pe_ratio: number | null;
+  forward_pe: number | null;
+  peg_ratio: number | null;
+  price_to_book: number | null;
+  eps: number | null;
+  forward_eps: number | null;
+
+  // Dividends
+  dividend_yield: number | null;
+  dividend_rate: number | null;
+  ex_dividend_date: string | null;
+
+  // Analyst recommendations
+  target_mean_price: number | null;
+  target_high_price: number | null;
+  target_low_price: number | null;
+  recommendation: string | null;
+  num_analyst_opinions: number | null;
+
+  // Beta and other metrics
+  beta: number | null;
+  trailing_annual_return: number | null;
+}
+
 // ============== Instrument Types ==============
 
 export interface Instrument {
