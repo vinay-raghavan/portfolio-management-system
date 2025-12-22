@@ -90,5 +90,10 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.trading.auto_square_off_intraday",
         "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
     },
+    # Process AMO (After Market Orders) at market open - 9:15 AM IST (3:45 UTC)
+    "process-amo-orders-at-market-open": {
+        "task": "worker.tasks.trading.process_amo_orders",
+        "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
+    },
 }
 

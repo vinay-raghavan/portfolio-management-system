@@ -4,6 +4,7 @@ This module provides Celery tasks for:
 - SL/TP monitoring and execution
 - GTT order checking
 - Auto square-off of intraday positions at 3:15 PM IST
+- AMO (After Market Order) processing at market open
 """
 
 import logging
@@ -39,6 +40,25 @@ def is_square_off_time() -> bool:
     """Check if current time is past intraday square-off time."""
     now_ist = datetime.now(IST).time()
     return now_ist >= INTRADAY_SQUARE_OFF_TIME
+
+
+def is_market_just_opened(window_minutes: int = 5) -> bool:
+    """Check if market just opened (within first N minutes).
+
+    Used to trigger AMO processing right after market opens.
+
+    Args:
+        window_minutes: Number of minutes after market open to consider
+
+    Returns:
+        True if within the window after market open
+    """
+    now_ist = datetime.now(IST).time()
+    market_open_plus_window = time(
+        MARKET_OPEN_TIME.hour,
+        MARKET_OPEN_TIME.minute + window_minutes
+    )
+    return MARKET_OPEN_TIME <= now_ist <= market_open_plus_window
 
 
 @celery_app.task(bind=True, name="worker.tasks.trading.check_sl_tp_orders")
@@ -305,3 +325,46 @@ def check_pending_trigger_orders(self) -> dict:
         logger.error(f"Error checking trigger orders: {e}")
         return {"status": "error", "message": str(e)}
 
+
+@celery_app.task(bind=True, name="worker.tasks.trading.process_amo_orders")
+def process_amo_orders(self) -> dict:
+    """Process After Market Orders (AMO) at market open.
+
+    This task runs at market open to execute all queued AMO orders.
+    AMO orders are placed outside market hours and queued for execution
+    when the market opens.
+
+    The task should be scheduled to run at 9:15 AM IST (market open).
+    """
+    if not is_market_hours():
+        logger.debug("Market closed, skipping AMO processing")
+        return {"status": "market_closed", "processed": 0}
+
+    logger.info("Processing AMO orders at market open")
+
+    api_url = "http://api:8000/api/v1"
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            # Call the API endpoint to process all AMO orders
+            response = client.post(f"{api_url}/trading/process-amo-orders")
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    f"AMO processing complete. Processed: {result.get('processed', 0)}, "
+                    f"Failed: {result.get('failed', 0)}"
+                )
+                return {
+                    "status": "success",
+                    "processed": result.get("processed", 0),
+                    "failed": result.get("failed", 0),
+                    "total": result.get("total", 0),
+                }
+            else:
+                logger.error(f"Failed to process AMO orders: {response.status_code}")
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+    except Exception as e:
+        logger.error(f"Error processing AMO orders: {e}")
+        return {"status": "error", "message": str(e)}

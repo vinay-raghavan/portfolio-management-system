@@ -42,6 +42,7 @@ class OrderStatus(str, Enum):
     CANCELLED = "CANCELLED"
     REJECTED = "REJECTED"
     EXPIRED = "EXPIRED"
+    AMO_PENDING = "AMO_PENDING"  # After Market Order - queued for next session
 
 
 class Order(Base):
@@ -72,6 +73,10 @@ class Order(Base):
     # GTT specific fields
     valid_till: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # For GTT orders
     parent_order_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)  # For SL/TP linked orders
+
+    # AMO (After Market Order) fields
+    is_amo: Mapped[bool] = mapped_column(nullable=False, default=False)  # True if this is an after-market order
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # When AMO should execute
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
