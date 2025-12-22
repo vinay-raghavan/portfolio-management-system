@@ -294,12 +294,35 @@ export default function AlgoTradingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {strategies?.map((strategy) => (
+                {strategies?.map((strategy) => {
+                  // Determine if strategy is intraday based on type name
+                  const intradayStrategies = ['orb', 'vwap_reversion', 'gap_go', 'twap', 'intraday_momentum'];
+                  const isIntraday = intradayStrategies.includes(strategy.strategy_type);
+                  const isCombined = strategy.strategy_type.includes('confluence') ||
+                    strategy.strategy_type.includes('pullback') ||
+                    strategy.strategy_type.includes('confirmation') ||
+                    strategy.strategy_type.includes('momentum');
+
+                  return (
                   <TableRow key={strategy.id}>
                     <TableCell>
-                      <div>
+                      <div className="space-y-1">
                         <p className="font-medium">{strategy.name}</p>
-                        <p className="text-xs text-muted-foreground">{strategy.strategy_type}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            isIntraday
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                              : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                          }`}>
+                            {isIntraday ? 'Intraday' : 'Swing'}
+                          </span>
+                          {isCombined && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                              Combined
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">{strategy.strategy_type}</span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -364,7 +387,8 @@ export default function AlgoTradingPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

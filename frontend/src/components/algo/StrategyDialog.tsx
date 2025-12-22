@@ -204,14 +204,46 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 <SelectTrigger>
                   <SelectValue placeholder="Select a strategy" />
                 </SelectTrigger>
-                <SelectContent>
-                  {availableStrategies?.strategies?.map((s) => (
-                    <SelectItem key={s.name} value={s.name}>
-                      {s.name} - {s.description}
-                    </SelectItem>
-                  ))}
+                <SelectContent className="max-h-[300px]">
+                  {/* Group intraday strategies */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    Intraday Strategies (5m)
+                  </div>
+                  {availableStrategies?.strategies
+                    ?.filter((s) => s.default_timeframe === '5m')
+                    .map((s) => (
+                      <SelectItem key={s.name} value={s.name}>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            5m
+                          </span>
+                          <span>{s.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  {/* Group swing/daily strategies */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                    Swing/Position Strategies (1d)
+                  </div>
+                  {availableStrategies?.strategies
+                    ?.filter((s) => s.default_timeframe === '1d' || !s.default_timeframe)
+                    .map((s) => (
+                      <SelectItem key={s.name} value={s.name}>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            1d
+                          </span>
+                          <span>{s.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
+              {strategyType && (
+                <p className="text-xs text-muted-foreground">
+                  {availableStrategies?.strategies?.find((s) => s.name === strategyType)?.description}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center space-x-2">
@@ -231,15 +263,51 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 <SelectTrigger>
                   <SelectValue placeholder="Select a universe (optional)" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {universes?.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} {u.is_system && '(System)'}
-                    </SelectItem>
-                  ))}
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value="none">None (use custom symbols)</SelectItem>
+                  {/* System universes */}
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                    Index Universes
+                  </div>
+                  {universes
+                    ?.filter((u) => u.is_system)
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        <div className="flex items-center justify-between gap-4 w-full">
+                          <span>{u.name}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {u.symbol_count || 0} stocks
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  {/* Custom universes */}
+                  {universes?.some((u) => !u.is_system) && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                        Custom Universes
+                      </div>
+                      {universes
+                        ?.filter((u) => !u.is_system)
+                        .map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <div className="flex items-center justify-between gap-4 w-full">
+                              <span>{u.name}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {u.symbol_count || 0} stocks
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
+              {universeId && universes?.find((u) => u.id === universeId)?.description && (
+                <p className="text-xs text-muted-foreground">
+                  {universes.find((u) => u.id === universeId)?.description}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -251,7 +319,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 placeholder="RELIANCE, TCS, INFY"
               />
               <p className="text-xs text-muted-foreground">
-                Leave empty to use universe symbols
+                {universeId
+                  ? 'Add additional symbols to the universe'
+                  : 'Enter symbols to trade (required if no universe selected)'}
               </p>
             </div>
           </TabsContent>
