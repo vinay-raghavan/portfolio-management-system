@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { alertsApi } from '@/lib/api';
 import { useNotificationStore } from '@/store';
-import { formatCurrency, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
+import { cn } from '@/lib/utils';
 import type { Alert, AlertStatus } from '@/types';
 
 const STATUS_COLORS: Record<AlertStatus, string> = {
@@ -20,6 +21,7 @@ const STATUS_COLORS: Record<AlertStatus, string> = {
 export function AlertList() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotificationStore();
+  const { format: formatCurrency } = useCurrency();
 
   const { data, isLoading } = useQuery({
     queryKey: ['alerts'],

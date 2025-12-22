@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Briefcase, Wallet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { formatPercent, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { PortfolioSummary as PortfolioSummaryType } from '@/types';
 
 interface AnimatedNumberProps {
@@ -50,6 +51,8 @@ interface PortfolioSummaryProps {
 }
 
 export function PortfolioSummary({ summary, isLoading }: PortfolioSummaryProps) {
+  const { format: formatCurrency } = useCurrency();
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">

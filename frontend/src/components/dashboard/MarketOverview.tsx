@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { marketDataApi } from '@/lib/api';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { formatPercent, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 
 // Major market indices to track
 const MARKET_INDICES = [
@@ -25,6 +26,8 @@ interface IndexQuote {
 }
 
 export function MarketOverview() {
+  const { format: formatCurrency } = useCurrency();
+
   // Fetch quotes for all indices
   const queries = MARKET_INDICES.map((index) => ({
     ...index,

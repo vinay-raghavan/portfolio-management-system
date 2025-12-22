@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, ArrowDownRight, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { portfolioApi } from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Trade } from '@/types';
 
 function formatTimeAgo(dateString: string): string {
@@ -27,6 +28,7 @@ interface RecentTradesProps {
 }
 
 export function RecentTrades({ limit = 5 }: RecentTradesProps) {
+  const { format: formatCurrency } = useCurrency();
   const { data, isLoading } = useQuery({
     queryKey: ['trades', 'recent', limit],
     queryFn: () => portfolioApi.getTrades(1, limit).then((res) => res.data),

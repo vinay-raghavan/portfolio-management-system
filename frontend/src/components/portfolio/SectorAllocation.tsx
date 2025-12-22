@@ -3,7 +3,8 @@
 import { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency, formatPercent } from '@/lib/utils';
+import { formatPercent } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Position } from '@/types';
 
 const COLORS = [
@@ -25,6 +26,8 @@ interface SectorAllocationProps {
 }
 
 export function SectorAllocation({ positions, isLoading }: SectorAllocationProps) {
+  const { format: formatCurrency } = useCurrency();
+
   const sectorData = useMemo(() => {
     const sectorMap = new Map<string, number>();
     

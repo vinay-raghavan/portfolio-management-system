@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { ArrowUpDown, TrendingUp, TrendingDown, MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { formatPercent, cn } from '@/lib/utils';
 import { useTradingStore } from '@/store';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Position } from '@/types';
 
 type SortField = 'symbol' | 'quantity' | 'market_value' | 'unrealized_pnl' | 'unrealized_pnl_pct';
@@ -20,6 +21,7 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortField, setSortField] = useState<SortField>('market_value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { quickBuy, quickSell } = useTradingStore();
+  const { format: formatCurrency } = useCurrency();
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

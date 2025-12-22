@@ -6,7 +6,8 @@ import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight } from 'lucide-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { portfolioApi } from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Trade } from '@/types';
 
 interface TradeHistoryProps {
@@ -15,6 +16,7 @@ interface TradeHistoryProps {
 
 export function TradeHistory({ pageSize = 20 }: TradeHistoryProps) {
   const [page, setPage] = useState(1);
+  const { format: formatCurrency } = useCurrency();
 
   const { data, isLoading } = useQuery({
     queryKey: ['trades', page, pageSize],

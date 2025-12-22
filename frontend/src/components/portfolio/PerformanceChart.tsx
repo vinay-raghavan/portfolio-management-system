@@ -15,7 +15,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { portfolioApi } from '@/lib/api';
-import { formatCurrency, safeToFixed, cn } from '@/lib/utils';
+import { safeToFixed, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
 
@@ -28,6 +29,7 @@ const TIME_RANGES: { value: TimeRange; label: string; days: number }[] = [
 
 export function PerformanceChart() {
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+  const { format: formatCurrency } = useCurrency();
   const days = TIME_RANGES.find((r) => r.value === timeRange)?.days ?? 30;
 
   const { data, isLoading } = useQuery({

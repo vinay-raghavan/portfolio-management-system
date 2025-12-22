@@ -2,7 +2,8 @@
 
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { formatPercent, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Position } from '@/types';
 
 interface TopMoversProps {
@@ -11,6 +12,8 @@ interface TopMoversProps {
 }
 
 export function TopMovers({ positions, isLoading }: TopMoversProps) {
+  const { format: formatCurrency } = useCurrency();
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2">

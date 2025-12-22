@@ -11,16 +11,29 @@ import { Progress } from '@/components/ui/progress';
 import { CandlestickChart } from '@/components/charts';
 import { marketDataApi, analysisApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
-import { formatCurrency, formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
+import { formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
 import { useUIStore } from '@/store';
 import { useCurrency } from '@/hooks';
 
 const TIMEFRAMES = [
-  { value: '1d', label: '1D', period: '5d', interval: '5m' },
-  { value: '1w', label: '1W', period: '1mo', interval: '1h' },
-  { value: '1m', label: '1M', period: '1mo', interval: '1d' },
-  { value: '3m', label: '3M', period: '3mo', interval: '1d' },
-  { value: '1y', label: '1Y', period: '1y', interval: '1wk' },
+  { value: '1d', label: '1D', period: '1d', interval: '5m', isIntraday: true },
+  { value: '5d', label: '5D', period: '5d', interval: '15m', isIntraday: true },
+  { value: '1w', label: '1W', period: '5d', interval: '30m', isIntraday: true },
+  { value: '1m', label: '1M', period: '1mo', interval: '1d', isIntraday: false },
+  { value: '3m', label: '3M', period: '3mo', interval: '1d', isIntraday: false },
+  { value: '6m', label: '6M', period: '6mo', interval: '1d', isIntraday: false },
+  { value: '1y', label: '1Y', period: '1y', interval: '1d', isIntraday: false },
+  { value: '5y', label: '5Y', period: '5y', interval: '1wk', isIntraday: false },
+];
+
+const GRANULARITY_OPTIONS = [
+  { value: '1m', label: '1 min' },
+  { value: '5m', label: '5 min' },
+  { value: '15m', label: '15 min' },
+  { value: '30m', label: '30 min' },
+  { value: '1h', label: '1 hour' },
+  { value: '1d', label: '1 day' },
+  { value: '1wk', label: '1 week' },
 ];
 
 const INDICATOR_OPTIONS = [
@@ -35,13 +48,46 @@ export default function AnalysisPage() {
   const { selectedSymbol, setSelectedSymbol, chartInterval, setChartInterval, chartIndicators, toggleChartIndicator } = useUIStore();
   const { format: formatPrice, currency } = useCurrency();
   const [symbolInput, setSymbolInput] = useState(selectedSymbol || 'AAPL');
+  const [customGranularity, setCustomGranularity] = useState<string | null>(null);
 
-  const timeframe = TIMEFRAMES.find((t) => t.value === chartInterval) || TIMEFRAMES[2];
+  const timeframe = TIMEFRAMES.find((t) => t.value === chartInterval) || TIMEFRAMES[3];
   const currentSymbol = selectedSymbol || symbolInput;
 
+  // Use custom granularity if set, otherwise use timeframe default
+  const effectiveInterval = customGranularity || timeframe.interval;
+
+  // Get valid granularity options based on the selected timeframe
+  const validGranularityOptions = useMemo(() => {
+    // For intraday periods, only allow minute/hour intervals
+    if (timeframe.period === '1d') {
+      return GRANULARITY_OPTIONS.filter(g => ['1m', '5m', '15m', '30m'].includes(g.value));
+    }
+    if (timeframe.period === '5d') {
+      return GRANULARITY_OPTIONS.filter(g => ['5m', '15m', '30m', '1h'].includes(g.value));
+    }
+    if (timeframe.period === '1mo') {
+      return GRANULARITY_OPTIONS.filter(g => ['30m', '1h', '1d'].includes(g.value));
+    }
+    if (timeframe.period === '3mo' || timeframe.period === '6mo') {
+      return GRANULARITY_OPTIONS.filter(g => ['1h', '1d'].includes(g.value));
+    }
+    if (timeframe.period === '1y' || timeframe.period === '2y') {
+      return GRANULARITY_OPTIONS.filter(g => ['1d', '1wk'].includes(g.value));
+    }
+    // For longer periods
+    return GRANULARITY_OPTIONS.filter(g => ['1d', '1wk'].includes(g.value));
+  }, [timeframe.period]);
+
+  // Reset custom granularity when timeframe changes if it's not valid
+  useMemo(() => {
+    if (customGranularity && !validGranularityOptions.find(g => g.value === customGranularity)) {
+      setCustomGranularity(null);
+    }
+  }, [validGranularityOptions, customGranularity]);
+
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: ['history', currentSymbol, timeframe.period, timeframe.interval],
-    queryFn: () => marketDataApi.getHistory(currentSymbol, timeframe.period, timeframe.interval).then((res) => res.data),
+    queryKey: ['history', currentSymbol, timeframe.period, effectiveInterval],
+    queryFn: () => marketDataApi.getHistory(currentSymbol, timeframe.period, effectiveInterval).then((res) => res.data),
     enabled: !!currentSymbol,
   });
 
@@ -64,17 +110,32 @@ export default function AnalysisPage() {
     enabled: !!currentSymbol,
   });
 
+  // Check if we're using intraday intervals
+  const isIntraday = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h'].includes(effectiveInterval);
+
   const chartData = useMemo(() => {
     if (!historyData?.data) return [];
-    return historyData.data.map((d) => ({
-      time: d.date.split('T')[0],
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      volume: d.volume,
-    }));
-  }, [historyData]);
+    return historyData.data.map((d) => {
+      // For intraday data, we need to use full timestamp as Unix time
+      // lightweight-charts expects time as either "YYYY-MM-DD" string or Unix timestamp (seconds)
+      let time: string | number;
+      if (isIntraday && d.date.includes('T')) {
+        // Convert ISO string to Unix timestamp (seconds)
+        time = Math.floor(new Date(d.date).getTime() / 1000);
+      } else {
+        // Daily data - use date string
+        time = d.date.split('T')[0];
+      }
+      return {
+        time,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+        volume: d.volume,
+      };
+    });
+  }, [historyData, isIntraday]);
 
   const indicators = useMemo(() => {
     if (chartData.length === 0) return [];
@@ -134,12 +195,32 @@ export default function AnalysisPage() {
               key={tf.value}
               variant={chartInterval === tf.value ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setChartInterval(tf.value)}
+              onClick={() => {
+                setChartInterval(tf.value);
+                setCustomGranularity(null); // Reset granularity when changing timeframe
+              }}
             >
               {tf.label}
             </Button>
           ))}
         </div>
+
+        {/* Granularity Selector */}
+        <Select
+          value={customGranularity || effectiveInterval}
+          onValueChange={(val) => setCustomGranularity(val)}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="Granularity" />
+          </SelectTrigger>
+          <SelectContent>
+            {validGranularityOptions.map((g) => (
+              <SelectItem key={g.value} value={g.value}>
+                {g.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Indicator Toggles */}
         <Select value="" onValueChange={toggleChartIndicator}>

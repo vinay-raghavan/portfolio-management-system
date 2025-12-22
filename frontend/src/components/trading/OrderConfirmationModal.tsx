@@ -12,7 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { tradingApi } from '@/lib/api';
 import { useNotificationStore } from '@/store';
-import { formatCurrency, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
+import { cn } from '@/lib/utils';
 import type { OrderCreate } from '@/types';
 
 interface OrderConfirmationModalProps {
@@ -32,6 +33,7 @@ export function OrderConfirmationModal({
 }: OrderConfirmationModalProps) {
   const queryClient = useQueryClient();
   const { addNotification } = useNotificationStore();
+  const { format: formatCurrency } = useCurrency();
 
   const createOrderMutation = useMutation({
     mutationFn: (orderData: OrderCreate) => tradingApi.createOrder(orderData),

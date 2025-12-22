@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { watchlistApi } from '@/lib/api';
 import { useWebSocketStore, useTradingStore, useNotificationStore } from '@/store';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
+import { formatPercent, cn } from '@/lib/utils';
 import type { WatchlistItem } from '@/types';
 
 interface WatchlistTableProps {
@@ -19,6 +20,7 @@ export function WatchlistTable({ watchlistId }: WatchlistTableProps) {
   const { addNotification } = useNotificationStore();
   const { quickBuy, quickSell } = useTradingStore();
   const { subscribe, unsubscribe, quotes, isConnected } = useWebSocketStore();
+  const { format: formatCurrency } = useCurrency();
 
   const { data: watchlist, isLoading } = useQuery({
     queryKey: ['watchlist', watchlistId],

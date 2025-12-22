@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { tradingApi } from '@/lib/api';
-import { useQuote } from '@/hooks';
+import { useQuote, useCurrency } from '@/hooks';
 import { useTradingStore, useNotificationStore } from '@/store';
-import { formatCurrency, safeToFixed, cn } from '@/lib/utils';
+import { safeToFixed, cn } from '@/lib/utils';
 import type { OrderSide, OrderType, ProductType, OrderCreate } from '@/types';
 
 interface OrderEntryFormProps {
@@ -22,6 +22,7 @@ export function OrderEntryForm({ onSuccess, onConfirm }: OrderEntryFormProps) {
   const queryClient = useQueryClient();
   const { formState, updateForm, resetForm } = useTradingStore();
   const { addNotification } = useNotificationStore();
+  const { format: formatCurrency } = useCurrency();
   
   const [symbolInput, setSymbolInput] = useState(formState.symbol);
   

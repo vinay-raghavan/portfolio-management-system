@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { tradingApi } from '@/lib/api';
 import { useNotificationStore } from '@/store';
-import { formatCurrency, cn } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
+import { cn } from '@/lib/utils';
 import type { Order, OrderStatus } from '@/types';
 
 const STATUS_CONFIG: Record<OrderStatus, { icon: typeof Clock; color: string; label: string }> = {
@@ -30,6 +31,7 @@ export function OrderBook({ statusFilter, pageSize = 10 }: OrderBookProps) {
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
   const { addNotification } = useNotificationStore();
+  const { format: formatCurrency } = useCurrency();
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', statusFilter, page, pageSize],
