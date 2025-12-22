@@ -188,9 +188,7 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
 
             # Strength based on how far apart MAs are (further = stronger trend)
             separation_pct = abs(current_fast - current_slow) / current_slow * 100
-            strength = Decimal(str(min(0.8, 0.5 + separation_pct / 10))).quantize(
-                Decimal("0.0001")
-            )
+            strength = Decimal(str(min(0.8, 0.5 + separation_pct / 10))).quantize(Decimal("0.0001"))
 
             signals.append(
                 SignalData(

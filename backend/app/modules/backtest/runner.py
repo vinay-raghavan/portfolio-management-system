@@ -169,7 +169,9 @@ class BacktestRunner:
                 df_normalized.columns = [c.capitalize() for c in df_normalized.columns]
 
                 # generate_signals returns a list, get first signal if any
-                signal_list = self.config.strategy.generate_signals(df_normalized, self.config.symbol)
+                signal_list = self.config.strategy.generate_signals(
+                    df_normalized, self.config.symbol
+                )
                 signal = signal_list[0] if signal_list else None
                 signals.append(signal)
             else:

@@ -134,7 +134,11 @@ class BollingerSqueezeStrategy(BaseStrategy):
         in_breakout_condition = was_in_squeeze and is_expanding
 
         # Breakout above upper band - BUY
-        if in_breakout_condition and float(prev_price) <= prev_upper and float(current_price) > current_upper:
+        if (
+            in_breakout_condition
+            and float(prev_price) <= prev_upper
+            and float(current_price) > current_upper
+        ):
             strength = self._calculate_strength(current_bw, recent_bw)
             confidence = self._calculate_confidence(bandwidth, is_buy=True)
 
@@ -168,7 +172,11 @@ class BollingerSqueezeStrategy(BaseStrategy):
             )
 
         # Breakout below lower band - SELL
-        elif in_breakout_condition and float(prev_price) >= prev_lower and float(current_price) < current_lower:
+        elif (
+            in_breakout_condition
+            and float(prev_price) >= prev_lower
+            and float(current_price) < current_lower
+        ):
             strength = self._calculate_strength(current_bw, recent_bw)
             confidence = self._calculate_confidence(bandwidth, is_buy=False)
 
