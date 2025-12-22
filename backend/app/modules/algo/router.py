@@ -24,7 +24,8 @@ from app.modules.algo.schemas import (
     UniverseUpdate,
 )
 from app.modules.algo.service import AlgoService
-from app.modules.algo.universe_service import UniverseService
+from app.modules.algo.universe_service import DYNAMIC_UNIVERSES, UniverseService
+from app.providers.data.nse import NSEDataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -402,3 +403,124 @@ async def get_universe_symbols(
         "symbols": symbols,
         "count": len(symbols),
     }
+
+
+@router.get("/universes/definitions/available")
+async def get_available_universe_definitions(
+    current_user: CurrentUser,
+) -> dict:
+    """Get all available universe definitions (static + dynamic).
+
+    Returns a list of all pre-defined universes that can be created,
+    including both static (hardcoded symbols) and dynamic (fetched from NSE).
+    """
+    return {
+        "universes": UniverseService.get_available_universes(),
+        "dynamic_indices": list(DYNAMIC_UNIVERSES.keys()),
+    }
+
+
+@router.post("/universes/refresh/{universe_key}")
+async def refresh_dynamic_universe(
+    db: DbSession,
+    current_user: CurrentUser,
+    universe_key: str,
+) -> UniverseResponse:
+    """Refresh a dynamic universe by fetching latest constituents from NSE.
+
+    Args:
+        universe_key: Key of the dynamic universe (e.g., "NIFTY500", "NIFTY100")
+
+    Returns:
+        Updated universe with fresh symbols
+    """
+    if universe_key not in DYNAMIC_UNIVERSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown dynamic universe: {universe_key}. Available: {list(DYNAMIC_UNIVERSES.keys())}"
+        )
+
+    service = UniverseService(db)
+
+    # Create NSE provider and fetch
+    nse_provider = NSEDataProvider()
+    try:
+        universe = await service.create_or_update_dynamic_universe(universe_key, nse_provider)
+        if not universe:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch universe {universe_key} from NSE"
+            )
+        await db.commit()
+        return UniverseResponse.model_validate(universe)
+    finally:
+        await nse_provider.close()
+
+
+@router.post("/universes/refresh-all")
+async def refresh_all_dynamic_universes(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Refresh all dynamic universes from NSE.
+
+    This fetches the latest constituents for all dynamic indices:
+    - Nifty 500, Nifty 100, Nifty 200
+    - Nifty Midcap 50/100/150
+    - Nifty Smallcap 50/100/250
+
+    Returns:
+        Summary of refresh operation
+    """
+    service = UniverseService(db)
+
+    nse_provider = NSEDataProvider()
+    try:
+        count = await service.seed_dynamic_universes(nse_provider)
+
+        # Also refresh All NSE and F&O universes
+        await service.create_all_nse_universe()
+        await service.create_fo_universe()
+
+        await db.commit()
+
+        return {
+            "message": f"Successfully refreshed {count} dynamic universes",
+            "refreshed_count": count,
+            "dynamic_universes": list(DYNAMIC_UNIVERSES.keys()),
+        }
+    finally:
+        await nse_provider.close()
+
+
+@router.get("/universes/index/{index_name}/constituents")
+async def get_index_constituents(
+    current_user: CurrentUser,
+    index_name: str,
+) -> dict:
+    """Fetch current constituents of an NSE index directly.
+
+    This is a live fetch from NSE, not from the database.
+
+    Args:
+        index_name: NSE index name (e.g., "NIFTY 500", "NIFTY BANK")
+
+    Returns:
+        Index constituents with basic quote data
+    """
+    nse_provider = NSEDataProvider()
+    try:
+        constituents = await nse_provider.get_index_constituents(index_name)
+        if not constituents:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No constituents found for index: {index_name}"
+            )
+
+        return {
+            "index": index_name,
+            "count": len(constituents),
+            "constituents": constituents,
+        }
+    finally:
+        await nse_provider.close()
