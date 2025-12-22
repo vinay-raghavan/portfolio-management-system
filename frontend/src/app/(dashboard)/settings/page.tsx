@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -15,7 +16,13 @@ const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
 ];
 
 export default function SettingsPage() {
+  const [mounted, setMounted] = useState(false);
   const { currency, setCurrency, theme, setTheme } = useUIStore();
+
+  // Prevent hydration mismatch with persisted state
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -41,18 +48,27 @@ export default function SettingsPage() {
               <CardContent className="space-y-6">
                 <div className="grid gap-2">
                   <Label htmlFor="currency">Currency</Label>
-                  <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-                    <SelectTrigger id="currency" className="w-[250px]">
-                      <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CURRENCIES.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.symbol} {c.label} ({c.value})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {mounted ? (
+                    <Select
+                      value={currency}
+                      onValueChange={(v) => setCurrency(v as Currency)}
+                    >
+                      <SelectTrigger id="currency" className="w-[250px]">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCIES.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.symbol} {c.label} ({c.value})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-10 w-[250px] rounded-md border border-input bg-background px-3 py-2 text-sm">
+                      Loading...
+                    </div>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     Currency used for displaying prices and portfolio values
                   </p>
@@ -60,16 +76,25 @@ export default function SettingsPage() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="theme">Theme</Label>
-                  <Select value={theme} onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}>
-                    <SelectTrigger id="theme" className="w-[250px]">
-                      <SelectValue placeholder="Select theme" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                      <SelectItem value="system">System</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {mounted ? (
+                    <Select
+                      value={theme}
+                      onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}
+                    >
+                      <SelectTrigger id="theme" className="w-[250px]">
+                        <SelectValue placeholder="Select theme" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="dark">Dark</SelectItem>
+                        <SelectItem value="system">System</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="h-10 w-[250px] rounded-md border border-input bg-background px-3 py-2 text-sm">
+                      Loading...
+                    </div>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     Choose your preferred color theme
                   </p>

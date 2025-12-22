@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { CandlestickChart } from '@/components/charts';
 import { marketDataApi, analysisApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
-import { formatCurrency, formatPercent, formatCompactNumber, cn } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
 import { useUIStore } from '@/store';
 import { useCurrency } from '@/hooks';
 
@@ -283,11 +283,11 @@ export default function AnalysisPage() {
             <CardContent className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">P/E Ratio</span>
-                <span className="font-medium">{stockInfo.pe_ratio?.toFixed(2) ?? 'N/A'}</span>
+                <span className="font-medium">{stockInfo.pe_ratio != null ? safeToFixed(stockInfo.pe_ratio, 2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Forward P/E</span>
-                <span className="font-medium">{stockInfo.forward_pe?.toFixed(2) ?? 'N/A'}</span>
+                <span className="font-medium">{stockInfo.forward_pe != null ? safeToFixed(stockInfo.forward_pe, 2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">EPS</span>
@@ -295,7 +295,7 @@ export default function AnalysisPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">PEG Ratio</span>
-                <span className="font-medium">{stockInfo.peg_ratio?.toFixed(2) ?? 'N/A'}</span>
+                <span className="font-medium">{stockInfo.peg_ratio != null ? safeToFixed(stockInfo.peg_ratio, 2) : 'N/A'}</span>
               </div>
             </CardContent>
           </Card>
@@ -315,7 +315,7 @@ export default function AnalysisPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Beta</span>
-                <span className="font-medium">{stockInfo.beta?.toFixed(2) ?? 'N/A'}</span>
+                <span className="font-medium">{stockInfo.beta != null ? safeToFixed(stockInfo.beta, 2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Dividend Yield</span>
@@ -323,7 +323,7 @@ export default function AnalysisPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">P/B Ratio</span>
-                <span className="font-medium">{stockInfo.price_to_book?.toFixed(2) ?? 'N/A'}</span>
+                <span className="font-medium">{stockInfo.price_to_book != null ? safeToFixed(stockInfo.price_to_book, 2) : 'N/A'}</span>
               </div>
             </CardContent>
           </Card>
@@ -379,7 +379,7 @@ export default function AnalysisPage() {
               Technical Signal: {analysisData.signal.signal}
             </CardTitle>
             <CardDescription>
-              Trend: {analysisData.trend} • Confidence: {analysisData.signal.confidence.toFixed(0)}%
+              Trend: {analysisData.trend} • Confidence: {safeToFixed(analysisData.signal.confidence, 0)}%
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -393,7 +393,7 @@ export default function AnalysisPage() {
                     (analysisData.indicators.rsi_14 ?? 50) > 70 ? 'text-loss' :
                     (analysisData.indicators.rsi_14 ?? 50) < 30 ? 'text-profit' : ''
                   )}>
-                    {analysisData.indicators.rsi_14?.toFixed(1) ?? 'N/A'}
+                    {analysisData.indicators.rsi_14 != null ? safeToFixed(analysisData.indicators.rsi_14, 1) : 'N/A'}
                   </span>
                 </div>
               </div>

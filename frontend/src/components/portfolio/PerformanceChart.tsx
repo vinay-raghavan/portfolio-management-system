@@ -15,7 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { portfolioApi } from '@/lib/api';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, safeToFixed, cn } from '@/lib/utils';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
 
@@ -73,7 +73,7 @@ export function PerformanceChart() {
         <div>
           <CardTitle>Portfolio Performance</CardTitle>
           <p className={cn('text-sm mt-1', isPositive ? 'text-profit' : 'text-loss')}>
-            {isPositive ? '+' : ''}{formatCurrency(totalChange)} ({totalChangePct.toFixed(2)}%)
+            {isPositive ? '+' : ''}{formatCurrency(totalChange)} ({safeToFixed(totalChangePct, 2)}%)
           </p>
         </div>
         <div className="flex gap-1">

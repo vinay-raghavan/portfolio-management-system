@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { tradingApi } from '@/lib/api';
 import { useQuote } from '@/hooks';
 import { useTradingStore, useNotificationStore } from '@/store';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, safeToFixed, cn } from '@/lib/utils';
 import type { OrderSide, OrderType, ProductType, OrderCreate } from '@/types';
 
 interface OrderEntryFormProps {
@@ -126,9 +126,9 @@ export function OrderEntryForm({ onSuccess, onConfirm }: OrderEntryFormProps) {
             />
             {quote && (
               <p className="text-sm text-muted-foreground">
-                LTP: {formatCurrency(quote.price)} 
+                LTP: {formatCurrency(quote.price)}
                 <span className={cn('ml-2', (quote.change_pct ?? 0) >= 0 ? 'text-profit' : 'text-loss')}>
-                  ({(quote.change_pct ?? 0) >= 0 ? '+' : ''}{quote.change_pct?.toFixed(2)}%)
+                  ({(quote.change_pct ?? 0) >= 0 ? '+' : ''}{safeToFixed(quote.change_pct, 2)}%)
                 </span>
               </p>
             )}
