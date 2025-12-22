@@ -10,6 +10,7 @@ from app.modules.signals.strategies.composite import (
 )
 from app.modules.signals.strategies.macd import MACDCrossoverStrategy
 from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
+from app.modules.signals.strategies.orb import ORBStrategy
 from app.modules.signals.strategies.registry import StrategyRegistry
 from app.modules.signals.strategies.rsi import RSIStrategy
 
@@ -21,6 +22,7 @@ __all__ = [
     "MACDCrossoverStrategy",
     "MovingAverageCrossoverStrategy",
     "BollingerSqueezeStrategy",
+    "ORBStrategy",
     # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",
