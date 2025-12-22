@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.modules.signals.strategies.base import BaseStrategy, SignalResult
+from app.modules.signals.strategies.base import BaseStrategy, SignalData
 
 
 @dataclass
@@ -157,7 +157,7 @@ class BacktestRunner:
 
         return self._calculate_results(data)
 
-    def _generate_signals(self, data: pd.DataFrame) -> list[SignalResult | None]:
+    def _generate_signals(self, data: pd.DataFrame) -> list[SignalData | None]:
         """Generate signals for all data points."""
         signals = []
         for i in range(len(data)):
@@ -173,7 +173,7 @@ class BacktestRunner:
         return signals
 
     def _enter_position(
-        self, date: datetime, price: Decimal, signal: SignalResult
+        self, date: datetime, price: Decimal, signal: SignalData
     ) -> None:
         """Enter a new position."""
         # Apply slippage

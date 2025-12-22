@@ -90,13 +90,7 @@ async def list_backtests(
 async def list_available_strategies():
     """List all available strategies for backtesting."""
     strategies = StrategyRegistry.list_strategies()
-    return [
-        {
-            "name": name,
-            "description": StrategyRegistry.get_strategy_info(name),
-        }
-        for name in strategies
-    ]
+    return strategies
 
 
 @router.get("/{backtest_id}", response_model=BacktestResponse)
