@@ -1771,12 +1771,248 @@ flowchart TB
 - [ ] Strategy marketplace (share/discover strategies)
 - [ ] Visual strategy builder (no-code)
 - [ ] Multi-timeframe analysis
-- [ ] Machine learning signals
-  - [ ] Price prediction models
-  - [ ] Sentiment analysis (news, social)
-  - [ ] Pattern recognition
-- [ ] Reinforcement learning agents
 - [ ] Portfolio optimization (Markowitz, Black-Litterman)
+
+#### 3.4.1 Machine Learning for Trading
+
+**Overview**: Extend the rule-based strategy framework with ML-powered signal generation. Top quantitative firms (Renaissance Technologies, Two Sigma, Citadel, D.E. Shaw) extensively use ML for alpha generation.
+
+**ML Strategy Architecture:**
+```python
+class MLStrategy(Strategy):
+    """Base class for ML-powered trading strategies."""
+    model: Any  # sklearn, lightgbm, pytorch model
+    feature_pipeline: FeaturePipeline
+
+    @abstractmethod
+    def extract_features(self, data: DataFrame) -> DataFrame:
+        """Extract features from market data for ML model."""
+        pass
+
+    def generate_signals(self, data: DataFrame) -> List[Signal]:
+        features = self.extract_features(data)
+        predictions = self.model.predict(features)
+        return self._predictions_to_signals(predictions)
+```
+
+**Supervised ML Models (Production-Ready):**
+
+| Model | Use Case | Maturity | Priority |
+|-------|----------|----------|----------|
+| XGBoost/LightGBM/CatBoost | Return classification, signal strength | Production-ready | High |
+| Random Forests | Feature importance, ensemble predictions | Production-ready | High |
+| LSTM/GRU (RNN) | Time-series prediction, sequential patterns | Production-ready | Medium |
+| Transformers | NLP sentiment, complex temporal patterns | Production-ready | Medium |
+| Autoencoders | Risk factor extraction, dimensionality reduction | Research-grade | Low |
+| CNNs | Pattern recognition in candlestick images | Research-grade | Low |
+
+**Tasks - Gradient Boosting Models:**
+- [ ] Create `MLStrategy` abstract base class extending `Strategy`
+- [ ] Implement `XGBoostStrategy` for return classification
+  - Features: Technical indicators, price patterns, volume metrics
+  - Target: Next-day return direction (up/down/flat)
+  - Configurable prediction threshold
+- [ ] Implement `LightGBMStrategy` for signal strength prediction
+- [ ] Create feature engineering pipeline
+  - Technical indicators (RSI, MACD, BB, ATR, etc.)
+  - Price-based features (returns, volatility, momentum)
+  - Volume features (relative volume, OBV)
+  - Calendar features (day of week, month, quarter)
+- [ ] Model training pipeline with walk-forward validation
+- [ ] Model versioning and experiment tracking (MLflow/Weights & Biases)
+- [ ] A/B testing framework for strategy comparison
+
+**Tasks - Deep Learning Models:**
+- [ ] Implement `LSTMStrategy` for time-series prediction
+  - Sequence length configuration
+  - Multi-step ahead forecasting
+  - Attention mechanism integration
+- [ ] Implement `TransformerStrategy` for temporal patterns
+- [ ] Create `CNNStrategy` for candlestick pattern recognition
+  - Convert OHLCV to image representation
+  - Based on research: Sezer & Ozbahoglu (2018)
+- [ ] GPU inference optimization for real-time predictions
+- [ ] Model ensemble framework (combine multiple models)
+
+**Tasks - NLP & Sentiment Analysis:**
+- [ ] News sentiment analysis using pre-trained models
+  - FinBERT for financial text
+  - Earnings call transcript analysis
+- [ ] SEC filing sentiment extraction
+- [ ] Social media sentiment (Twitter/X, StockTwits)
+- [ ] Event-driven signals from news
+- [ ] Sentiment aggregation and signal generation
+
+**Industry Reference - What Top Firms Use:**
+- **Renaissance Technologies**: Statistical arbitrage + proprietary ML (Medallion Fund: ~66% CAGR)
+- **Two Sigma**: Alternative data + supervised ML + RL for allocation
+- **Citadel**: Full spectrum ML, RL for execution optimization
+- **D.E. Shaw**: NLP, alternative data, complex ML ensembles
+- **WorldQuant**: 101 Formulaic Alphas + ML feature engineering
+
+**Resources:**
+- Book: "Machine Learning for Algorithmic Trading, 2nd Edition" by Stefan Jansen
+  - GitHub: https://github.com/stefan-jansen/machine-learning-for-trading
+  - Covers: Linear models, trees, deep learning, RL for trading
+- Paper: WorldQuant "101 Formulaic Alphas" (Kakushadze 2016)
+- Library: TA-Lib for technical indicator computation
+
+#### 3.4.2 Reinforcement Learning for Trading
+
+**Overview**: Train agents that learn optimal trading policies through interaction with the market environment. More experimental than supervised ML but used by top firms for execution optimization and portfolio allocation.
+
+**RL Trading Flow Diagram:**
+```mermaid
+flowchart TB
+    subgraph Environment["🌍 Market Environment"]
+        MarketState[Market State<br/>prices, positions, indicators]
+        Reward[Reward Function<br/>returns, Sharpe, risk-adjusted]
+    end
+
+    subgraph Agent["🤖 RL Trading Agent"]
+        StateEncoder[State Encoder<br/>features from market data]
+        PolicyNetwork[Policy Network<br/>action selection]
+        ValueNetwork[Value Network<br/>state value estimation]
+    end
+
+    subgraph Actions["📊 Trading Actions"]
+        Buy[Buy / Long]
+        Sell[Sell / Short]
+        Hold[Hold / No Action]
+        PositionSize[Position Sizing]
+    end
+
+    subgraph Training["🔄 Training Loop"]
+        Experience[Experience Replay]
+        Optimization[Policy Optimization]
+        Evaluation[Backtest Evaluation]
+    end
+
+    MarketState --> StateEncoder
+    StateEncoder --> PolicyNetwork
+    StateEncoder --> ValueNetwork
+    PolicyNetwork --> Actions
+    Actions --> Environment
+    Environment --> Reward
+    Reward --> Training
+    Training --> Agent
+
+    style Environment fill:#e3f2fd,stroke:#1976d2
+    style Agent fill:#e8f5e9,stroke:#4caf50
+    style Actions fill:#fff3e0,stroke:#ff9800
+    style Training fill:#f3e5f5,stroke:#9c27b0
+```
+
+**RL Algorithms for Trading:**
+
+| Algorithm | Type | Use Case | Complexity |
+|-----------|------|----------|------------|
+| DQN (Deep Q-Network) | Value-based | Discrete actions (buy/sell/hold) | Medium |
+| PPO (Proximal Policy Optimization) | Policy-based | Continuous position sizing | High |
+| A2C/A3C (Actor-Critic) | Hybrid | Complex action spaces | High |
+| SAC (Soft Actor-Critic) | Off-policy | Sample-efficient learning | High |
+| TD3 (Twin Delayed DDPG) | Off-policy | Continuous control | High |
+
+**Tasks - RL Environment:**
+- [ ] Create `TradingEnvironment` compatible with OpenAI Gym interface
+  ```python
+  class TradingEnvironment(gym.Env):
+      """Custom trading environment for RL agents."""
+
+      def __init__(self, data: DataFrame, initial_balance: float):
+          self.action_space = spaces.Discrete(3)  # Buy, Sell, Hold
+          self.observation_space = spaces.Box(...)  # Market features
+
+      def step(self, action) -> Tuple[obs, reward, done, info]:
+          """Execute action and return new state."""
+          pass
+
+      def reset(self) -> obs:
+          """Reset environment to initial state."""
+          pass
+  ```
+- [ ] Implement realistic transaction costs and slippage
+- [ ] Support multiple reward functions:
+  - [ ] Simple returns
+  - [ ] Risk-adjusted returns (Sharpe ratio)
+  - [ ] Sortino ratio (downside risk)
+  - [ ] Maximum drawdown penalty
+  - [ ] Custom composite rewards
+- [ ] Multi-asset environment support
+- [ ] Integration with paper trading broker
+
+**Tasks - RL Agents:**
+- [ ] Implement DQN agent for discrete trading decisions
+  - Experience replay buffer
+  - Target network for stability
+  - Epsilon-greedy exploration
+- [ ] Implement PPO agent for continuous position sizing
+  - Clipped surrogate objective
+  - Generalized Advantage Estimation (GAE)
+- [ ] Implement A2C/A3C for parallel training
+- [ ] State representation engineering:
+  - [ ] Price history (normalized)
+  - [ ] Technical indicators
+  - [ ] Current position and P&L
+  - [ ] Time features (market hours remaining)
+- [ ] Action space design:
+  - [ ] Discrete: Buy/Sell/Hold
+  - [ ] Continuous: Position size as percentage
+  - [ ] Multi-discrete: Asset + action
+
+**Tasks - RL Training Infrastructure:**
+- [ ] Walk-forward training with periodic retraining
+- [ ] Hyperparameter optimization (Optuna/Ray Tune)
+- [ ] Training stability monitoring
+- [ ] Policy checkpointing and versioning
+- [ ] Tensorboard integration for training visualization
+- [ ] Distributed training support (Ray RLlib)
+
+**Tasks - RL Evaluation & Safety:**
+- [ ] Backtesting trained policies
+- [ ] Out-of-sample performance validation
+- [ ] Policy behavior analysis:
+  - [ ] Action distribution visualization
+  - [ ] State-action heatmaps
+  - [ ] Risk metrics during evaluation
+- [ ] Maximum position limits (hard constraints)
+- [ ] Drawdown-based early stopping
+- [ ] Comparison with rule-based baseline strategies
+
+**RL Challenges & Considerations:**
+- **Non-stationarity**: Markets change over time, policies may become stale
+- **Sample efficiency**: RL requires lots of data; consider synthetic data (GANs)
+- **Reward hacking**: Agent may find unintended ways to maximize reward
+- **Overfitting**: Easy to overfit to historical patterns
+- **Evaluation difficulty**: Hard to distinguish skill from luck
+
+**Research Papers:**
+- "Deep Reinforcement Learning for Automated Stock Trading" (2020)
+- "Reinforcement Learning for Optimal Execution" (2019)
+- "Time-series Generative Adversarial Networks" - for synthetic data (NeurIPS 2019)
+- "Autoencoder Asset Pricing Models" - Gu, Kelly, Xiu (2019)
+
+**Libraries & Frameworks:**
+- Stable-Baselines3: Production-ready RL algorithms
+- Ray RLlib: Scalable RL library
+- FinRL: RL library specifically for finance
+- OpenAI Gym: Environment interface standard
+
+#### 3.4.3 ML/RL Implementation Priority
+
+**Recommended Implementation Order:**
+
+| Phase | Approach | Prerequisites | Risk Level |
+|-------|----------|---------------|------------|
+| 1 | XGBoost/LightGBM classification | Backtesting framework | Low |
+| 2 | Feature engineering pipeline | Phase 1 complete | Low |
+| 3 | LSTM time-series prediction | Deep learning infra | Medium |
+| 4 | NLP sentiment signals | Text data pipeline | Medium |
+| 5 | DQN for discrete trading | RL environment | High |
+| 6 | PPO for position sizing | Phase 5 validated | High |
+| 7 | Multi-agent RL | Advanced RL expertise | Very High |
+
+**Key Insight**: Research shows hybrid approaches (traditional indicators + ML) often outperform pure ML models, especially without massive computational resources. Start with ensemble methods before attempting deep RL.
 
 ### 3.5 Mobile App
 > 🌿 **Branch:** `phase-3/mobile`
