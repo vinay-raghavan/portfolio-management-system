@@ -622,22 +622,15 @@ Enhanced position tracking.
 - [x] Average price calculation (FIFO method)
 - [x] Position limits and warnings
 
-#### 1.3.3 Funds & Margins
+#### 1.3.3 Funds & Margins ✅
 Track virtual funds for paper trading.
 
 **Tasks:**
-- [ ] Create `Funds` model
-  ```python
-  class Funds:
-      user_id: str
-      cash_balance: Decimal      # Available cash
-      margin_used: Decimal       # Blocked for positions
-      margin_available: Decimal  # Cash - Used
-      collateral: Decimal        # Stock collateral (future)
-  ```
-- [ ] Initialize new users with virtual cash
-- [ ] Update funds on trade execution
-- [ ] Margin calculation for F&O (basic)
+- [x] Create `Funds` model (`UserFunds` in `backend/app/modules/portfolio/models.py`)
+  - `user_id`, `cash_balance`, `margin_used`, `available_margin`, `collateral`
+- [x] Initialize new users with virtual cash (via `FundsService.initialize_funds()`)
+- [x] Update funds on trade execution (via `FundsService.process_trade_settlement()`)
+- [ ] Margin calculation for F&O (basic) - *deferred to F&O implementation*
 
 ---
 
@@ -718,12 +711,15 @@ flowchart TB
 - [x] Max intraday exposure
 - [x] Alert when approaching limits
 
-#### 1.4.3 Market Hours & Auto Square-off
+#### 1.4.3 Market Hours & Auto Square-off ✅
 **Tasks:**
 - [x] Define market hours per exchange
 - [x] Block orders outside market hours (or queue them)
 - [x] Auto square-off intraday positions at 3:15 PM
-- [ ] Pre-market/After-market order handling
+- [x] Pre-market/After-market order handling (AMO - After Market Orders)
+  - `is_amo` flag in order creation
+  - `AMO_PENDING` status for queued orders
+  - Celery task to process AMO orders at market open (9:15 AM IST)
 
 ---
 
