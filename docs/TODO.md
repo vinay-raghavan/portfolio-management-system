@@ -839,6 +839,8 @@ flowchart TB
 
 ### 1.6 Notification System (Week 4-5)
 > 🌿 **Branch:** `phase-1/notifications`
+>
+> 📖 **Implementation Guide:** [notification-system-implementation.md](./notification-system-implementation.md)
 
 **Goal**: Modular notification system that can send alerts via multiple channels. New channels can be added without changing core code.
 
