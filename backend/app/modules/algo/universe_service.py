@@ -493,7 +493,7 @@ class UniverseService:
         """
         created = 0
 
-        for key, definition in PREDEFINED_UNIVERSES.items():
+        for _key, definition in PREDEFINED_UNIVERSES.items():
             # Check if already exists
             result = await self.db.execute(
                 select(Universe).where(
@@ -626,7 +626,9 @@ class UniverseService:
             existing.symbols = symbols
             existing.description = f"{definition['description']} ({len(symbols)} stocks)"
             await self.db.flush()
-            logger.info(f"Updated dynamic universe: {definition['name']} with {len(symbols)} symbols")
+            logger.info(
+                f"Updated dynamic universe: {definition['name']} with {len(symbols)} symbols"
+            )
             return existing
 
         # Create new

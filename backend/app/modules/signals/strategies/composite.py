@@ -14,8 +14,9 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 
 class CombineLogic(str, Enum):
     """Logic for combining multiple strategy signals."""
+
     AND = "AND"  # All strategies must agree
-    OR = "OR"    # Any strategy triggers
+    OR = "OR"  # Any strategy triggers
     MAJORITY = "MAJORITY"  # Majority vote
     WEIGHTED = "WEIGHTED"  # Weighted by strength/confidence
 
@@ -23,6 +24,7 @@ class CombineLogic(str, Enum):
 @dataclass
 class StrategyComponent:
     """A component strategy within a composite strategy."""
+
     strategy_name: str
     params: dict = field(default_factory=dict)
     weight: float = 1.0  # Weight for WEIGHTED logic
@@ -31,13 +33,13 @@ class StrategyComponent:
 
 class CompositeStrategy(BaseStrategy):
     """Strategy that combines multiple indicators/strategies.
-    
+
     Allows combining strategies like RSI + MACD with configurable logic:
     - AND: All strategies must give same signal
-    - OR: Any strategy trigger is sufficient  
+    - OR: Any strategy trigger is sufficient
     - MAJORITY: More than half must agree
     - WEIGHTED: Signal based on weighted combination
-    
+
     Example:
         composite = CompositeStrategy(
             name="rsi_macd_confluence",
@@ -48,9 +50,9 @@ class CompositeStrategy(BaseStrategy):
             combine_logic=CombineLogic.AND
         )
     """
-    
+
     default_timeframe = "1d"
-    
+
     def __init__(
         self,
         name: str,
@@ -65,7 +67,7 @@ class CompositeStrategy(BaseStrategy):
         risk_reward_ratio: float = 2.0,
     ):
         """Initialize composite strategy.
-        
+
         Args:
             name: Unique strategy name
             description: Human-readable description
@@ -88,26 +90,23 @@ class CompositeStrategy(BaseStrategy):
         self.atr_period = atr_period
         self.atr_multiplier = Decimal(str(atr_multiplier))
         self.risk_reward_ratio = Decimal(str(risk_reward_ratio))
-        
+
         # Cache for component strategy instances
         self._component_instances: list[BaseStrategy] = []
         self._initialized = False
-    
+
     def _initialize_components(self) -> None:
         """Lazily initialize component strategy instances."""
         if self._initialized:
             return
-            
+
         for component in self.components:
-            strategy = StrategyRegistry.get_strategy(
-                component.strategy_name, 
-                component.params
-            )
+            strategy = StrategyRegistry.get_strategy(component.strategy_name, component.params)
             if strategy:
                 self._component_instances.append(strategy)
-        
+
         self._initialized = True
-    
+
     def get_parameters(self) -> dict:
         """Return the strategy's configurable parameters."""
         return {
@@ -129,23 +128,23 @@ class CompositeStrategy(BaseStrategy):
             "atr_multiplier": float(self.atr_multiplier),
             "risk_reward_ratio": float(self.risk_reward_ratio),
         }
-    
+
     def generate_signals(self, df: pd.DataFrame, symbol: str) -> list[SignalData]:
         """Generate combined signals from all component strategies."""
         self._initialize_components()
-        
+
         if not self._component_instances:
             return []
-        
+
         # Collect signals from all components
         component_signals: list[tuple[StrategyComponent, list[SignalData]]] = []
-        for component, strategy in zip(self.components, self._component_instances):
+        for component, strategy in zip(self.components, self._component_instances, strict=False):
             signals = strategy.generate_signals(df, symbol)
             component_signals.append((component, signals))
-        
+
         # Combine signals based on logic
         return self._combine_signals(df, symbol, component_signals)
-    
+
     def _combine_signals(
         self,
         df: pd.DataFrame,
@@ -154,16 +153,16 @@ class CompositeStrategy(BaseStrategy):
     ) -> list[SignalData]:
         """Combine signals from multiple strategies based on combine logic."""
         from ta.volatility import AverageTrueRange
-        
+
         # Extract primary signals (first signal from each strategy)
         signals_by_type: dict[SignalType, list[tuple[StrategyComponent, SignalData]]] = {
             SignalType.BUY: [],
             SignalType.SELL: [],
             SignalType.HOLD: [],
         }
-        
+
         all_indicators: dict[str, Any] = {}
-        
+
         for component, signals in component_signals:
             if signals:
                 signal = signals[0]  # Take first signal
@@ -203,33 +202,37 @@ class CompositeStrategy(BaseStrategy):
                 current_price, stop_loss, final_signal_type, self.risk_reward_ratio
             )
 
-            return [SignalData(
-                symbol=symbol,
-                signal_type=final_signal_type,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators=all_indicators,
-                notes=notes,
-            )]
+            return [
+                SignalData(
+                    symbol=symbol,
+                    signal_type=final_signal_type,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators=all_indicators,
+                    notes=notes,
+                )
+            ]
         else:
-            return [SignalData(
-                symbol=symbol,
-                signal_type=SignalType.HOLD,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=None,
-                stop_loss=None,
-                take_profit=None,
-                risk_reward_ratio=None,
-                indicators=all_indicators,
-                notes=notes,
-            )]
+            return [
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators=all_indicators,
+                    notes=notes,
+                )
+            ]
 
     def _determine_signal(
         self,
@@ -264,13 +267,23 @@ class CompositeStrategy(BaseStrategy):
             strength = self._avg_strength(buy_signals)
             confidence = self._avg_confidence(buy_signals)
             strategies = [c.strategy_name for c, _ in buy_signals]
-            return SignalType.BUY, strength, confidence, f"All strategies agree: BUY ({', '.join(strategies)})"
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"All strategies agree: BUY ({', '.join(strategies)})",
+            )
 
         if len(sell_signals) == total:
             strength = self._avg_strength(sell_signals)
             confidence = self._avg_confidence(sell_signals)
             strategies = [c.strategy_name for c, _ in sell_signals]
-            return SignalType.SELL, strength, confidence, f"All strategies agree: SELL ({', '.join(strategies)})"
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"All strategies agree: SELL ({', '.join(strategies)})",
+            )
 
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No unanimous agreement"
 
@@ -286,16 +299,36 @@ class CompositeStrategy(BaseStrategy):
             sell_strength = self._max_strength(sell_signals)
             if buy_strength >= sell_strength:
                 best = max(buy_signals, key=lambda x: float(x[1].strength))
-                return SignalType.BUY, best[1].strength, best[1].confidence, f"BUY from {best[0].strategy_name}"
+                return (
+                    SignalType.BUY,
+                    best[1].strength,
+                    best[1].confidence,
+                    f"BUY from {best[0].strategy_name}",
+                )
             else:
                 best = max(sell_signals, key=lambda x: float(x[1].strength))
-                return SignalType.SELL, best[1].strength, best[1].confidence, f"SELL from {best[0].strategy_name}"
+                return (
+                    SignalType.SELL,
+                    best[1].strength,
+                    best[1].confidence,
+                    f"SELL from {best[0].strategy_name}",
+                )
         elif buy_signals:
             best = max(buy_signals, key=lambda x: float(x[1].strength))
-            return SignalType.BUY, best[1].strength, best[1].confidence, f"BUY from {best[0].strategy_name}"
+            return (
+                SignalType.BUY,
+                best[1].strength,
+                best[1].confidence,
+                f"BUY from {best[0].strategy_name}",
+            )
         elif sell_signals:
             best = max(sell_signals, key=lambda x: float(x[1].strength))
-            return SignalType.SELL, best[1].strength, best[1].confidence, f"SELL from {best[0].strategy_name}"
+            return (
+                SignalType.SELL,
+                best[1].strength,
+                best[1].confidence,
+                f"SELL from {best[0].strategy_name}",
+            )
 
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No signals triggered"
 
@@ -311,14 +344,31 @@ class CompositeStrategy(BaseStrategy):
         if len(buy_signals) >= min_agreement:
             strength = self._avg_strength(buy_signals)
             confidence = self._avg_confidence(buy_signals) * Decimal(str(len(buy_signals) / total))
-            return SignalType.BUY, strength, confidence, f"Majority BUY ({len(buy_signals)}/{total})"
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"Majority BUY ({len(buy_signals)}/{total})",
+            )
 
         if len(sell_signals) >= min_agreement:
             strength = self._avg_strength(sell_signals)
-            confidence = self._avg_confidence(sell_signals) * Decimal(str(len(sell_signals) / total))
-            return SignalType.SELL, strength, confidence, f"Majority SELL ({len(sell_signals)}/{total})"
+            confidence = self._avg_confidence(sell_signals) * Decimal(
+                str(len(sell_signals) / total)
+            )
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"Majority SELL ({len(sell_signals)}/{total})",
+            )
 
-        return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), f"No majority (need {min_agreement}/{total})"
+        return (
+            SignalType.HOLD,
+            Decimal("0.5"),
+            Decimal("0.5"),
+            f"No majority (need {min_agreement}/{total})",
+        )
 
     def _combine_weighted(
         self,
@@ -334,13 +384,27 @@ class CompositeStrategy(BaseStrategy):
             return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No weighted signals"
 
         if buy_weight > sell_weight and buy_weight >= self.min_combined_strength:
-            strength = Decimal(str(buy_weight / (buy_weight + sell_weight + 0.001))).quantize(Decimal("0.0001"))
+            strength = Decimal(str(buy_weight / (buy_weight + sell_weight + 0.001))).quantize(
+                Decimal("0.0001")
+            )
             confidence = self._avg_confidence(buy_signals)
-            return SignalType.BUY, strength, confidence, f"Weighted BUY ({buy_weight:.2f} vs {sell_weight:.2f})"
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"Weighted BUY ({buy_weight:.2f} vs {sell_weight:.2f})",
+            )
         elif sell_weight > buy_weight and sell_weight >= self.min_combined_strength:
-            strength = Decimal(str(sell_weight / (buy_weight + sell_weight + 0.001))).quantize(Decimal("0.0001"))
+            strength = Decimal(str(sell_weight / (buy_weight + sell_weight + 0.001))).quantize(
+                Decimal("0.0001")
+            )
             confidence = self._avg_confidence(sell_signals)
-            return SignalType.SELL, strength, confidence, f"Weighted SELL ({sell_weight:.2f} vs {buy_weight:.2f})"
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"Weighted SELL ({sell_weight:.2f} vs {buy_weight:.2f})",
+            )
 
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "Weighted signals inconclusive"
 
@@ -394,12 +458,14 @@ class CompositeStrategyFactory:
         """
         component_list = []
         for comp in components:
-            component_list.append(StrategyComponent(
-                strategy_name=comp["strategy"],
-                params=comp.get("params", {}),
-                weight=comp.get("weight", 1.0),
-                required=comp.get("required", False),
-            ))
+            component_list.append(
+                StrategyComponent(
+                    strategy_name=comp["strategy"],
+                    params=comp.get("params", {}),
+                    weight=comp.get("weight", 1.0),
+                    required=comp.get("required", False),
+                )
+            )
 
         logic = CombineLogic(combine_logic.upper())
 
@@ -428,7 +494,7 @@ class CompositeStrategyFactory:
             {
                 "name": strategy.name,
                 "description": strategy.description,
-            }
+            },
         )
 
         # Store the configuration
@@ -445,6 +511,7 @@ class CompositeStrategyFactory:
 
         # Override __init__ to use stored config
         original_init = CompositeStrategy.__init__
+
         def new_init(self, **params):
             config = strategy_class._config.copy()
             config.update(params)
@@ -466,4 +533,3 @@ class CompositeStrategyFactory:
 
         StrategyRegistry.register(strategy_class)
         return strategy
-

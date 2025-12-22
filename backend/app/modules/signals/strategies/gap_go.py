@@ -5,7 +5,7 @@ Gaps indicate overnight imbalance and often continue in the gap direction.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from decimal import Decimal
 from enum import Enum
 
@@ -19,7 +19,7 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 
 class GapType(str, Enum):
     """Type of gap."""
-    
+
     GAP_UP = "gap_up"
     GAP_DOWN = "gap_down"
     NO_GAP = "no_gap"
@@ -28,7 +28,7 @@ class GapType(str, Enum):
 @dataclass
 class GapInfo:
     """Information about an opening gap."""
-    
+
     gap_type: GapType
     gap_size: Decimal
     gap_pct: Decimal
@@ -40,33 +40,33 @@ class GapInfo:
 @StrategyRegistry.register
 class GapAndGoStrategy(BaseStrategy):
     """Gap and Go Strategy.
-    
+
     Trades in the direction of significant opening gaps:
     1. Identifies gap up/down at market open
     2. Waits for first candle to confirm gap direction
     3. BUY on gap up with bullish confirmation
     4. SELL on gap down with bearish confirmation
     5. Uses gap fill levels and ATR for exits
-    
+
     Gap types:
     - Full Gap Up: Open > Previous day's high
-    - Full Gap Down: Open < Previous day's low  
+    - Full Gap Down: Open < Previous day's low
     - Partial Gap: Open above/below previous close but within range
-    
+
     Best suited for:
     - High volume stocks with significant news/earnings
     - Gaps of 1-5% (too small may fill, too large may reverse)
     - First 30-60 minutes of trading
     """
-    
+
     name = "gap_go"
     description = "Gap and Go - Trade in direction of opening gaps"
     default_timeframe = "5m"
-    
+
     # NSE market hours
     MARKET_OPEN = time(9, 15)
     MARKET_CLOSE = time(15, 30)
-    
+
     def __init__(
         self,
         min_gap_pct: float = 1.0,  # Minimum gap % to trade
@@ -83,7 +83,7 @@ class GapAndGoStrategy(BaseStrategy):
         no_trade_after: str = "11:00",  # Gaps are morning trades
     ):
         """Initialize Gap and Go strategy.
-        
+
         Args:
             min_gap_pct: Minimum gap percentage to trade
             max_gap_pct: Maximum gap percentage
@@ -110,7 +110,7 @@ class GapAndGoStrategy(BaseStrategy):
         self.risk_reward_ratio = Decimal(str(risk_reward_ratio))
         self.max_fill_target = max_fill_target
         self.no_trade_after = datetime.strptime(no_trade_after, "%H:%M").time()
-    
+
     def get_parameters(self) -> dict:
         """Return the strategy's configurable parameters."""
         return {
@@ -127,7 +127,7 @@ class GapAndGoStrategy(BaseStrategy):
             "max_fill_target": self.max_fill_target,
             "no_trade_after": self.no_trade_after.strftime("%H:%M"),
         }
-    
+
     def _to_decimal(self, value: float) -> Decimal:
         """Convert float to Decimal."""
         return Decimal(str(round(value, 2)))
@@ -227,11 +227,13 @@ class GapAndGoStrategy(BaseStrategy):
         if len(df) < self.confirmation_candles:
             return False, Decimal("0"), "Insufficient candles"
 
-        confirm_candles = df.iloc[:self.confirmation_candles]
+        confirm_candles = df.iloc[: self.confirmation_candles]
 
         # Check volume
         confirm_volume = confirm_candles["Volume"].sum()
-        has_volume = confirm_volume >= (avg_volume * self.volume_confirmation * self.confirmation_candles)
+        has_volume = confirm_volume >= (
+            avg_volume * self.volume_confirmation * self.confirmation_candles
+        )
 
         # Get confirmation candle(s) behavior
         first_open = confirm_candles["Open"].iloc[0]
@@ -255,7 +257,7 @@ class GapAndGoStrategy(BaseStrategy):
                 reason += ", no confirmation (close > open)"
 
         if has_volume:
-            reason += f" (strong volume)"
+            reason += " (strong volume)"
 
         # Calculate strength
         strength = Decimal("0.5")
@@ -341,10 +343,7 @@ class GapAndGoStrategy(BaseStrategy):
         # Calculate stop loss
         if self.stop_loss_method == "gap_midpoint":
             gap_midpoint = (gap.open_price + gap.prev_close) / 2
-            if signal_type == SignalType.BUY:
-                stop_loss = gap_midpoint
-            else:
-                stop_loss = gap_midpoint
+            stop_loss = gap_midpoint  # Same for both BUY and SELL
         elif self.stop_loss_method == "prev_close":
             stop_loss = gap.prev_close
         elif self.stop_loss_method == "atr" and atr:
@@ -405,4 +404,3 @@ class GapAndGoStrategy(BaseStrategy):
         )
 
         return [signal]
-

@@ -19,7 +19,7 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 @dataclass
 class OpeningRange:
     """Opening range data structure."""
-    
+
     high: Decimal
     low: Decimal
     range_size: Decimal
@@ -32,30 +32,30 @@ class OpeningRange:
 @StrategyRegistry.register
 class ORBStrategy(BaseStrategy):
     """Opening Range Breakout Strategy.
-    
+
     Intraday strategy that:
     1. Calculates the high and low of the first N minutes after market open
     2. Generates BUY signal on breakout above the opening range high
     3. Generates SELL signal on breakdown below the opening range low
     4. Uses ATR-based or range-based stop losses
     5. Has configurable target based on risk:reward ratio
-    
+
     Best suited for:
     - High-volume stocks with good liquidity
     - Volatile days (news/earnings)
     - First 2-3 hours of trading
-    
+
     NSE market opens at 9:15 AM IST, so default range is 9:15-9:30 (15 min).
     """
-    
+
     name = "orb"
     description = "Opening Range Breakout - Trade breakouts from first N minutes"
     default_timeframe = "5m"  # 5-minute candles for intraday
-    
+
     # NSE market hours
     MARKET_OPEN = time(9, 15)
     MARKET_CLOSE = time(15, 30)
-    
+
     def __init__(
         self,
         range_minutes: int = 15,  # First 15 minutes for opening range
@@ -71,7 +71,7 @@ class ORBStrategy(BaseStrategy):
         no_trade_after: str = "14:00",  # Don't enter after this time (IST)
     ):
         """Initialize ORB strategy.
-        
+
         Args:
             range_minutes: Minutes for opening range calculation (default 15)
             breakout_buffer_pct: Buffer % above/below range for entry
@@ -96,10 +96,10 @@ class ORBStrategy(BaseStrategy):
         self.risk_reward_ratio = Decimal(str(risk_reward_ratio))
         self.max_entries_per_day = max_entries_per_day
         self.no_trade_after = datetime.strptime(no_trade_after, "%H:%M").time()
-        
+
         # Track entries per day (for paper trading/backtesting)
         self._daily_entries: dict[str, int] = {}
-    
+
     def get_parameters(self) -> dict:
         """Return the strategy's configurable parameters."""
         return {
@@ -115,7 +115,7 @@ class ORBStrategy(BaseStrategy):
             "max_entries_per_day": self.max_entries_per_day,
             "no_trade_after": self.no_trade_after.strftime("%H:%M"),
         }
-    
+
     def _to_decimal(self, value: float) -> Decimal:
         """Convert float to Decimal."""
         return Decimal(str(round(value, 2)))
@@ -157,9 +157,7 @@ class ORBStrategy(BaseStrategy):
         market_open = datetime.combine(target_date, self.MARKET_OPEN)
         range_end = market_open + timedelta(minutes=self.range_minutes)
 
-        range_candles = day_data[
-            (day_data.index >= market_open) & (day_data.index < range_end)
-        ]
+        range_candles = day_data[(day_data.index >= market_open) & (day_data.index < range_end)]
 
         if range_candles.empty:
             return None
@@ -220,8 +218,9 @@ class ORBStrategy(BaseStrategy):
             is_downside_breakout = low < breakout_low
 
         if is_upside_breakout:
-            strength = min(Decimal("1.0"),
-                          Decimal("0.5") + (close - breakout_high) / opening_range.range_size)
+            strength = min(
+                Decimal("1.0"), Decimal("0.5") + (close - breakout_high) / opening_range.range_size
+            )
             if has_volume:
                 strength = min(Decimal("1.0"), strength + Decimal("0.2"))
 
@@ -232,8 +231,9 @@ class ORBStrategy(BaseStrategy):
             return SignalType.BUY, strength, reason
 
         if is_downside_breakout:
-            strength = min(Decimal("1.0"),
-                          Decimal("0.5") + (breakout_low - close) / opening_range.range_size)
+            strength = min(
+                Decimal("1.0"), Decimal("0.5") + (breakout_low - close) / opening_range.range_size
+            )
             if has_volume:
                 strength = min(Decimal("1.0"), strength + Decimal("0.2"))
 
@@ -357,9 +357,7 @@ class ORBStrategy(BaseStrategy):
 
         # Calculate prices
         entry_price = self._to_decimal(current_candle["Close"])
-        stop_loss = self._calculate_orb_stop_loss(
-            entry_price, signal_type, opening_range, atr
-        )
+        stop_loss = self._calculate_orb_stop_loss(entry_price, signal_type, opening_range, atr)
         take_profit = self.calculate_take_profit(
             entry_price, stop_loss, signal_type, self.risk_reward_ratio
         )
@@ -410,4 +408,3 @@ class ORBStrategy(BaseStrategy):
     def reset_daily_entries(self) -> None:
         """Reset daily entry tracking. Call at start of each day."""
         self._daily_entries.clear()
-

@@ -437,7 +437,7 @@ async def refresh_dynamic_universe(
     if universe_key not in DYNAMIC_UNIVERSES:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown dynamic universe: {universe_key}. Available: {list(DYNAMIC_UNIVERSES.keys())}"
+            detail=f"Unknown dynamic universe: {universe_key}. Available: {list(DYNAMIC_UNIVERSES.keys())}",
         )
 
     service = UniverseService(db)
@@ -448,8 +448,7 @@ async def refresh_dynamic_universe(
         universe = await service.create_or_update_dynamic_universe(universe_key, nse_provider)
         if not universe:
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch universe {universe_key} from NSE"
+                status_code=500, detail=f"Failed to fetch universe {universe_key} from NSE"
             )
         await db.commit()
         return UniverseResponse.model_validate(universe)
@@ -513,8 +512,7 @@ async def get_index_constituents(
         constituents = await nse_provider.get_index_constituents(index_name)
         if not constituents:
             raise HTTPException(
-                status_code=404,
-                detail=f"No constituents found for index: {index_name}"
+                status_code=404, detail=f"No constituents found for index: {index_name}"
             )
 
         return {

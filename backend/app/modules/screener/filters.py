@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 class VolumeFilter(BaseFilter):
     """Filter stocks by volume criteria.
-    
+
     Checks for minimum average volume and volume spikes.
     """
-    
+
     filter_type = FilterType.VOLUME
     name = "volume_filter"
-    
+
     def configure(
         self,
         min_avg_volume: int = 100000,
@@ -28,7 +28,7 @@ class VolumeFilter(BaseFilter):
         **kwargs,
     ) -> None:
         """Configure volume filter.
-        
+
         Args:
             min_avg_volume: Minimum average daily volume
             volume_lookback: Days to calculate average volume
@@ -39,42 +39,42 @@ class VolumeFilter(BaseFilter):
         self.volume_lookback = volume_lookback
         self.volume_spike_threshold = volume_spike_threshold
         self.require_spike = require_spike
-    
+
     def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
         """Apply volume filter."""
         if len(data) < self.volume_lookback:
             return FilterResult(passed=False, reason="Insufficient data")
-        
+
         if "volume" not in data.columns:
             return FilterResult(passed=False, reason="No volume data")
-        
+
         try:
             avg_volume = data["volume"].tail(self.volume_lookback).mean()
             latest_volume = data["volume"].iloc[-1]
             volume_ratio = latest_volume / avg_volume if avg_volume > 0 else 0
-            
+
             has_min_volume = avg_volume >= self.min_avg_volume
             has_spike = volume_ratio >= self.volume_spike_threshold
-            
+
             if not has_min_volume:
                 return FilterResult(
                     passed=False,
                     score=0,
                     reason=f"Avg volume {avg_volume:,.0f} below minimum {self.min_avg_volume:,}",
                 )
-            
+
             if self.require_spike and not has_spike:
                 return FilterResult(
                     passed=False,
                     score=30,
                     reason=f"No volume spike (ratio: {volume_ratio:.2f}x)",
                 )
-            
+
             # Score based on volume quality
             vol_score = min(100, (avg_volume / self.min_avg_volume) * 50)
             spike_score = min(50, volume_ratio * 25) if has_spike else 0
             total_score = min(100, vol_score + spike_score)
-            
+
             return FilterResult(
                 passed=True,
                 score=total_score,
@@ -88,13 +88,13 @@ class VolumeFilter(BaseFilter):
 
 class MomentumFilter(BaseFilter):
     """Filter stocks by momentum criteria.
-    
+
     Checks RSI, rate of change, and proximity to 52-week high/low.
     """
-    
+
     filter_type = FilterType.MOMENTUM
     name = "momentum_filter"
-    
+
     def configure(
         self,
         rsi_period: int = 14,
@@ -114,33 +114,34 @@ class MomentumFilter(BaseFilter):
         self.near_52w_high_pct = near_52w_high_pct
         self.min_roc = min_roc
         self.roc_period = roc_period
-    
+
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> float:
         """Calculate RSI."""
         delta = prices.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        
+
         rs = gain / loss.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
         return rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50
-    
+
     def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
         """Apply momentum filter."""
         if len(data) < max(self.rsi_period, self.roc_period, 252):
             return FilterResult(passed=False, reason="Insufficient data for momentum")
-        
+
         try:
             close = data["close"]
             current_price = close.iloc[-1]
-            
+
             # Calculate RSI
             rsi = self._calculate_rsi(close, self.rsi_period)
-            
+
             # Calculate Rate of Change
-            roc = ((current_price - close.iloc[-self.roc_period]) / 
-                   close.iloc[-self.roc_period]) * 100
-            
+            roc = (
+                (current_price - close.iloc[-self.roc_period]) / close.iloc[-self.roc_period]
+            ) * 100
+
             # 52-week high/low
             high_52w = data["high"].tail(252).max()
             low_52w = data["low"].tail(252).min()
@@ -307,7 +308,7 @@ class BreakoutFilter(BaseFilter):
 
         try:
             # Range before today
-            range_data = data.iloc[-(self.lookback_period + 1):-1]
+            range_data = data.iloc[-(self.lookback_period + 1) : -1]
             range_high = range_data["high"].max()
             range_low = range_data["low"].min()
 
@@ -398,8 +399,8 @@ class ConsolidationFilter(BaseFilter):
             is_consolidating = range_pct <= self.max_range_pct
 
             # Check volume trend
-            first_half_vol = recent_data["volume"].iloc[:self.lookback_period // 2].mean()
-            second_half_vol = recent_data["volume"].iloc[self.lookback_period // 2:].mean()
+            first_half_vol = recent_data["volume"].iloc[: self.lookback_period // 2].mean()
+            second_half_vol = recent_data["volume"].iloc[self.lookback_period // 2 :].mean()
             vol_declining = second_half_vol < first_half_vol
 
             if not is_consolidating:
@@ -437,4 +438,3 @@ class ConsolidationFilter(BaseFilter):
         except Exception as e:
             logger.error(f"Consolidation filter error for {symbol}: {e}")
             return FilterResult(passed=False, reason=str(e))
-

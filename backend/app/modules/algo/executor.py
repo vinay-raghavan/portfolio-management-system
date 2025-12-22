@@ -161,7 +161,7 @@ class StrategyExecutor:
                 return result
 
             # Process signals and place orders
-            for symbol, signal in all_signals:
+            for _symbol, signal in all_signals:
                 order_result = await self._process_signal(
                     user_strategy=user_strategy,
                     execution=execution,

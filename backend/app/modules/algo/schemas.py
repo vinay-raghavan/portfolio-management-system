@@ -434,14 +434,5 @@ class KillSwitchToggle(BaseModel):
     square_off: bool = False
 
 
-class CircuitBreakerStatus(BaseModel):
-    """Circuit breaker status for a strategy."""
-
-    strategy_id: str
-    is_triggered: bool
-    trigger_reason: str | None = None
-    daily_loss: Decimal = Decimal("0")
-    consecutive_losses: int = 0
-    triggered_at: datetime | None = None
-    max_daily_loss: Decimal
-    max_consecutive_losses: int
+# NOTE: CircuitBreakerStatus is defined earlier in this file (line 248)
+# This duplicate was removed to fix F811 redefinition error

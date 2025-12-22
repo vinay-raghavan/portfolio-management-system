@@ -11,7 +11,7 @@ import pandas as pd
 
 class FilterType(str, Enum):
     """Types of screener filters."""
-    
+
     VOLUME = "volume"
     MOMENTUM = "momentum"
     BREAKOUT = "breakout"
@@ -25,7 +25,7 @@ class FilterType(str, Enum):
 @dataclass
 class ScreenerResult:
     """Result of screening a stock."""
-    
+
     symbol: str
     passed: bool
     score: float = 0.0  # 0-100 overall score
@@ -35,10 +35,10 @@ class ScreenerResult:
     screened_at: datetime = field(default_factory=datetime.utcnow)
 
 
-@dataclass 
+@dataclass
 class FilterResult:
     """Result of applying a single filter."""
-    
+
     passed: bool
     score: float = 0.0  # 0-100 filter score
     reason: str = ""
@@ -47,50 +47,50 @@ class FilterResult:
 
 class BaseFilter(ABC):
     """Base class for screener filters."""
-    
+
     filter_type: FilterType = FilterType.CUSTOM
     name: str = "base_filter"
     weight: float = 1.0  # Weight for composite scoring
-    
+
     def __init__(self, **params):
         """Initialize filter with parameters."""
         self.params = params
         self.configure(**params)
-    
-    def configure(self, **params) -> None:
+
+    def configure(self, **params) -> None:  # noqa: B027
         """Configure filter parameters. Override in subclasses."""
         pass
-    
+
     @abstractmethod
     def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
         """Apply filter to a stock's data.
-        
+
         Args:
             symbol: Stock symbol
             data: OHLCV DataFrame with at minimum 'close', 'volume' columns
-            
+
         Returns:
             FilterResult with pass/fail and score
         """
         pass
-    
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name}, params={self.params})"
 
 
 class BaseScreener(ABC):
     """Base class for stock screeners."""
-    
+
     def __init__(self, name: str = "base_screener"):
         """Initialize screener."""
         self.name = name
         self.filters: list[BaseFilter] = []
-    
+
     def add_filter(self, filter_obj: BaseFilter) -> "BaseScreener":
         """Add a filter to the screener."""
         self.filters.append(filter_obj)
         return self
-    
+
     def remove_filter(self, filter_name: str) -> bool:
         """Remove a filter by name."""
         for i, f in enumerate(self.filters):
@@ -98,11 +98,11 @@ class BaseScreener(ABC):
                 self.filters.pop(i)
                 return True
         return False
-    
+
     def clear_filters(self) -> None:
         """Remove all filters."""
         self.filters.clear()
-    
+
     @abstractmethod
     async def screen_symbol(
         self,
@@ -110,16 +110,16 @@ class BaseScreener(ABC):
         data: pd.DataFrame,
     ) -> ScreenerResult:
         """Screen a single symbol.
-        
+
         Args:
             symbol: Stock symbol
             data: OHLCV DataFrame
-            
+
         Returns:
             ScreenerResult with aggregated results from all filters
         """
         pass
-    
+
     @abstractmethod
     async def screen_universe(
         self,
@@ -128,14 +128,13 @@ class BaseScreener(ABC):
         top_n: int | None = None,
     ) -> list[ScreenerResult]:
         """Screen a universe of symbols.
-        
+
         Args:
             symbols: List of symbols to screen
             min_score: Minimum score to include in results
             top_n: Return only top N results by score
-            
+
         Returns:
             List of ScreenerResults for passing stocks
         """
         pass
-

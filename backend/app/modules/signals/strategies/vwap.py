@@ -4,7 +4,7 @@ Volume Weighted Average Price (VWAP) mean reversion strategy.
 Trades pullbacks to VWAP in trending markets.
 """
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from decimal import Decimal
 
 import pandas as pd
@@ -18,34 +18,34 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 @StrategyRegistry.register
 class VWAPReversionStrategy(BaseStrategy):
     """VWAP Mean Reversion Strategy.
-    
+
     This strategy trades pullbacks to VWAP in trending markets:
     1. Calculates intraday VWAP as a dynamic support/resistance
     2. Identifies trend direction using price vs VWAP
     3. BUY when price pulls back to VWAP from above in uptrend
     4. SELL when price retraces to VWAP from below in downtrend
     5. Uses VWAP bands (standard deviation) for entry/exit zones
-    
+
     Key concepts:
     - VWAP acts as fair value - institutional benchmark
     - Price tends to revert to VWAP during the day
     - Strong trends stay above/below VWAP
     - Band touches provide entry opportunities
-    
+
     Best suited for:
     - Liquid stocks with high institutional activity
     - Range-bound or trending days (not choppy)
     - First half of trading session
     """
-    
+
     name = "vwap_reversion"
     description = "VWAP Mean Reversion - Trade pullbacks to VWAP in trends"
     default_timeframe = "5m"
-    
+
     # NSE market hours
     MARKET_OPEN = time(9, 15)
     MARKET_CLOSE = time(15, 30)
-    
+
     def __init__(
         self,
         band_std_dev: float = 1.5,  # Standard deviation for VWAP bands
@@ -60,7 +60,7 @@ class VWAPReversionStrategy(BaseStrategy):
         no_trade_after: str = "14:30",  # No trades after this time
     ):
         """Initialize VWAP Reversion strategy.
-        
+
         Args:
             band_std_dev: Standard deviation multiplier for bands
             entry_zone_pct: Percentage zone around VWAP for entry
@@ -83,7 +83,7 @@ class VWAPReversionStrategy(BaseStrategy):
         self.risk_reward_ratio = Decimal(str(risk_reward_ratio))
         self.max_distance_pct = Decimal(str(max_distance_from_vwap_pct))
         self.no_trade_after = datetime.strptime(no_trade_after, "%H:%M").time()
-    
+
     def get_parameters(self) -> dict:
         """Return the strategy's configurable parameters."""
         return {
@@ -98,38 +98,38 @@ class VWAPReversionStrategy(BaseStrategy):
             "max_distance_from_vwap_pct": float(self.max_distance_pct),
             "no_trade_after": self.no_trade_after.strftime("%H:%M"),
         }
-    
+
     def _to_decimal(self, value: float) -> Decimal:
         """Convert float to Decimal."""
         return Decimal(str(round(value, 2)))
-    
+
     def _calculate_vwap(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate VWAP and bands for intraday data.
-        
+
         Args:
             df: OHLCV DataFrame (must be single day, sorted by time)
-            
+
         Returns:
             DataFrame with vwap, upper_band, lower_band columns added
         """
         df = df.copy()
-        
+
         # Typical price
         typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-        
+
         # Cumulative values
         cumulative_tp_vol = (typical_price * df["Volume"]).cumsum()
         cumulative_vol = df["Volume"].cumsum()
-        
+
         # VWAP
         df["vwap"] = cumulative_tp_vol / cumulative_vol
-        
+
         # Standard deviation for bands
         df["squared_diff"] = (typical_price - df["vwap"]) ** 2
         df["cumsum_sq_diff"] = df["squared_diff"].cumsum()
         df["variance"] = df["cumsum_sq_diff"] / (range(1, len(df) + 1))
         df["std_dev"] = df["variance"] ** 0.5
-        
+
         # VWAP bands
         df["upper_band"] = df["vwap"] + (self.band_std_dev * df["std_dev"])
         df["lower_band"] = df["vwap"] - (self.band_std_dev * df["std_dev"])
@@ -194,8 +194,7 @@ class VWAPReversionStrategy(BaseStrategy):
 
         close = self._to_decimal(current["Close"])
         vwap = self._to_decimal(current["vwap"])
-        upper_band = self._to_decimal(current["upper_band"])
-        lower_band = self._to_decimal(current["lower_band"])
+        # upper_band and lower_band accessed via current dict below
 
         # Calculate distance from VWAP
         distance_pct = abs((close - vwap) / vwap) * 100
@@ -275,9 +274,7 @@ class VWAPReversionStrategy(BaseStrategy):
         trend, trend_strength = self._detect_trend(today_df)
 
         # Check for signal
-        signal_type, strength, reason = self._check_vwap_signal(
-            today_df, trend, trend_strength
-        )
+        signal_type, strength, reason = self._check_vwap_signal(today_df, trend, trend_strength)
 
         if signal_type is None:
             return []
@@ -340,4 +337,3 @@ class VWAPReversionStrategy(BaseStrategy):
         )
 
         return [signal]
-

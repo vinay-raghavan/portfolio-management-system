@@ -18,7 +18,7 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 @dataclass
 class TWAPSlice:
     """A single TWAP execution slice."""
-    
+
     slice_number: int
     total_slices: int
     quantity: int
@@ -28,10 +28,10 @@ class TWAPSlice:
     executed_time: datetime | None = None
 
 
-@dataclass  
+@dataclass
 class TWAPPlan:
     """Complete TWAP execution plan."""
-    
+
     symbol: str
     total_quantity: int
     direction: SignalType  # BUY or SELL
@@ -45,33 +45,33 @@ class TWAPPlan:
 @StrategyRegistry.register
 class TWAPStrategy(BaseStrategy):
     """Time Weighted Average Price (TWAP) Strategy.
-    
+
     TWAP is an execution algorithm that:
     1. Splits a large order into smaller equal-sized slices
     2. Executes each slice at regular time intervals
     3. Aims to achieve average price close to TWAP
-    
+
     This strategy generates signals for each time slice,
     allowing the algo engine to execute incrementally.
-    
+
     Use cases:
     - Large institutional orders
     - Reducing market impact
     - Benchmark execution (vs TWAP)
     - Passive accumulation/distribution
-    
+
     Note: This is an EXECUTION strategy, not a signal strategy.
     It assumes you already have a directional view.
     """
-    
+
     name = "twap"
     description = "TWAP - Split orders across time intervals"
     default_timeframe = "5m"
-    
+
     # NSE market hours
     MARKET_OPEN = time(9, 15)
     MARKET_CLOSE = time(15, 30)
-    
+
     def __init__(
         self,
         num_slices: int = 10,  # Number of time slices
@@ -83,7 +83,7 @@ class TWAPStrategy(BaseStrategy):
         aggressive_finish: bool = False,  # Complete remaining at end
     ):
         """Initialize TWAP strategy.
-        
+
         Args:
             num_slices: Number of equal time slices
             duration_minutes: Total duration to execute over
@@ -100,10 +100,10 @@ class TWAPStrategy(BaseStrategy):
         self.participation_rate = participation_rate
         self.price_limit_pct = Decimal(str(price_limit_pct)) if price_limit_pct else None
         self.aggressive_finish = aggressive_finish
-        
+
         # Track active TWAP plans
         self._active_plans: dict[str, TWAPPlan] = {}
-    
+
     def get_parameters(self) -> dict:
         """Return the strategy's configurable parameters."""
         return {
@@ -115,7 +115,7 @@ class TWAPStrategy(BaseStrategy):
             "price_limit_pct": float(self.price_limit_pct) if self.price_limit_pct else None,
             "aggressive_finish": self.aggressive_finish,
         }
-    
+
     def _to_decimal(self, value: float) -> Decimal:
         """Convert float to Decimal."""
         return Decimal(str(round(value, 2)))
@@ -161,12 +161,14 @@ class TWAPStrategy(BaseStrategy):
             if slice_qty < self.min_slice_quantity and i < self.num_slices - 1:
                 continue  # Skip this slice, will be added to later ones
 
-            slices.append(TWAPSlice(
-                slice_number=len(slices) + 1,
-                total_slices=self.num_slices,
-                quantity=slice_qty,
-                scheduled_time=current_time,
-            ))
+            slices.append(
+                TWAPSlice(
+                    slice_number=len(slices) + 1,
+                    total_slices=self.num_slices,
+                    quantity=slice_qty,
+                    scheduled_time=current_time,
+                )
+            )
 
             current_time += timedelta(seconds=interval_seconds)
 
@@ -234,7 +236,9 @@ class TWAPStrategy(BaseStrategy):
                     plan.avg_executed_price = executed_price
                 else:
                     # Weighted average
-                    prev_value = plan.avg_executed_price * (plan.total_executed - slice_info.quantity)
+                    prev_value = plan.avg_executed_price * (
+                        plan.total_executed - slice_info.quantity
+                    )
                     new_value = executed_price * slice_info.quantity
                     plan.avg_executed_price = (prev_value + new_value) / plan.total_executed
                 break
@@ -303,7 +307,9 @@ class TWAPStrategy(BaseStrategy):
                 "twap_slice_quantity": current_slice.quantity,
                 "twap_progress_pct": round(progress * 100, 1),
                 "twap_remaining_qty": remaining_qty,
-                "twap_avg_price": float(plan.avg_executed_price) if plan.avg_executed_price else None,
+                "twap_avg_price": float(plan.avg_executed_price)
+                if plan.avg_executed_price
+                else None,
             },
             notes=f"TWAP slice {current_slice.slice_number}/{current_slice.total_slices}, qty={current_slice.quantity}",
         )
@@ -333,7 +339,9 @@ class TWAPStrategy(BaseStrategy):
             "remaining_quantity": plan.total_quantity - plan.total_executed,
             "slices_executed": executed_slices,
             "total_slices": len(plan.slices),
-            "avg_executed_price": float(plan.avg_executed_price) if plan.avg_executed_price else None,
+            "avg_executed_price": float(plan.avg_executed_price)
+            if plan.avg_executed_price
+            else None,
             "start_time": plan.start_time.isoformat(),
             "end_time": plan.end_time.isoformat(),
             "is_complete": plan.total_executed >= plan.total_quantity,
@@ -352,4 +360,3 @@ class TWAPStrategy(BaseStrategy):
             del self._active_plans[symbol]
             return True
         return False
-

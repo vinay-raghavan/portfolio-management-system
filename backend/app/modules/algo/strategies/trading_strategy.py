@@ -103,10 +103,7 @@ class TradingStrategy(BaseStrategy):
             return False
 
         # For SELL signals, check if shorting is supported
-        if signal.signal_type == SignalType.SELL and not self.supports_short:
-            return False
-
-        return True
+        return not (signal.signal_type == SignalType.SELL and not self.supports_short)
 
     def should_exit(
         self,

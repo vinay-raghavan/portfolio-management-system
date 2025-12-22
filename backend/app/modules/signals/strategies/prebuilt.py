@@ -5,23 +5,20 @@ These combine multiple indicators for higher-probability signals.
 """
 
 from app.modules.signals.strategies.composite import (
-    CombineLogic,
     CompositeStrategy,
     CompositeStrategyFactory,
-    StrategyComponent,
 )
-from app.modules.signals.strategies.registry import StrategyRegistry
 
 
 def create_rsi_macd_confluence() -> CompositeStrategy:
     """RSI + MACD Confluence Strategy.
-    
+
     Combines RSI oversold/overbought with MACD crossover.
     Both indicators must agree for a signal.
-    
+
     BUY: RSI < 30 (oversold) AND MACD bullish crossover
     SELL: RSI > 70 (overbought) AND MACD bearish crossover
-    
+
     Best for: Swing trading, catching reversals with confirmation
     """
     return CompositeStrategyFactory.create(
@@ -49,12 +46,12 @@ def create_rsi_macd_confluence() -> CompositeStrategy:
 
 def create_trend_momentum_pullback() -> CompositeStrategy:
     """Trend + Momentum Pullback Strategy.
-    
+
     Uses MA crossover for trend direction, RSI for pullback entry.
-    
+
     BUY: MA bullish (uptrend) AND RSI < 40 (pullback)
     SELL: MA bearish (downtrend) AND RSI > 60 (bounce)
-    
+
     Best for: Trend following with better entries
     """
     return CompositeStrategyFactory.create(
@@ -82,12 +79,12 @@ def create_trend_momentum_pullback() -> CompositeStrategy:
 
 def create_bollinger_rsi_squeeze() -> CompositeStrategy:
     """Bollinger + RSI Squeeze Strategy.
-    
+
     Combines Bollinger squeeze breakout with RSI confirmation.
-    
+
     BUY: Bollinger squeeze breakout up AND RSI > 50 (momentum)
     SELL: Bollinger squeeze breakout down AND RSI < 50
-    
+
     Best for: Volatility breakouts with momentum confirmation
     """
     return CompositeStrategyFactory.create(
@@ -115,13 +112,13 @@ def create_bollinger_rsi_squeeze() -> CompositeStrategy:
 
 def create_triple_confirmation() -> CompositeStrategy:
     """Triple Confirmation Strategy.
-    
+
     Requires 2 out of 3 indicators to agree (MAJORITY logic).
     Uses RSI, MACD, and MA crossover.
-    
+
     BUY: At least 2 of 3 show bullish signal
     SELL: At least 2 of 3 show bearish signal
-    
+
     Best for: High-probability setups, fewer but better signals
     """
     return CompositeStrategyFactory.create(
@@ -235,7 +232,7 @@ def register_all_prebuilt_strategies() -> list[CompositeStrategy]:
         List of registered CompositeStrategy instances
     """
     registered = []
-    for name, factory_fn in PREBUILT_STRATEGIES.items():
+    for _name, factory_fn in PREBUILT_STRATEGIES.items():
         strategy = factory_fn()
         CompositeStrategyFactory.register(strategy)
         registered.append(strategy)
@@ -264,13 +261,14 @@ def list_prebuilt_strategies() -> list[dict]:
         List of strategy info dicts
     """
     strategies = []
-    for name, factory_fn in PREBUILT_STRATEGIES.items():
+    for _name, factory_fn in PREBUILT_STRATEGIES.items():
         strategy = factory_fn()
-        strategies.append({
-            "name": strategy.name,
-            "description": strategy.description,
-            "components": [c.strategy_name for c in strategy.components],
-            "combine_logic": strategy.combine_logic.value,
-        })
+        strategies.append(
+            {
+                "name": strategy.name,
+                "description": strategy.description,
+                "components": [c.strategy_name for c in strategy.components],
+                "combine_logic": strategy.combine_logic.value,
+            }
+        )
     return strategies
-
