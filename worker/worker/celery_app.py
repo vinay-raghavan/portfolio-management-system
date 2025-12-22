@@ -96,4 +96,3 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
     },
 }
-

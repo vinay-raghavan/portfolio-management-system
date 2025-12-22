@@ -9,9 +9,6 @@ This module provides Celery tasks for:
 import csv
 import io
 import logging
-from datetime import datetime, date
-from decimal import Decimal
-from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -44,26 +41,26 @@ def _get_http_client() -> httpx.Client:
 @celery_app.task(bind=True, name="worker.tasks.instruments.sync_nse_equity_master")
 def sync_nse_equity_master(self) -> dict:
     """Sync NSE equity instrument master.
-    
+
     Downloads the equity list from NSE and stores in Redis for processing.
     The actual DB sync is done by the API service.
     """
     logger.info("Starting NSE equity master sync")
-    
+
     try:
         client = _get_http_client()
-        
+
         # First, visit NSE homepage to get cookies
         client.get("https://www.nseindia.com/")
-        
+
         # Download equity CSV
         response = client.get(NSE_EQUITY_CSV_URL)
         response.raise_for_status()
-        
+
         # Parse CSV
         content = response.text
         reader = csv.DictReader(io.StringIO(content))
-        
+
         instruments = []
         for row in reader:
             try:
@@ -84,17 +81,18 @@ def sync_nse_equity_master(self) -> dict:
                     instruments.append(instrument)
             except Exception as e:
                 logger.warning(f"Error parsing row: {e}")
-        
+
         # Store in Redis for API to process
         redis_client = Redis.from_url(settings.REDIS_URL)
-        
+
         import json
+
         redis_client.setex(
             "instruments:nse:equity:pending",
             3600,  # 1 hour TTL
             json.dumps(instruments),
         )
-        
+
         logger.info(f"NSE equity master sync complete. Found {len(instruments)} instruments")
         return {
             "status": "success",
@@ -102,7 +100,7 @@ def sync_nse_equity_master(self) -> dict:
             "segment": "EQ",
             "count": len(instruments),
         }
-        
+
     except Exception as e:
         logger.error(f"Error syncing NSE equity master: {e}")
         return {"status": "error", "message": str(e)}
@@ -118,35 +116,88 @@ def sync_nse_indices(self) -> dict:
         {"symbol": "NIFTY 50", "name": "Nifty 50", "exchange": "NSE", "instrument_type": "IDX"},
         {"symbol": "NIFTY BANK", "name": "Nifty Bank", "exchange": "NSE", "instrument_type": "IDX"},
         {"symbol": "NIFTY IT", "name": "Nifty IT", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY NEXT 50", "name": "Nifty Next 50", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY MIDCAP 50", "name": "Nifty Midcap 50", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY INFRA", "name": "Nifty Infrastructure", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY REALTY", "name": "Nifty Realty", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY ENERGY", "name": "Nifty Energy", "exchange": "NSE", "instrument_type": "IDX"},
+        {
+            "symbol": "NIFTY NEXT 50",
+            "name": "Nifty Next 50",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY MIDCAP 50",
+            "name": "Nifty Midcap 50",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY INFRA",
+            "name": "Nifty Infrastructure",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY REALTY",
+            "name": "Nifty Realty",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY ENERGY",
+            "name": "Nifty Energy",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
         {"symbol": "NIFTY FMCG", "name": "Nifty FMCG", "exchange": "NSE", "instrument_type": "IDX"},
         {"symbol": "NIFTY MNC", "name": "Nifty MNC", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY PHARMA", "name": "Nifty Pharma", "exchange": "NSE", "instrument_type": "IDX"},
+        {
+            "symbol": "NIFTY PHARMA",
+            "name": "Nifty Pharma",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
         {"symbol": "NIFTY PSE", "name": "Nifty PSE", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY PSU BANK", "name": "Nifty PSU Bank", "exchange": "NSE", "instrument_type": "IDX"},
+        {
+            "symbol": "NIFTY PSU BANK",
+            "name": "Nifty PSU Bank",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
         {"symbol": "NIFTY AUTO", "name": "Nifty Auto", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY MEDIA", "name": "Nifty Media", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY METAL", "name": "Nifty Metal", "exchange": "NSE", "instrument_type": "IDX"},
-        {"symbol": "NIFTY FIN SERVICE", "name": "Nifty Financial Services", "exchange": "NSE", "instrument_type": "IDX"},
+        {
+            "symbol": "NIFTY MEDIA",
+            "name": "Nifty Media",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY METAL",
+            "name": "Nifty Metal",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
+        {
+            "symbol": "NIFTY FIN SERVICE",
+            "name": "Nifty Financial Services",
+            "exchange": "NSE",
+            "instrument_type": "IDX",
+        },
     ]
 
     # Add common fields
     for idx in indices:
-        idx.update({
-            "segment": "IDX",
-            "lot_size": 1,
-            "tick_size": "0.05",
-            "is_active": True,
-            "is_tradeable": False,  # Indices are not directly tradeable
-        })
+        idx.update(
+            {
+                "segment": "IDX",
+                "lot_size": 1,
+                "tick_size": "0.05",
+                "is_active": True,
+                "is_tradeable": False,  # Indices are not directly tradeable
+            }
+        )
 
     # Store in Redis
     redis_client = Redis.from_url(settings.REDIS_URL)
     import json
+
     redis_client.setex(
         "instruments:nse:indices:pending",
         3600,
@@ -177,13 +228,13 @@ def sync_nse_fo_master(self) -> dict:
 
         # Parse CSV - F&O lot size format is different
         content = response.text
-        lines = content.strip().split('\n')
+        lines = content.strip().split("\n")
 
         instruments = []
         # Skip header rows (usually first 2 lines)
         for line in lines[2:]:
             try:
-                parts = line.split(',')
+                parts = line.split(",")
                 if len(parts) >= 2:
                     symbol = parts[0].strip()
                     # Lot sizes are in subsequent columns for different expiries
@@ -209,6 +260,7 @@ def sync_nse_fo_master(self) -> dict:
         redis_client = Redis.from_url(settings.REDIS_URL)
 
         import json
+
         redis_client.setex(
             "instruments:nse:fo:pending",
             3600,  # 1 hour TTL

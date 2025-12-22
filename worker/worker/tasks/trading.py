@@ -10,14 +10,11 @@ This module provides Celery tasks for:
 import logging
 from datetime import datetime, time
 from decimal import Decimal
-from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
-from redis import Redis
 
 from worker.celery_app import celery_app
-from worker.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,17 +51,14 @@ def is_market_just_opened(window_minutes: int = 5) -> bool:
         True if within the window after market open
     """
     now_ist = datetime.now(IST).time()
-    market_open_plus_window = time(
-        MARKET_OPEN_TIME.hour,
-        MARKET_OPEN_TIME.minute + window_minutes
-    )
+    market_open_plus_window = time(MARKET_OPEN_TIME.hour, MARKET_OPEN_TIME.minute + window_minutes)
     return MARKET_OPEN_TIME <= now_ist <= market_open_plus_window
 
 
 @celery_app.task(bind=True, name="worker.tasks.trading.check_sl_tp_orders")
 def check_sl_tp_orders(self) -> dict:
     """Check and execute stop loss/take profit orders.
-    
+
     This task runs every minute during market hours to:
     1. Get all positions with SL/TP set
     2. Fetch current prices
@@ -73,25 +67,25 @@ def check_sl_tp_orders(self) -> dict:
     if not is_market_hours():
         logger.debug("Market closed, skipping SL/TP check")
         return {"status": "market_closed", "checked": 0, "triggered": 0}
-    
+
     logger.info("Checking SL/TP orders")
-    
+
     # Use internal API URL
     api_url = "http://api:8000/api/v1"
-    
+
     try:
         with httpx.Client(timeout=30.0) as client:
             # Get positions with SL/TP set
             response = client.get(f"{api_url}/trading/positions-with-sl-tp")
-            
+
             if response.status_code != 200:
                 logger.warning(f"Failed to get positions: {response.status_code}")
                 return {"status": "error", "message": "Failed to get positions"}
-            
+
             positions = response.json()
             checked = 0
             triggered = 0
-            
+
             for pos in positions:
                 checked += 1
                 symbol = pos["symbol"]
@@ -99,16 +93,16 @@ def check_sl_tp_orders(self) -> dict:
                 stop_loss = Decimal(str(pos["stop_loss"])) if pos.get("stop_loss") else None
                 take_profit = Decimal(str(pos["take_profit"])) if pos.get("take_profit") else None
                 user_id = pos["user_id"]
-                
+
                 # Get current price
                 price_response = client.get(f"{api_url}/data/quote/{symbol}")
                 if price_response.status_code != 200:
                     continue
-                
+
                 current_price = Decimal(str(price_response.json().get("price", 0)))
                 if current_price <= 0:
                     continue
-                
+
                 # Check SL condition
                 if stop_loss and current_price <= stop_loss:
                     logger.info(f"SL triggered for {symbol} @ {current_price} (SL: {stop_loss})")
@@ -123,12 +117,12 @@ def check_sl_tp_orders(self) -> dict:
                     sell_response = client.post(
                         f"{api_url}/trading/orders",
                         json=order_data,
-                        headers={"X-User-ID": user_id}  # Would need proper auth in production
+                        headers={"X-User-ID": user_id},  # Would need proper auth in production
                     )
                     if sell_response.status_code == 200:
                         triggered += 1
                         logger.info(f"SL order executed for {symbol}")
-                
+
                 # Check TP condition
                 elif take_profit and current_price >= take_profit:
                     logger.info(f"TP triggered for {symbol} @ {current_price} (TP: {take_profit})")
@@ -141,14 +135,12 @@ def check_sl_tp_orders(self) -> dict:
                         "notes": f"Auto TP triggered at {current_price}",
                     }
                     sell_response = client.post(
-                        f"{api_url}/trading/orders",
-                        json=order_data,
-                        headers={"X-User-ID": user_id}
+                        f"{api_url}/trading/orders", json=order_data, headers={"X-User-ID": user_id}
                     )
                     if sell_response.status_code == 200:
                         triggered += 1
                         logger.info(f"TP order executed for {symbol}")
-            
+
             logger.info(f"SL/TP check complete. Checked: {checked}, Triggered: {triggered}")
             return {"status": "success", "checked": checked, "triggered": triggered}
 
@@ -209,9 +201,7 @@ def auto_square_off_intraday(self) -> dict:
                 }
 
                 sell_response = client.post(
-                    f"{api_url}/trading/orders",
-                    json=order_data,
-                    headers={"X-User-ID": user_id}
+                    f"{api_url}/trading/orders", json=order_data, headers={"X-User-ID": user_id}
                 )
 
                 if sell_response.status_code == 200:
@@ -274,9 +264,12 @@ def check_gtt_orders(self) -> dict:
 
                 # Check trigger condition
                 should_trigger = False
-                if side == "BUY" and current_price >= trigger_price:
-                    should_trigger = True
-                elif side == "SELL" and current_price <= trigger_price:
+                if (
+                    side == "BUY"
+                    and current_price >= trigger_price
+                    or side == "SELL"
+                    and current_price <= trigger_price
+                ):
                     should_trigger = True
 
                 if should_trigger:

@@ -87,4 +87,3 @@ def add_tracked_symbol(self, symbol: str) -> dict:
     redis_client.sadd("tracked_symbols", symbol.upper())
     logger.info(f"Added {symbol} to tracked symbols")
     return {"status": "success", "symbol": symbol.upper()}
-
