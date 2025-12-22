@@ -22,6 +22,7 @@ class OrderType(str, Enum):
     LIMIT = "LIMIT"
     STOP_LOSS = "SL"
     STOP_LOSS_MARKET = "SL-M"
+    GTT = "GTT"  # Good Till Triggered
 
 
 class OrderStatus(str, Enum):
@@ -29,6 +30,7 @@ class OrderStatus(str, Enum):
 
     PENDING = "PENDING"
     OPEN = "OPEN"
+    TRIGGERED = "TRIGGERED"  # GTT/SL has been triggered
     FILLED = "FILLED"
     PARTIALLY_FILLED = "PARTIALLY_FILLED"
     CANCELLED = "CANCELLED"
@@ -106,10 +108,11 @@ class OrderRequest(BaseModel):
     order_type: OrderType
     quantity: int
     price: Decimal | None = None  # Required for LIMIT orders
-    trigger_price: Decimal | None = None  # Required for SL orders
+    trigger_price: Decimal | None = None  # Required for SL/GTT orders
     product_type: ProductType = ProductType.DELIVERY
     stop_loss: Decimal | None = None
     take_profit: Decimal | None = None
+    valid_till: datetime | None = None  # For GTT orders (default: 1 year)
 
 
 class OrderResponse(BaseModel):

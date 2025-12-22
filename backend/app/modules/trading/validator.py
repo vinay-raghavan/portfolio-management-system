@@ -108,9 +108,10 @@ class OrderValidator:
             ValidationResult with errors/warnings
         """
         result = ValidationResult(is_valid=True)
-        
-        # Get current price for calculations
-        current_price = await self.data_provider.get_current_price(order.symbol)
+
+        # Get current price for calculations (convert to Decimal for precision)
+        raw_price = await self.data_provider.get_current_price(order.symbol)
+        current_price = Decimal(str(raw_price)) if raw_price is not None else None
         
         # 1. Validate symbol exists
         if not await self._validate_symbol(order.symbol, result):
@@ -240,8 +241,8 @@ class OrderValidator:
         """Validate order price is within circuit limits."""
         # Calculate circuit limits (default +/- 20%)
         circuit_pct = self.DEFAULT_CIRCUIT_LIMIT_PCT / Decimal("100")
-        lower_limit = current_price * (1 - circuit_pct)
-        upper_limit = current_price * (1 + circuit_pct)
+        lower_limit = current_price * (Decimal("1") - circuit_pct)
+        upper_limit = current_price * (Decimal("1") + circuit_pct)
 
         if order.price < lower_limit or order.price > upper_limit:
             result.add_error(

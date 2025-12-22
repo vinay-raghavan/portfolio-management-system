@@ -31,6 +31,7 @@ class OrderStatus(str, Enum):
     PARTIALLY_FILLED = "PARTIAL"
     CANCELLED = "CANCELLED"
     REJECTED = "REJECTED"
+    AMO_PENDING = "AMO_PENDING"  # After Market Order - queued for next session
 
 
 class OrderCreate(BaseModel):
@@ -44,6 +45,10 @@ class OrderCreate(BaseModel):
     stop_loss: Decimal | None = Field(None, gt=0)
     take_profit: Decimal | None = Field(None, gt=0)
     notes: str | None = None
+    is_amo: bool = Field(
+        default=False,
+        description="After Market Order - if True, order will be queued for next market open"
+    )
 
 
 class OrderResponse(BaseModel):
@@ -64,6 +69,8 @@ class OrderResponse(BaseModel):
     notes: str | None
     created_at: datetime
     filled_at: datetime | None
+    is_amo: bool = False
+    scheduled_for: datetime | None = None
 
     model_config = {"from_attributes": True}
 

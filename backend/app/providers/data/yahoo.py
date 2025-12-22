@@ -1,8 +1,9 @@
 """Yahoo Finance data provider implementation."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import yfinance as yf
 
@@ -11,6 +12,13 @@ from app.providers.schemas import Quote, OHLCV, InstrumentInfo, SearchResult
 from app.providers.symbols import SymbolMapper, Exchange
 
 logger = logging.getLogger(__name__)
+
+# Indian Standard Time timezone
+IST = ZoneInfo("Asia/Kolkata")
+
+# NSE market hours
+NSE_MARKET_OPEN = time(9, 15)  # 9:15 AM IST
+NSE_MARKET_CLOSE = time(15, 30)  # 3:30 PM IST
 
 
 class YahooDataProvider(DataProvider):
@@ -162,3 +170,21 @@ class YahooDataProvider(DataProvider):
             logger.error(f"Error fetching info for {symbol}: {e}")
             return None
 
+    async def is_market_open(self) -> bool:
+        """Check if the market is currently open.
+
+        For Indian markets (NSE/BSE), checks IST market hours.
+        For US markets, defaults to True (always open for paper trading).
+        """
+        if self.default_exchange in (Exchange.NSE, Exchange.BSE):
+            now = datetime.now(IST)
+
+            # Check if it's a weekday (Monday = 0, Sunday = 6)
+            if now.weekday() >= 5:  # Saturday or Sunday
+                return False
+
+            current_time = now.time()
+            return NSE_MARKET_OPEN <= current_time <= NSE_MARKET_CLOSE
+
+        # For US markets, default to True (paper trading always works)
+        return True
