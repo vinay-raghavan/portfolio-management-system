@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { CandlestickChart } from '@/components/charts';
+import { CandlestickChart, DrawingToolbar } from '@/components/charts';
 import { marketDataApi, analysisApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
 import { formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
@@ -308,8 +308,9 @@ export default function AnalysisPage() {
 
       {/* Chart */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Price Chart</CardTitle>
+          <DrawingToolbar symbol={currentSymbol} />
         </CardHeader>
         <CardContent>
           {historyLoading ? (
@@ -321,7 +322,14 @@ export default function AnalysisPage() {
               No data available
             </div>
           ) : (
-            <CandlestickChart data={chartData} indicators={indicators} height={400} showVolume />
+            <CandlestickChart
+              data={chartData}
+              indicators={indicators}
+              height={400}
+              showVolume
+              symbol={currentSymbol}
+              enableDrawing
+            />
           )}
         </CardContent>
       </Card>
