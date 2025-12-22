@@ -7,12 +7,12 @@ import { marketDataApi } from '@/lib/api';
 import { formatPercent, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks/useCurrency';
 
-// Major market indices to track
+// Major Indian market indices to track
 const MARKET_INDICES = [
-  { symbol: '^GSPC', name: 'S&P 500' },
-  { symbol: '^DJI', name: 'Dow Jones' },
-  { symbol: '^IXIC', name: 'NASDAQ' },
-  { symbol: '^RUT', name: 'Russell 2000' },
+  { symbol: '^NSEI', name: 'NIFTY 50' },
+  { symbol: '^NSEBANK', name: 'BANK NIFTY' },
+  { symbol: '^BSESN', name: 'SENSEX' },
+  { symbol: '^NSMIDCP', name: 'NIFTY MIDCAP' },
 ];
 
 interface IndexQuote {

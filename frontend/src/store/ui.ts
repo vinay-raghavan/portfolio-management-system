@@ -3,6 +3,27 @@ import { persist } from 'zustand/middleware';
 
 export type Currency = 'USD' | 'INR' | 'EUR' | 'GBP';
 
+// Available market indices
+export const AVAILABLE_INDICES = [
+  // Indian Indices
+  { symbol: '^NSEI', name: 'NIFTY 50', market: 'IN' },
+  { symbol: '^NSEBANK', name: 'BANK NIFTY', market: 'IN' },
+  { symbol: '^BSESN', name: 'SENSEX', market: 'IN' },
+  { symbol: '^NSMIDCP', name: 'NIFTY MIDCAP', market: 'IN' },
+  { symbol: '^CNXIT', name: 'NIFTY IT', market: 'IN' },
+  { symbol: '^CNXPHARMA', name: 'NIFTY PHARMA', market: 'IN' },
+  // US Indices
+  { symbol: '^GSPC', name: 'S&P 500', market: 'US' },
+  { symbol: '^DJI', name: 'DOW JONES', market: 'US' },
+  { symbol: '^IXIC', name: 'NASDAQ', market: 'US' },
+  { symbol: '^RUT', name: 'RUSSELL 2000', market: 'US' },
+] as const;
+
+export type MarketIndex = typeof AVAILABLE_INDICES[number];
+
+// Default selected indices
+const DEFAULT_SELECTED_INDICES = ['^NSEI', '^NSEBANK', '^BSESN', '^NSMIDCP'];
+
 interface UIState {
   // Selected symbol for charts and analysis
   selectedSymbol: string | null;
@@ -20,6 +41,9 @@ interface UIState {
   chartInterval: string;
   chartIndicators: string[];
 
+  // Market indices preferences
+  selectedMarketIndices: string[];
+
   // Actions
   setSelectedSymbol: (symbol: string | null) => void;
   toggleSidebar: () => void;
@@ -28,6 +52,8 @@ interface UIState {
   setCurrency: (currency: Currency) => void;
   setChartInterval: (interval: string) => void;
   toggleChartIndicator: (indicator: string) => void;
+  toggleMarketIndex: (symbol: string) => void;
+  setMarketIndices: (symbols: string[]) => void;
 }
 
 export const useUIStore = create<UIState>()(
