@@ -1,21 +1,21 @@
 """Portfolio service layer."""
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select, func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.portfolio.models import Position, Trade, CostLot, Portfolio
+from app.modules.portfolio.models import CostLot, Portfolio, Position, Trade
 from app.modules.portfolio.schemas import (
-    PositionResponse,
-    PortfolioSummary,
-    PortfolioResponse,
-    PortfolioInfo,
     PortfolioCreate,
-    PortfolioUpdate,
     PortfolioDetailResponse,
+    PortfolioInfo,
+    PortfolioResponse,
+    PortfolioSummary,
+    PortfolioUpdate,
+    PositionResponse,
 )
 
 
@@ -27,15 +27,13 @@ class PortfolioService:
 
     # ============ Portfolio Management ============
 
-    async def create_portfolio(
-        self, user_id: str, data: PortfolioCreate
-    ) -> Portfolio:
+    async def create_portfolio(self, user_id: str, data: PortfolioCreate) -> Portfolio:
         """Create a new portfolio for a user."""
         # If this is set as default, unset other defaults
         if data.is_default:
             await self.db.execute(
                 update(Portfolio)
-                .where(Portfolio.user_id == user_id, Portfolio.is_default == True)
+                .where(Portfolio.user_id == user_id, Portfolio.is_default)
                 .values(is_default=False)
             )
 
@@ -60,23 +58,17 @@ class PortfolioService:
         )
         return list(result.scalars().all())
 
-    async def get_portfolio_by_id(
-        self, user_id: str, portfolio_id: str
-    ) -> Portfolio | None:
+    async def get_portfolio_by_id(self, user_id: str, portfolio_id: str) -> Portfolio | None:
         """Get a specific portfolio by ID."""
         result = await self.db.execute(
-            select(Portfolio).where(
-                Portfolio.id == portfolio_id, Portfolio.user_id == user_id
-            )
+            select(Portfolio).where(Portfolio.id == portfolio_id, Portfolio.user_id == user_id)
         )
         return result.scalar_one_or_none()
 
     async def get_default_portfolio(self, user_id: str) -> Portfolio | None:
         """Get the default portfolio for a user."""
         result = await self.db.execute(
-            select(Portfolio).where(
-                Portfolio.user_id == user_id, Portfolio.is_default == True
-            )
+            select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.is_default)
         )
         return result.scalar_one_or_none()
 
@@ -108,7 +100,7 @@ class PortfolioService:
                 update(Portfolio)
                 .where(
                     Portfolio.user_id == user_id,
-                    Portfolio.is_default == True,
+                    Portfolio.is_default,
                     Portfolio.id != portfolio_id,
                 )
                 .values(is_default=False)
@@ -143,9 +135,7 @@ class PortfolioService:
         await self.db.flush()
         return True
 
-    async def get_positions_by_portfolio(
-        self, user_id: str, portfolio_id: str
-    ) -> list[Position]:
+    async def get_positions_by_portfolio(self, user_id: str, portfolio_id: str) -> list[Position]:
         """Get all positions for a specific portfolio."""
         result = await self.db.execute(
             select(Position)
@@ -177,9 +167,7 @@ class PortfolioService:
             )
         else:
             result = await self.db.execute(
-                select(Position).where(
-                    Position.user_id == user_id, Position.symbol == symbol
-                )
+                select(Position).where(Position.user_id == user_id, Position.symbol == symbol)
             )
         return result.scalar_one_or_none()
 
@@ -271,9 +259,7 @@ class PortfolioService:
             if current_price:
                 market_value = pos.quantity * current_price
                 unrealized_pnl = market_value - cost
-                unrealized_pnl_pct = (
-                    (unrealized_pnl / cost * 100) if cost else Decimal("0")
-                )
+                unrealized_pnl_pct = (unrealized_pnl / cost * 100) if cost else Decimal("0")
                 total_value += market_value
             else:
                 market_value = cost
@@ -354,7 +340,7 @@ class PortfolioService:
             remaining_quantity=quantity,
             purchase_price=price,
             trade_id=trade_id,
-            purchased_at=datetime.now(timezone.utc),
+            purchased_at=datetime.now(UTC),
         )
         self.db.add(lot)
         await self.db.flush()
@@ -471,9 +457,7 @@ class PortfolioService:
 
         if side == "BUY":
             # Add a new cost lot
-            await self.add_cost_lot(
-                user_id, symbol, quantity, price, trade_id, portfolio_id
-            )
+            await self.add_cost_lot(user_id, symbol, quantity, price, trade_id, portfolio_id)
         else:  # SELL
             # Consume lots in FIFO order
             realized_pnl = await self.consume_cost_lots_fifo(
@@ -497,4 +481,3 @@ class PortfolioService:
             await self.db.refresh(position)
 
         return position, realized_pnl
-

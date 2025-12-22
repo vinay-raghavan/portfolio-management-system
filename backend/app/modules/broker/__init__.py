@@ -18,4 +18,3 @@ __all__ = [
     "get_broker",
     "PaperBroker",
 ]
-

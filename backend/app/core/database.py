@@ -44,7 +44,7 @@ async def init_db() -> None:
         await conn.execute(text("SELECT 1"))
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency to get database session."""
     async with async_session_maker() as session:
         try:
@@ -55,4 +55,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
-

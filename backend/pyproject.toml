@@ -75,6 +75,8 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
     "B904",   # raise without from inside except
+    "ARG001", # unused function argument (often required by interface/framework)
+    "ARG002", # unused method argument (often required by abstract class)
 ]
 
 [tool.ruff.lint.isort]

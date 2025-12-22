@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.modules.auth.service import AuthService
 from app.modules.auth.models import User
+from app.modules.auth.service import AuthService
 
 # Security scheme
 security = HTTPBearer()
@@ -46,4 +46,3 @@ async def get_current_user(
 # Type aliases for cleaner dependency injection
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
-

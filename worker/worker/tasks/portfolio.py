@@ -1,7 +1,6 @@
 """Portfolio-related background tasks."""
 
 import logging
-from decimal import Decimal
 
 from redis import Redis
 
@@ -69,4 +68,3 @@ def snapshot_portfolio(self, user_id: str) -> dict:
     # 2. Store in TimescaleDB for time-series analysis
 
     return {"status": "success", "user_id": user_id}
-

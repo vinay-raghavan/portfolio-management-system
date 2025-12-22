@@ -1,6 +1,6 @@
 """Pydantic schemas for instruments module."""
 
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class Exchange(str, Enum):
     """Supported exchanges."""
+
     NSE = "NSE"
     BSE = "BSE"
     NFO = "NFO"  # NSE F&O
@@ -18,23 +19,25 @@ class Exchange(str, Enum):
 
 class Segment(str, Enum):
     """Market segments."""
-    EQ = "EQ"     # Equity
-    FO = "FO"     # Futures & Options
-    CD = "CD"     # Currency Derivatives
-    COM = "COM"   # Commodity
+
+    EQ = "EQ"  # Equity
+    FO = "FO"  # Futures & Options
+    CD = "CD"  # Currency Derivatives
+    COM = "COM"  # Commodity
 
 
 class InstrumentType(str, Enum):
     """Instrument types."""
-    EQ = "EQ"     # Equity
-    FUT = "FUT"   # Futures
-    OPT = "OPT"   # Options
-    IDX = "IDX"   # Index
+
+    EQ = "EQ"  # Equity
+    FUT = "FUT"  # Futures
+    OPT = "OPT"  # Options
+    IDX = "IDX"  # Index
 
 
 class InstrumentCreate(BaseModel):
     """Schema for creating an instrument."""
-    
+
     symbol: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=255)
     exchange: str = Field(min_length=2, max_length=10)
@@ -57,7 +60,7 @@ class InstrumentCreate(BaseModel):
 
 class InstrumentResponse(BaseModel):
     """Schema for instrument response."""
-    
+
     id: str
     symbol: str
     name: str
@@ -86,13 +89,15 @@ class InstrumentResponse(BaseModel):
 
 class InstrumentSearchParams(BaseModel):
     """Query parameters for instrument search."""
-    
+
     query: str | None = Field(default=None, description="Search query for symbol or name")
     exchange: str | None = Field(default=None, description="Filter by exchange")
     segment: str | None = Field(default=None, description="Filter by segment (EQ, FO, etc.)")
     instrument_type: str | None = Field(default=None, description="Filter by type (EQ, FUT, OPT)")
     is_active: bool | None = Field(default=True, description="Filter by active status")
-    underlying: str | None = Field(default=None, description="Filter by underlying (for derivatives)")
+    underlying: str | None = Field(
+        default=None, description="Filter by underlying (for derivatives)"
+    )
     expiry_from: date | None = Field(default=None, description="Filter expiry from date")
     expiry_to: date | None = Field(default=None, description="Filter expiry to date")
     limit: int = Field(default=50, ge=1, le=500, description="Maximum results")
@@ -101,22 +106,21 @@ class InstrumentSearchParams(BaseModel):
 
 class InstrumentSearchResponse(BaseModel):
     """Response for instrument search."""
-    
+
     total: int
     results: list[InstrumentResponse]
 
 
 class InstrumentBulkCreate(BaseModel):
     """Schema for bulk instrument creation."""
-    
+
     instruments: list[InstrumentCreate]
 
 
 class InstrumentBulkResponse(BaseModel):
     """Response for bulk operations."""
-    
+
     created: int
     updated: int
     failed: int
     errors: list[str] = []
-

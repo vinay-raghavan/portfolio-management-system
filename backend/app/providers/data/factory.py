@@ -2,12 +2,11 @@
 
 import logging
 from functools import lru_cache
-from typing import Type
 
 from app.core.config import settings
 from app.providers.data.base import DataProvider
-from app.providers.data.yahoo import YahooDataProvider
 from app.providers.data.nse import NSEDataProvider
+from app.providers.data.yahoo import YahooDataProvider
 from app.providers.symbols import Exchange
 
 logger = logging.getLogger(__name__)
@@ -20,14 +19,14 @@ class DataProviderFactory:
     """
 
     # Registry of available providers
-    _providers: dict[str, Type[DataProvider]] = {
+    _providers: dict[str, type[DataProvider]] = {
         "yahoo": YahooDataProvider,
         "nse": NSEDataProvider,
         # "angelone": AngelOneDataProvider,  # TODO: Phase 2
     }
 
     @classmethod
-    def register(cls, name: str, provider_class: Type[DataProvider]) -> None:
+    def register(cls, name: str, provider_class: type[DataProvider]) -> None:
         """Register a new data provider.
 
         Args:
@@ -54,9 +53,7 @@ class DataProviderFactory:
 
         if provider_name not in cls._providers:
             available = ", ".join(cls._providers.keys())
-            raise ValueError(
-                f"Unknown data provider: {provider_name}. Available: {available}"
-            )
+            raise ValueError(f"Unknown data provider: {provider_name}. Available: {available}")
 
         provider_class = cls._providers[provider_name]
 
@@ -81,4 +78,3 @@ def get_data_provider() -> DataProvider:
         DataProvider instance based on settings.DATA_PROVIDER
     """
     return DataProviderFactory.get_provider()
-

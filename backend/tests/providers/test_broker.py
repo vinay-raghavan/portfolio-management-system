@@ -1,21 +1,17 @@
 """Tests for broker abstraction and implementations."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.providers.broker.base import Broker
 from app.providers.broker.paper import PaperBroker
-from app.providers.broker.factory import BrokerFactory, get_broker
 from app.providers.schemas import (
     OrderRequest,
-    OrderResponse,
     OrderSide,
-    OrderType,
     OrderStatus,
-    Position,
-    Funds,
+    OrderType,
 )
 
 
@@ -192,4 +188,3 @@ class TestPaperBroker:
         assert positions[0].symbol == "AAPL"
         assert positions[0].quantity == 10
         assert positions[0].avg_cost == Decimal("150")
-

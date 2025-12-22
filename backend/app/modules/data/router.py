@@ -1,18 +1,18 @@
 """Market data API routes."""
 
-from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
 from datetime import datetime
 
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
+
 from app.modules.data.schemas import (
-    StockQuote,
-    StockInfo,
     HistoricalDataResponse,
-    SearchResult,
     IndexConstituentsResponse,
+    SearchResult,
+    StockInfo,
+    StockQuote,
 )
 from app.modules.data.service import MarketDataService
-from app.core.config import settings
 
 router = APIRouter()
 
@@ -114,4 +114,3 @@ async def search_stocks(q: str = Query(min_length=1, max_length=50)) -> list[Sea
     service = MarketDataService()
     results = await service.search_symbols(q)
     return [SearchResult(**r) for r in results]
-

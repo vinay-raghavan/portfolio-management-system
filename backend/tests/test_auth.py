@@ -66,4 +66,3 @@ async def test_get_current_user(client: AsyncClient):
     )
     assert response.status_code == 200
     assert response.json()["email"] == "me@example.com"
-

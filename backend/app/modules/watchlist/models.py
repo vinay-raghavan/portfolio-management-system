@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Index, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -24,9 +24,7 @@ class Watchlist(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -36,9 +34,7 @@ class Watchlist(Base):
         "WatchlistItem", back_populates="watchlist", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (
-        Index("ix_watchlists_user", "user_id"),
-    )
+    __table_args__ = (Index("ix_watchlists_user", "user_id"),)
 
     def __repr__(self) -> str:
         return f"<Watchlist {self.name}>"
@@ -57,9 +53,7 @@ class WatchlistItem(Base):
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    added_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     watchlist: Mapped["Watchlist"] = relationship("Watchlist", back_populates="items")
@@ -71,4 +65,3 @@ class WatchlistItem(Base):
 
     def __repr__(self) -> str:
         return f"<WatchlistItem {self.symbol}>"
-

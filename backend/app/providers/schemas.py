@@ -3,9 +3,8 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class OrderSide(str, Enum):
@@ -157,4 +156,3 @@ class Funds(BaseModel):
     def available_margin(self) -> Decimal:
         """Calculate available margin."""
         return self.available_cash + self.collateral - self.used_margin
-

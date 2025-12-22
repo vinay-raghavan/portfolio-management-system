@@ -4,11 +4,10 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 
 from app.providers.schemas import (
+    Funds,
     OrderRequest,
     OrderResponse,
-    OrderStatus,
     Position,
-    Funds,
 )
 
 
@@ -183,4 +182,3 @@ class Broker(ABC):
                 responses.append(response)
 
         return responses
-

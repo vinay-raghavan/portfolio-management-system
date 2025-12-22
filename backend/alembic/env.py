@@ -3,20 +3,20 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from alembic import context
 from app.core.config import settings
 from app.core.database import Base
 
 # Import all models so they're registered with Base.metadata
 from app.modules.auth.models import User  # noqa: F401
+from app.modules.instruments.models import Instrument  # noqa: F401
 from app.modules.portfolio.models import Position, Trade  # noqa: F401
 from app.modules.trading.models import Order  # noqa: F401
 from app.modules.watchlist.models import Watchlist, WatchlistItem  # noqa: F401
-from app.modules.instruments.models import Instrument  # noqa: F401
 
 # Alembic Config object
 config = context.config
@@ -86,4 +86,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

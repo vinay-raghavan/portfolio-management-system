@@ -1,22 +1,22 @@
 """Paper trading broker implementation."""
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 from app.core.config import settings
 from app.providers.broker.base import Broker
+from app.providers.data.factory import get_data_provider
 from app.providers.schemas import (
+    Funds,
     OrderRequest,
     OrderResponse,
-    OrderStatus,
     OrderSide,
+    OrderStatus,
     OrderType,
     Position,
-    Funds,
 )
-from app.providers.data.factory import get_data_provider
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,9 @@ class PaperBroker(Broker):
         self._positions: dict[str, dict[str, Position]] = {}
         self._funds: dict[str, Funds] = {}
         self._orders: dict[str, dict[str, OrderResponse]] = {}
-        self._pending_trigger_orders: dict[str, dict[str, OrderResponse]] = {}  # SL/GTT orders waiting for trigger
+        self._pending_trigger_orders: dict[
+            str, dict[str, OrderResponse]
+        ] = {}  # SL/GTT orders waiting for trigger
         self._data_provider = None
 
     async def connect(self) -> bool:
@@ -85,7 +87,7 @@ class PaperBroker(Broker):
         self._ensure_user(user_id)
 
         order_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Get current market price for validation
         current_price = await self._data_provider.get_current_price(order.symbol)
@@ -133,9 +135,8 @@ class PaperBroker(Broker):
             response = await self._execute_order(user_id, order, price, fees, now)
         elif order.order_type == OrderType.LIMIT:
             # Limit orders: check if price condition is met
-            can_execute = (
-                (order.side == OrderSide.BUY and market_price <= order.price) or
-                (order.side == OrderSide.SELL and market_price >= order.price)
+            can_execute = (order.side == OrderSide.BUY and market_price <= order.price) or (
+                order.side == OrderSide.SELL and market_price >= order.price
             )
             if can_execute:
                 response = await self._execute_order(user_id, order, order.price, fees, now)
@@ -168,7 +169,9 @@ class PaperBroker(Broker):
             triggered = self._check_trigger_condition(order, market_price)
             if triggered:
                 # If SL-M, execute at market; if SL, execute at limit price
-                exec_price = market_price if order.order_type == OrderType.STOP_LOSS_MARKET else order.price
+                exec_price = (
+                    market_price if order.order_type == OrderType.STOP_LOSS_MARKET else order.price
+                )
                 response = await self._execute_order(user_id, order, exec_price, fees, now)
             else:
                 # Store as pending trigger order
@@ -264,9 +267,9 @@ class PaperBroker(Broker):
         # Update funds
         funds = self._funds[user_id]
         if order.side == OrderSide.BUY:
-            funds.available_cash -= (order_value + fees)
+            funds.available_cash -= order_value + fees
         else:
-            funds.available_cash += (order_value - fees)
+            funds.available_cash += order_value - fees
         funds.total_balance = funds.available_cash + funds.used_margin
 
         # Update position
@@ -408,7 +411,7 @@ class PaperBroker(Broker):
         """
         self._ensure_user(user_id)
         executed_orders = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         orders_to_remove = []
         for order_id, order in list(self._pending_trigger_orders[user_id].items()):
@@ -437,7 +440,11 @@ class PaperBroker(Broker):
 
             if triggered:
                 # Execute the order
-                exec_price = market_price if order.order_type == OrderType.STOP_LOSS_MARKET else (order.price or market_price)
+                exec_price = (
+                    market_price
+                    if order.order_type == OrderType.STOP_LOSS_MARKET
+                    else (order.price or market_price)
+                )
                 order_value = exec_price * order.quantity
                 fees = order_value * self.FEE_PERCENT
 
@@ -451,7 +458,9 @@ class PaperBroker(Broker):
                 )
 
                 try:
-                    result = await self._execute_order(user_id, order_request, exec_price, fees, now)
+                    result = await self._execute_order(
+                        user_id, order_request, exec_price, fees, now
+                    )
                     result.message = f"Triggered at {trigger_price}, executed at {exec_price}"
                     executed_orders.append(result)
                     orders_to_remove.append(order_id)
@@ -477,8 +486,9 @@ class PaperBroker(Broker):
 
         # Format: "Trigger price: X" or "GTT: Trigger at X, ..."
         import re
+
         # Match "Trigger price: 123" or "Trigger at 123" or "Trigger: 123"
-        match = re.search(r'[Tt]rigger(?:\s+(?:price|at))?[:\s]+(\d+(?:\.\d+)?)', message)
+        match = re.search(r"[Tt]rigger(?:\s+(?:price|at))?[:\s]+(\d+(?:\.\d+)?)", message)
         if match:
             return Decimal(match.group(1))
         return None
@@ -487,4 +497,3 @@ class PaperBroker(Broker):
         """Get all pending trigger orders (SL/GTT) for a user."""
         self._ensure_user(user_id)
         return list(self._pending_trigger_orders[user_id].values())
-

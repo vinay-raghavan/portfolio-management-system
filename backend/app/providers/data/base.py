@@ -1,9 +1,8 @@
 """Abstract base class for data providers."""
 
 from abc import ABC, abstractmethod
-from typing import Protocol
 
-from app.providers.schemas import Quote, OHLCV, InstrumentInfo, SearchResult
+from app.providers.schemas import OHLCV, InstrumentInfo, Quote, SearchResult
 
 
 class DataProvider(ABC):
@@ -103,4 +102,3 @@ class DataProvider(ABC):
             Symbol formatted for this provider
         """
         return symbol.upper().strip()
-

@@ -1,19 +1,18 @@
 """Risk management service for enforcing trading limits."""
 
 import logging
-from datetime import datetime, date, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
-from dataclasses import dataclass, field
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.risk.models import RiskLimits, DailyRiskMetrics
-from app.modules.risk.schemas import RiskCheckResult, RiskSummary, RiskLimitsUpdate
+from app.modules.instruments.models import Instrument
 from app.modules.portfolio.funds_service import FundsService
 from app.modules.portfolio.models import Position, ProductType
-from app.modules.trading.models import Order
-from app.modules.instruments.models import Instrument
+from app.modules.risk.models import DailyRiskMetrics, RiskLimits
+from app.modules.risk.schemas import RiskCheckResult, RiskLimitsUpdate, RiskSummary
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RiskCheck:
     """Individual risk check result."""
-    
+
     name: str
     passed: bool
     current_value: str
@@ -31,7 +30,7 @@ class RiskCheck:
 
 class RiskService:
     """Service for risk management and limit enforcement.
-    
+
     Provides pre-trade risk checks and daily limit tracking.
     """
 
@@ -42,58 +41,50 @@ class RiskService:
 
     async def get_limits(self, user_id: str) -> RiskLimits:
         """Get risk limits for a user, creating defaults if needed."""
-        result = await self.db.execute(
-            select(RiskLimits).where(RiskLimits.user_id == user_id)
-        )
+        result = await self.db.execute(select(RiskLimits).where(RiskLimits.user_id == user_id))
         limits = result.scalar_one_or_none()
-        
+
         if limits is None:
             limits = RiskLimits(user_id=user_id)
             self.db.add(limits)
             await self.db.flush()
             await self.db.refresh(limits)
             logger.info(f"Created default risk limits for user {user_id}")
-        
+
         return limits
 
-    async def update_limits(
-        self, 
-        user_id: str, 
-        updates: RiskLimitsUpdate
-    ) -> RiskLimits:
+    async def update_limits(self, user_id: str, updates: RiskLimitsUpdate) -> RiskLimits:
         """Update risk limits for a user."""
         limits = await self.get_limits(user_id)
-        
+
         update_data = updates.model_dump(exclude_unset=True)
         for field_name, value in update_data.items():
             setattr(limits, field_name, value)
-        
+
         await self.db.flush()
         await self.db.refresh(limits)
-        
+
         logger.info(f"Updated risk limits for user {user_id}: {update_data}")
         return limits
 
     async def get_daily_metrics(self, user_id: str) -> DailyRiskMetrics:
         """Get today's risk metrics, creating if needed."""
-        today = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        
+        today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
         result = await self.db.execute(
             select(DailyRiskMetrics).where(
                 DailyRiskMetrics.user_id == user_id,
-                func.date(DailyRiskMetrics.date) == today.date()
+                func.date(DailyRiskMetrics.date) == today.date(),
             )
         )
         metrics = result.scalar_one_or_none()
-        
+
         if metrics is None:
             metrics = DailyRiskMetrics(user_id=user_id, date=today)
             self.db.add(metrics)
             await self.db.flush()
             await self.db.refresh(metrics)
-        
+
         return metrics
 
     async def check_order_risk(
@@ -105,24 +96,24 @@ class RiskService:
         price: Decimal,
     ) -> RiskCheckResult:
         """Run all risk checks for a proposed order.
-        
+
         Args:
             user_id: User placing the order
             symbol: Symbol to trade
             side: BUY or SELL
             quantity: Order quantity
             price: Order price
-            
+
         Returns:
             RiskCheckResult with pass/fail and details
         """
         limits = await self.get_limits(user_id)
         metrics = await self.get_daily_metrics(user_id)
-        
+
         checks: list[RiskCheck] = []
         warnings: list[str] = []
         order_value = quantity * price
-        
+
         # 1. Check daily loss limit
         if metrics.realized_pnl < 0:
             daily_loss = abs(metrics.realized_pnl)
@@ -135,7 +126,7 @@ class RiskService:
             if not loss_check.passed:
                 loss_check.message = "Daily loss limit exceeded"
             checks.append(loss_check)
-        
+
         # 2. Check order value limit
         order_check = RiskCheck(
             name="max_order_value",
@@ -146,7 +137,7 @@ class RiskService:
         if not order_check.passed:
             order_check.message = "Order value exceeds limit"
         checks.append(order_check)
-        
+
         # 3. Check daily order count
         orders_check = RiskCheck(
             name="max_orders_per_day",
@@ -157,7 +148,7 @@ class RiskService:
         if not orders_check.passed:
             orders_check.message = "Daily order limit reached"
         checks.append(orders_check)
-        
+
         # 4. Check position count (for new positions)
         if side == "BUY":
             positions_count = await self._get_positions_count(user_id)
@@ -215,7 +206,10 @@ class RiskService:
 
         # Warn if sector concentration is approaching limit
         sector_concentration = await self._get_sector_concentration(user_id, symbol)
-        if sector_concentration and sector_concentration >= limits.max_sector_concentration * Decimal("0.8"):
+        if (
+            sector_concentration
+            and sector_concentration >= limits.max_sector_concentration * Decimal("0.8")
+        ):
             warnings.append(
                 f"Approaching sector concentration limit ({sector_concentration:.1f}%/{limits.max_sector_concentration}%)"
             )
@@ -301,8 +295,7 @@ class RiskService:
         """Get count of open positions."""
         result = await self.db.execute(
             select(func.count(Position.id)).where(
-                Position.user_id == user_id,
-                Position.quantity > 0
+                Position.user_id == user_id, Position.quantity > 0
             )
         )
         return result.scalar() or 0
@@ -310,27 +303,17 @@ class RiskService:
     async def _get_position(self, user_id: str, symbol: str) -> Position | None:
         """Get a specific position."""
         result = await self.db.execute(
-            select(Position).where(
-                Position.user_id == user_id,
-                Position.symbol == symbol
-            )
+            select(Position).where(Position.user_id == user_id, Position.symbol == symbol)
         )
         return result.scalar_one_or_none()
 
-    async def _get_largest_position_pct(
-        self,
-        user_id: str,
-        total_balance: Decimal
-    ) -> Decimal:
+    async def _get_largest_position_pct(self, user_id: str, total_balance: Decimal) -> Decimal:
         """Get the largest position as percentage of portfolio."""
         if total_balance <= 0:
             return Decimal("0")
 
         result = await self.db.execute(
-            select(Position).where(
-                Position.user_id == user_id,
-                Position.quantity > 0
-            )
+            select(Position).where(Position.user_id == user_id, Position.quantity > 0)
         )
         positions = result.scalars().all()
 
@@ -344,8 +327,7 @@ class RiskService:
         """Get sector for a symbol from instruments table."""
         result = await self.db.execute(
             select(Instrument.sector).where(
-                Instrument.symbol == symbol.upper(),
-                Instrument.exchange == "NSE"
+                Instrument.symbol == symbol.upper(), Instrument.exchange == "NSE"
             )
         )
         return result.scalar_one_or_none()
@@ -366,10 +348,7 @@ class RiskService:
 
         # Get all positions with their sectors
         result = await self.db.execute(
-            select(Position).where(
-                Position.user_id == user_id,
-                Position.quantity > 0
-            )
+            select(Position).where(Position.user_id == user_id, Position.quantity > 0)
         )
         positions = list(result.scalars().all())
 
@@ -418,10 +397,7 @@ class RiskService:
 
         # Get current sector value
         result = await self.db.execute(
-            select(Position).where(
-                Position.user_id == user_id,
-                Position.quantity > 0
-            )
+            select(Position).where(Position.user_id == user_id, Position.quantity > 0)
         )
         positions = list(result.scalars().all())
 
@@ -440,7 +416,9 @@ class RiskService:
             passed=new_concentration <= limits.max_sector_concentration,
             current_value=f"{new_concentration:.1f}%",
             limit_value=f"{limits.max_sector_concentration}%",
-            message=f"Sector '{sector}' concentration would reach {new_concentration:.1f}%" if new_concentration > limits.max_sector_concentration else None,
+            message=f"Sector '{sector}' concentration would reach {new_concentration:.1f}%"
+            if new_concentration > limits.max_sector_concentration
+            else None,
         )
 
     async def _get_intraday_exposure(self, user_id: str) -> Decimal:
@@ -449,10 +427,9 @@ class RiskService:
             select(Position).where(
                 Position.user_id == user_id,
                 Position.quantity > 0,
-                Position.product_type == ProductType.INTRADAY.value
+                Position.product_type == ProductType.INTRADAY.value,
             )
         )
         positions = list(result.scalars().all())
 
         return sum(p.quantity * p.avg_cost for p in positions)
-

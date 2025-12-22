@@ -2,16 +2,15 @@
 
 import logging
 from datetime import datetime
-from typing import Sequence
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.instruments.models import Instrument
 from app.modules.instruments.schemas import (
+    InstrumentBulkResponse,
     InstrumentCreate,
     InstrumentSearchParams,
-    InstrumentBulkResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,30 +33,24 @@ class InstrumentService:
 
     async def get_by_id(self, instrument_id: str) -> Instrument | None:
         """Get instrument by ID."""
-        result = await self.db.execute(
-            select(Instrument).where(Instrument.id == instrument_id)
-        )
+        result = await self.db.execute(select(Instrument).where(Instrument.id == instrument_id))
         return result.scalar_one_or_none()
 
-    async def get_by_symbol(
-        self, symbol: str, exchange: str | None = None
-    ) -> Instrument | None:
+    async def get_by_symbol(self, symbol: str, exchange: str | None = None) -> Instrument | None:
         """Get instrument by symbol and optionally exchange."""
         query = select(Instrument).where(
             Instrument.symbol == symbol.upper(),
-            Instrument.is_active == True,
+            Instrument.is_active,
         )
         if exchange:
             query = query.where(Instrument.exchange == exchange.upper())
-        
+
         result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none()
 
-    async def search(
-        self, params: InstrumentSearchParams
-    ) -> tuple[list[Instrument], int]:
+    async def search(self, params: InstrumentSearchParams) -> tuple[list[Instrument], int]:
         """Search instruments with filters.
-        
+
         Returns:
             Tuple of (results, total_count)
         """
@@ -67,7 +60,7 @@ class InstrumentService:
 
         # Apply filters
         filters = []
-        
+
         if params.query:
             search_term = f"%{params.query.upper()}%"
             filters.append(
@@ -76,25 +69,25 @@ class InstrumentService:
                     Instrument.name.ilike(search_term),
                 )
             )
-        
+
         if params.exchange:
             filters.append(Instrument.exchange == params.exchange.upper())
-        
+
         if params.segment:
             filters.append(Instrument.segment == params.segment.upper())
-        
+
         if params.instrument_type:
             filters.append(Instrument.instrument_type == params.instrument_type.upper())
-        
+
         if params.is_active is not None:
             filters.append(Instrument.is_active == params.is_active)
-        
+
         if params.underlying:
             filters.append(Instrument.underlying == params.underlying.upper())
-        
+
         if params.expiry_from:
             filters.append(Instrument.expiry >= params.expiry_from)
-        
+
         if params.expiry_to:
             filters.append(Instrument.expiry <= params.expiry_to)
 
@@ -108,7 +101,7 @@ class InstrumentService:
 
         # Apply pagination and ordering
         query = query.order_by(Instrument.symbol).offset(params.offset).limit(params.limit)
-        
+
         result = await self.db.execute(query)
         instruments = list(result.scalars().all())
 
@@ -120,19 +113,17 @@ class InstrumentService:
         """Get instruments for an exchange."""
         query = select(Instrument).where(
             Instrument.exchange == exchange.upper(),
-            Instrument.is_active == True,
+            Instrument.is_active,
         )
         if segment:
             query = query.where(Instrument.segment == segment.upper())
-        
+
         result = await self.db.execute(query.limit(limit))
         return list(result.scalars().all())
 
-    async def upsert_bulk(
-        self, instruments: list[InstrumentCreate]
-    ) -> InstrumentBulkResponse:
+    async def upsert_bulk(self, instruments: list[InstrumentCreate]) -> InstrumentBulkResponse:
         """Bulk upsert instruments (create or update).
-        
+
         Uses symbol + exchange + expiry as unique key.
         """
         created = 0
@@ -151,7 +142,7 @@ class InstrumentService:
                     query = query.where(Instrument.expiry == data.expiry)
                 else:
                     query = query.where(Instrument.expiry.is_(None))
-                
+
                 result = await self.db.execute(query)
                 existing = result.scalar_one_or_none()
 
@@ -182,9 +173,7 @@ class InstrumentService:
             errors=errors[:10],  # Limit errors to first 10
         )
 
-    async def deactivate_old_instruments(
-        self, exchange: str, synced_before: datetime
-    ) -> int:
+    async def deactivate_old_instruments(self, exchange: str, synced_before: datetime) -> int:
         """Deactivate instruments not synced recently.
 
         Args:
@@ -196,7 +185,7 @@ class InstrumentService:
         """
         query = select(Instrument).where(
             Instrument.exchange == exchange.upper(),
-            Instrument.is_active == True,
+            Instrument.is_active,
             or_(
                 Instrument.last_synced_at < synced_before,
                 Instrument.last_synced_at.is_(None),
@@ -220,7 +209,7 @@ class InstrumentService:
             select(Instrument).where(
                 Instrument.exchange == exchange.upper(),
                 Instrument.instrument_type == "IDX",
-                Instrument.is_active == True,
+                Instrument.is_active,
             )
         )
         return list(result.scalars().all())
@@ -233,15 +222,13 @@ class InstrumentService:
                 Instrument.exchange == exchange.upper(),
                 Instrument.segment == "FO",
                 Instrument.underlying.isnot(None),
-                Instrument.is_active == True,
+                Instrument.is_active,
             )
             .distinct()
         )
         return [row[0] for row in result.all() if row[0]]
 
-    async def get_expiry_dates(
-        self, underlying: str, exchange: str = "NSE"
-    ) -> list:
+    async def get_expiry_dates(self, underlying: str, exchange: str = "NSE") -> list:
         """Get available expiry dates for an underlying."""
         from datetime import date
 
@@ -251,10 +238,9 @@ class InstrumentService:
                 Instrument.underlying == underlying.upper(),
                 Instrument.exchange == exchange.upper(),
                 Instrument.expiry >= date.today(),
-                Instrument.is_active == True,
+                Instrument.is_active,
             )
             .distinct()
             .order_by(Instrument.expiry)
         )
         return [row[0] for row in result.all() if row[0]]
-
