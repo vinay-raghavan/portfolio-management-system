@@ -12,6 +12,7 @@ import {
   LogOut,
   Zap,
   FlaskConical,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
   { name: 'Analysis', href: '/analysis', icon: LineChart },
   { name: 'Signals', href: '/signals', icon: Zap },
+  { name: 'Algo Trading', href: '/algo', icon: Bot },
   { name: 'Backtest', href: '/backtest', icon: FlaskConical },
   { name: 'Orders', href: '/orders', icon: ListOrdered },
   { name: 'Watchlist', href: '/watchlist', icon: Star },

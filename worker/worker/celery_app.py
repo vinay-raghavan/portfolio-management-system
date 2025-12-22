@@ -19,6 +19,7 @@ celery_app = Celery(
         "worker.tasks.trading",
         "worker.tasks.signals",
         "worker.tasks.backtest",
+        "worker.tasks.algo",
     ],
 )
 
@@ -106,5 +107,10 @@ celery_app.conf.beat_schedule = {
     "expire-old-signals-hourly": {
         "task": "worker.tasks.signals.expire_old_signals",
         "schedule": 3600.0,  # Every hour
+    },
+    # Algo trading - run scheduled strategies every 30 seconds during market hours
+    "run-scheduled-strategies": {
+        "task": "worker.tasks.algo.run_scheduled_strategies",
+        "schedule": 30.0,  # Every 30 seconds
     },
 }

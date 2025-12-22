@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.modules.algo.router import router as algo_router
 from app.modules.analysis.router import router as analysis_router
 from app.modules.auth.router import router as auth_router
 from app.modules.backtest.router import router as backtest_router
@@ -26,3 +27,4 @@ api_router.include_router(data_router, prefix="/stocks", tags=["Market Data"])
 api_router.include_router(watchlist_router, prefix="/watchlist", tags=["Watchlist"])
 api_router.include_router(instruments_router, prefix="/instruments", tags=["Instruments"])
 api_router.include_router(risk_router, prefix="/risk", tags=["Risk Management"])
+api_router.include_router(algo_router, prefix="/algo", tags=["Algo Trading"])

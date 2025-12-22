@@ -3,6 +3,7 @@
 import logging
 
 from app.providers.notification.base import NotificationProvider
+from app.providers.notification.console import ConsoleNotificationProvider
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class NotificationProviderFactory:
 
     # Registry of available providers
     _providers: dict[str, type[NotificationProvider]] = {
+        "console": ConsoleNotificationProvider,
         # "email": EmailNotificationProvider,  # TODO: Phase 1, Week 4-5
         # "whatsapp": WhatsAppNotificationProvider,  # TODO: Phase 1, Week 4-5
         # "websocket": WebSocketNotificationProvider,  # TODO: Phase 1, Week 4-5
