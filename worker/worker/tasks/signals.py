@@ -8,7 +8,6 @@ This module provides Celery tasks for:
 
 import logging
 from datetime import time
-from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -112,7 +111,6 @@ def generate_daily_signals(self) -> dict:
         return {"status": "no_users", "users_processed": 0, "total_signals": 0}
 
     users_processed = 0
-    total_signals = 0
 
     for key in user_keys:
         try:
@@ -121,7 +119,7 @@ def generate_daily_signals(self) -> dict:
             symbol_list = [s.decode() if isinstance(s, bytes) else s for s in symbols]
 
             if symbol_list:
-                result = generate_signals_for_user.delay(user_id, symbol_list)
+                generate_signals_for_user.delay(user_id, symbol_list)
                 users_processed += 1
 
         except Exception as e:

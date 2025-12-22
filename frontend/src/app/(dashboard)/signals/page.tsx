@@ -157,12 +157,12 @@ export default function SignalsPage() {
           <Filter className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">Filters:</span>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter || 'all'} onValueChange={(val) => setStatusFilter(val === 'all' ? '' : val)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Statuses</SelectItem>
+            <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="ACTIVE">Active</SelectItem>
             <SelectItem value="PENDING">Pending</SelectItem>
             <SelectItem value="EXECUTED">Executed</SelectItem>

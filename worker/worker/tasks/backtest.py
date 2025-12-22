@@ -6,12 +6,10 @@ This module provides Celery tasks for:
 """
 
 import logging
-from typing import Any
 
 import httpx
 
 from worker.celery_app import celery_app
-from worker.config import settings
 
 logger = logging.getLogger(__name__)
 
