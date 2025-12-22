@@ -15,6 +15,7 @@ from app.modules.analysis.schemas import (
     AnalysisResult,
     StockInfo,
 )
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +23,93 @@ logger = logging.getLogger(__name__)
 class AnalysisService:
     """Service for technical analysis calculations."""
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol for Yahoo Finance.
+
+        For Indian market (NSE/BSE), adds the appropriate suffix.
+        For other markets, returns the symbol as-is.
+        """
+        symbol = symbol.upper().strip()
+
+        # Already has Yahoo Finance suffix (international)
+        if "." in symbol:
+            return symbol
+
+        # Check if default market is Indian
+        default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
+        if default_market in ('NSE', 'IN', 'INDIA'):
+            # First try to check if it's a valid US stock by testing without suffix
+            # Common US stocks don't need suffix - return as-is if it looks like US stock
+            return f"{symbol}.NS"
+        elif default_market == 'BSE':
+            return f"{symbol}.BO"
+
+        return symbol
+
+    def _normalize_symbol_with_fallback(self, symbol: str) -> tuple[str, bool]:
+        """Normalize symbol with fallback detection.
+
+        Returns:
+            Tuple of (normalized_symbol, is_indian_stock)
+        """
+        symbol = symbol.upper().strip()
+
+        # Already has Yahoo Finance suffix
+        if symbol.endswith(".NS") or symbol.endswith(".BO"):
+            return symbol, True
+
+        # Other international suffix
+        if "." in symbol:
+            return symbol, False
+
+        # For Indian market default, we need to try Indian first, then US
+        default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
+        if default_market in ('NSE', 'IN', 'INDIA'):
+            return f"{symbol}.NS", True
+        elif default_market == 'BSE':
+            return f"{symbol}.BO", True
+
+        return symbol, False
+
+    def _try_get_history(self, yahoo_symbol: str, period: str) -> pd.DataFrame | None:
+        """Try to get ticker history, returns None if not found or empty."""
+        try:
+            ticker = yf.Ticker(yahoo_symbol)
+            hist = ticker.history(period=period)
+            if not hist.empty and len(hist) >= 50:
+                return hist
+        except Exception:
+            pass
+        return None
+
     async def get_technical_indicators(
         self, symbol: str, period: str = "6mo"
     ) -> TechnicalIndicators | None:
         """Calculate technical indicators for a symbol."""
         try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=period)
+            symbol_upper = symbol.upper().strip()
+            hist = None
 
-            if hist.empty or len(hist) < 50:
+            # If symbol already has a suffix, use as-is
+            if "." in symbol_upper:
+                hist = self._try_get_history(symbol_upper, period)
+            else:
+                # Try with Indian suffix first (if default market is Indian)
+                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
+                if default_market in ('NSE', 'IN', 'INDIA'):
+                    hist = self._try_get_history(f"{symbol_upper}.NS", period)
+                    if hist is None:
+                        # Fallback to US (no suffix)
+                        hist = self._try_get_history(symbol_upper, period)
+                elif default_market == 'BSE':
+                    hist = self._try_get_history(f"{symbol_upper}.BO", period)
+                    if hist is None:
+                        hist = self._try_get_history(symbol_upper, period)
+                else:
+                    # US market default
+                    hist = self._try_get_history(symbol_upper, period)
+
+            if hist is None:
                 return None
 
             close = hist["Close"]
@@ -94,8 +173,29 @@ class AnalysisService:
             return None
 
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            symbol_upper = symbol.upper().strip()
+
+            # Get info with proper market suffix handling
+            info = None
+            if "." in symbol_upper:
+                info = self._try_get_ticker_info(symbol_upper)
+            else:
+                # Try with Indian suffix first (if default market is Indian)
+                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
+                if default_market in ('NSE', 'IN', 'INDIA'):
+                    info = self._try_get_ticker_info(f"{symbol_upper}.NS")
+                    if not info:
+                        info = self._try_get_ticker_info(symbol_upper)
+                elif default_market == 'BSE':
+                    info = self._try_get_ticker_info(f"{symbol_upper}.BO")
+                    if not info:
+                        info = self._try_get_ticker_info(symbol_upper)
+                else:
+                    info = self._try_get_ticker_info(symbol_upper)
+
+            if not info:
+                info = {}
+
             current_price = Decimal(str(info.get("regularMarketPrice", 0)))
 
             # Determine signal based on indicators
@@ -214,17 +314,47 @@ class AnalysisService:
             return "BEARISH"
         return "NEUTRAL"
 
+    def _try_get_ticker_info(self, yahoo_symbol: str) -> dict | None:
+        """Try to get ticker info, returns None if not found."""
+        try:
+            ticker = yf.Ticker(yahoo_symbol)
+            info = ticker.info
+            if info and info.get("regularMarketPrice") is not None:
+                return info
+        except Exception:
+            pass
+        return None
+
     async def get_stock_info(self, symbol: str) -> StockInfo | None:
         """Get detailed stock information."""
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            symbol_upper = symbol.upper().strip()
+            info = None
 
-            if not info or info.get("regularMarketPrice") is None:
+            # If symbol already has a suffix, use as-is
+            if "." in symbol_upper:
+                info = self._try_get_ticker_info(symbol_upper)
+            else:
+                # Try with Indian suffix first (if default market is Indian)
+                default_market = getattr(settings, 'DEFAULT_MARKET', 'US').upper()
+                if default_market in ('NSE', 'IN', 'INDIA'):
+                    info = self._try_get_ticker_info(f"{symbol_upper}.NS")
+                    if not info:
+                        # Fallback to US (no suffix)
+                        info = self._try_get_ticker_info(symbol_upper)
+                elif default_market == 'BSE':
+                    info = self._try_get_ticker_info(f"{symbol_upper}.BO")
+                    if not info:
+                        info = self._try_get_ticker_info(symbol_upper)
+                else:
+                    # US market default - try without suffix first
+                    info = self._try_get_ticker_info(symbol_upper)
+
+            if not info:
                 return None
 
             return StockInfo(
-                symbol=symbol.upper(),
+                symbol=symbol_upper,
                 name=info.get("longName") or info.get("shortName"),
                 exchange=info.get("exchange"),
                 currency=info.get("currency"),

@@ -17,7 +17,7 @@ import {
 } from 'lightweight-charts';
 
 interface ChartData {
-  time: string;
+  time: string | number; // string for daily "YYYY-MM-DD", number for Unix timestamp (seconds)
   open: number;
   high: number;
   low: number;
