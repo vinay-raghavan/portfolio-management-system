@@ -2,22 +2,26 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PlainSerializer
+
+# Custom type that serializes Decimal as float for JSON
+DecimalAsFloat = Annotated[Decimal, PlainSerializer(lambda v: float(v) if v is not None else None, return_type=float)]
 
 
 class StockQuote(BaseModel):
     """Schema for stock quote."""
 
     symbol: str
-    price: Decimal
-    open: Decimal | None = None
-    high: Decimal | None = None
-    low: Decimal | None = None
-    close: Decimal | None = None
+    price: DecimalAsFloat
+    open: DecimalAsFloat | None = None
+    high: DecimalAsFloat | None = None
+    low: DecimalAsFloat | None = None
+    close: DecimalAsFloat | None = None
     volume: int | None = None
-    change: Decimal | None = None
-    change_pct: Decimal | None = None
+    change: DecimalAsFloat | None = None
+    change_pct: DecimalAsFloat | None = None
     timestamp: datetime | None = None
 
 
@@ -29,21 +33,21 @@ class StockInfo(BaseModel):
     exchange: str | None = None
     sector: str | None = None
     industry: str | None = None
-    market_cap: Decimal | None = None
-    pe_ratio: Decimal | None = None
-    dividend_yield: Decimal | None = None
-    fifty_two_week_high: Decimal | None = None
-    fifty_two_week_low: Decimal | None = None
+    market_cap: DecimalAsFloat | None = None
+    pe_ratio: DecimalAsFloat | None = None
+    dividend_yield: DecimalAsFloat | None = None
+    fifty_two_week_high: DecimalAsFloat | None = None
+    fifty_two_week_low: DecimalAsFloat | None = None
 
 
 class HistoricalDataPoint(BaseModel):
     """Schema for historical data point."""
 
     date: datetime
-    open: Decimal
-    high: Decimal
-    low: Decimal
-    close: Decimal
+    open: DecimalAsFloat
+    high: DecimalAsFloat
+    low: DecimalAsFloat
+    close: DecimalAsFloat
     volume: int
 
 
@@ -73,16 +77,16 @@ class IndexConstituent(BaseModel):
     isin: str | None = None
     series: str = "EQ"
     is_fno: bool = False
-    last_price: Decimal | None = None
-    change: Decimal | None = None
-    change_pct: Decimal | None = None
-    open: Decimal | None = None
-    high: Decimal | None = None
-    low: Decimal | None = None
-    previous_close: Decimal | None = None
+    last_price: DecimalAsFloat | None = None
+    change: DecimalAsFloat | None = None
+    change_pct: DecimalAsFloat | None = None
+    open: DecimalAsFloat | None = None
+    high: DecimalAsFloat | None = None
+    low: DecimalAsFloat | None = None
+    previous_close: DecimalAsFloat | None = None
     volume: int | None = None
-    year_high: Decimal | None = None
-    year_low: Decimal | None = None
+    year_high: DecimalAsFloat | None = None
+    year_low: DecimalAsFloat | None = None
 
 
 class IndexConstituentsResponse(BaseModel):

@@ -4,15 +4,18 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.portfolio.models import Position, Trade, CostLot
+from app.modules.portfolio.models import Position, Trade, CostLot, Portfolio
 from app.modules.portfolio.schemas import (
     PositionResponse,
     PortfolioSummary,
     PortfolioResponse,
-    TradeResponse,
+    PortfolioInfo,
+    PortfolioCreate,
+    PortfolioUpdate,
+    PortfolioDetailResponse,
 )
 
 
@@ -22,6 +25,137 @@ class PortfolioService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    # ============ Portfolio Management ============
+
+    async def create_portfolio(
+        self, user_id: str, data: PortfolioCreate
+    ) -> Portfolio:
+        """Create a new portfolio for a user."""
+        # If this is set as default, unset other defaults
+        if data.is_default:
+            await self.db.execute(
+                update(Portfolio)
+                .where(Portfolio.user_id == user_id, Portfolio.is_default == True)
+                .values(is_default=False)
+            )
+
+        portfolio = Portfolio(
+            user_id=user_id,
+            name=data.name,
+            description=data.description,
+            currency=data.currency,
+            is_default=data.is_default,
+        )
+        self.db.add(portfolio)
+        await self.db.flush()
+        await self.db.refresh(portfolio)
+        return portfolio
+
+    async def get_portfolios(self, user_id: str) -> list[Portfolio]:
+        """Get all portfolios for a user."""
+        result = await self.db.execute(
+            select(Portfolio)
+            .where(Portfolio.user_id == user_id)
+            .order_by(Portfolio.is_default.desc(), Portfolio.name)
+        )
+        return list(result.scalars().all())
+
+    async def get_portfolio_by_id(
+        self, user_id: str, portfolio_id: str
+    ) -> Portfolio | None:
+        """Get a specific portfolio by ID."""
+        result = await self.db.execute(
+            select(Portfolio).where(
+                Portfolio.id == portfolio_id, Portfolio.user_id == user_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_default_portfolio(self, user_id: str) -> Portfolio | None:
+        """Get the default portfolio for a user."""
+        result = await self.db.execute(
+            select(Portfolio).where(
+                Portfolio.user_id == user_id, Portfolio.is_default == True
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_or_create_default_portfolio(self, user_id: str) -> Portfolio:
+        """Get the default portfolio or create one if it doesn't exist."""
+        portfolio = await self.get_default_portfolio(user_id)
+        if portfolio is None:
+            portfolio = await self.create_portfolio(
+                user_id,
+                PortfolioCreate(
+                    name="Default Portfolio",
+                    description="Default portfolio for all positions",
+                    is_default=True,
+                ),
+            )
+        return portfolio
+
+    async def update_portfolio(
+        self, user_id: str, portfolio_id: str, data: PortfolioUpdate
+    ) -> Portfolio | None:
+        """Update a portfolio."""
+        portfolio = await self.get_portfolio_by_id(user_id, portfolio_id)
+        if portfolio is None:
+            return None
+
+        # If setting as default, unset other defaults
+        if data.is_default is True:
+            await self.db.execute(
+                update(Portfolio)
+                .where(
+                    Portfolio.user_id == user_id,
+                    Portfolio.is_default == True,
+                    Portfolio.id != portfolio_id,
+                )
+                .values(is_default=False)
+            )
+
+        if data.name is not None:
+            portfolio.name = data.name
+        if data.description is not None:
+            portfolio.description = data.description
+        if data.currency is not None:
+            portfolio.currency = data.currency
+        if data.is_default is not None:
+            portfolio.is_default = data.is_default
+
+        await self.db.flush()
+        await self.db.refresh(portfolio)
+        return portfolio
+
+    async def delete_portfolio(self, user_id: str, portfolio_id: str) -> bool:
+        """Delete a portfolio. Returns True if deleted, False if not found."""
+        portfolio = await self.get_portfolio_by_id(user_id, portfolio_id)
+        if portfolio is None:
+            return False
+
+        # Don't allow deleting the default portfolio if it has positions
+        if portfolio.is_default:
+            positions = await self.get_positions_by_portfolio(user_id, portfolio_id)
+            if positions:
+                raise ValueError("Cannot delete default portfolio with positions")
+
+        await self.db.delete(portfolio)
+        await self.db.flush()
+        return True
+
+    async def get_positions_by_portfolio(
+        self, user_id: str, portfolio_id: str
+    ) -> list[Position]:
+        """Get all positions for a specific portfolio."""
+        result = await self.db.execute(
+            select(Position)
+            .where(Position.user_id == user_id, Position.portfolio_id == portfolio_id)
+            .order_by(Position.symbol)
+        )
+        return list(result.scalars().all())
+
+    # ============ Position Management ============
+
     async def get_positions(self, user_id: str) -> list[Position]:
         """Get all positions for a user."""
         result = await self.db.execute(
@@ -29,22 +163,41 @@ class PortfolioService:
         )
         return list(result.scalars().all())
 
-    async def get_position(self, user_id: str, symbol: str) -> Position | None:
-        """Get a specific position for a user."""
-        result = await self.db.execute(
-            select(Position).where(Position.user_id == user_id, Position.symbol == symbol)
-        )
+    async def get_position(
+        self, user_id: str, symbol: str, portfolio_id: str | None = None
+    ) -> Position | None:
+        """Get a specific position for a user, optionally within a portfolio."""
+        if portfolio_id:
+            result = await self.db.execute(
+                select(Position).where(
+                    Position.user_id == user_id,
+                    Position.symbol == symbol,
+                    Position.portfolio_id == portfolio_id,
+                )
+            )
+        else:
+            result = await self.db.execute(
+                select(Position).where(
+                    Position.user_id == user_id, Position.symbol == symbol
+                )
+            )
         return result.scalar_one_or_none()
 
     async def update_position(
-        self, user_id: str, symbol: str, quantity: Decimal, avg_cost: Decimal
+        self,
+        user_id: str,
+        symbol: str,
+        quantity: Decimal,
+        avg_cost: Decimal,
+        portfolio_id: str | None = None,
     ) -> Position:
         """Create or update a position."""
-        position = await self.get_position(user_id, symbol)
+        position = await self.get_position(user_id, symbol, portfolio_id)
 
         if position is None:
             position = Position(
                 user_id=user_id,
+                portfolio_id=portfolio_id,
                 symbol=symbol,
                 quantity=quantity,
                 avg_cost=avg_cost,
@@ -65,9 +218,43 @@ class PortfolioService:
     async def get_portfolio(
         self, user_id: str, price_getter: Callable | None = None
     ) -> PortfolioResponse:
-        """Get full portfolio with summary."""
+        """Get full portfolio with summary (all positions across all portfolios)."""
         positions = await self.get_positions(user_id)
+        summary, position_responses = await self._calculate_portfolio_summary(
+            positions, price_getter
+        )
+        return PortfolioResponse(summary=summary, positions=position_responses)
 
+    async def get_portfolio_detail(
+        self,
+        user_id: str,
+        portfolio_id: str,
+        price_getter: Callable | None = None,
+    ) -> PortfolioDetailResponse | None:
+        """Get detailed portfolio with positions and summary."""
+        portfolio = await self.get_portfolio_by_id(user_id, portfolio_id)
+        if portfolio is None:
+            return None
+
+        positions = await self.get_positions_by_portfolio(user_id, portfolio_id)
+        summary, position_responses = await self._calculate_portfolio_summary(
+            positions, price_getter, portfolio.id, portfolio.name
+        )
+
+        return PortfolioDetailResponse(
+            portfolio=PortfolioInfo.model_validate(portfolio),
+            summary=summary,
+            positions=position_responses,
+        )
+
+    async def _calculate_portfolio_summary(
+        self,
+        positions: list[Position],
+        price_getter: Callable | None = None,
+        portfolio_id: str | None = None,
+        portfolio_name: str | None = None,
+    ) -> tuple[PortfolioSummary, list[PositionResponse]]:
+        """Calculate portfolio summary from positions."""
         total_value = Decimal("0")
         total_cost = Decimal("0")
         position_responses = []
@@ -84,7 +271,9 @@ class PortfolioService:
             if current_price:
                 market_value = pos.quantity * current_price
                 unrealized_pnl = market_value - cost
-                unrealized_pnl_pct = (unrealized_pnl / cost * 100) if cost else Decimal("0")
+                unrealized_pnl_pct = (
+                    (unrealized_pnl / cost * 100) if cost else Decimal("0")
+                )
                 total_value += market_value
             else:
                 market_value = cost
@@ -95,6 +284,7 @@ class PortfolioService:
             position_responses.append(
                 PositionResponse(
                     id=pos.id,
+                    portfolio_id=pos.portfolio_id,
                     symbol=pos.symbol,
                     quantity=pos.quantity,
                     avg_cost=pos.avg_cost,
@@ -109,6 +299,8 @@ class PortfolioService:
         total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else Decimal("0")
 
         summary = PortfolioSummary(
+            portfolio_id=portfolio_id,
+            portfolio_name=portfolio_name,
             total_value=total_value,
             total_cost=total_cost,
             total_pnl=total_pnl,
@@ -117,7 +309,7 @@ class PortfolioService:
             positions_count=len(positions),
         )
 
-        return PortfolioResponse(summary=summary, positions=position_responses)
+        return summary, position_responses
 
     async def get_trades(
         self, user_id: str, page: int = 1, page_size: int = 50
@@ -151,10 +343,12 @@ class PortfolioService:
         quantity: Decimal,
         price: Decimal,
         trade_id: str | None = None,
+        portfolio_id: str | None = None,
     ) -> CostLot:
         """Add a new cost lot when buying shares (FIFO tracking)."""
         lot = CostLot(
             user_id=user_id,
+            portfolio_id=portfolio_id,
             symbol=symbol.upper(),
             original_quantity=quantity,
             remaining_quantity=quantity,
@@ -167,16 +361,20 @@ class PortfolioService:
         await self.db.refresh(lot)
         return lot
 
-    async def get_cost_lots(self, user_id: str, symbol: str) -> list[CostLot]:
+    async def get_cost_lots(
+        self, user_id: str, symbol: str, portfolio_id: str | None = None
+    ) -> list[CostLot]:
         """Get all cost lots for a symbol in FIFO order (oldest first)."""
+        conditions = [
+            CostLot.user_id == user_id,
+            CostLot.symbol == symbol.upper(),
+            CostLot.remaining_quantity > 0,
+        ]
+        if portfolio_id:
+            conditions.append(CostLot.portfolio_id == portfolio_id)
+
         result = await self.db.execute(
-            select(CostLot)
-            .where(
-                CostLot.user_id == user_id,
-                CostLot.symbol == symbol.upper(),
-                CostLot.remaining_quantity > 0,
-            )
-            .order_by(CostLot.purchased_at.asc())
+            select(CostLot).where(*conditions).order_by(CostLot.purchased_at.asc())
         )
         return list(result.scalars().all())
 
@@ -186,6 +384,7 @@ class PortfolioService:
         symbol: str,
         quantity: Decimal,
         sell_price: Decimal,
+        portfolio_id: str | None = None,
     ) -> Decimal:
         """Consume cost lots in FIFO order and calculate realized P&L.
 
@@ -194,11 +393,12 @@ class PortfolioService:
             symbol: Stock symbol
             quantity: Quantity to sell
             sell_price: Sale price per share
+            portfolio_id: Optional portfolio ID
 
         Returns:
             Realized profit/loss from this sale
         """
-        lots = await self.get_cost_lots(user_id, symbol.upper())
+        lots = await self.get_cost_lots(user_id, symbol.upper(), portfolio_id)
         remaining_to_sell = quantity
         realized_pnl = Decimal("0")
 
@@ -212,7 +412,7 @@ class PortfolioService:
             # Calculate P&L for this portion
             cost_basis = take_qty * lot.purchase_price
             sale_value = take_qty * sell_price
-            realized_pnl += (sale_value - cost_basis)
+            realized_pnl += sale_value - cost_basis
 
             # Update the lot
             lot.remaining_quantity -= take_qty
@@ -223,12 +423,14 @@ class PortfolioService:
         await self.db.flush()
         return realized_pnl
 
-    async def calculate_fifo_avg_cost(self, user_id: str, symbol: str) -> Decimal:
+    async def calculate_fifo_avg_cost(
+        self, user_id: str, symbol: str, portfolio_id: str | None = None
+    ) -> Decimal:
         """Calculate the FIFO-based average cost for a position.
 
         This is the weighted average of remaining cost lots.
         """
-        lots = await self.get_cost_lots(user_id, symbol.upper())
+        lots = await self.get_cost_lots(user_id, symbol.upper(), portfolio_id)
         if not lots:
             return Decimal("0")
 
@@ -248,6 +450,7 @@ class PortfolioService:
         quantity: Decimal,
         price: Decimal,
         trade_id: str | None = None,
+        portfolio_id: str | None = None,
     ) -> tuple[Position, Decimal]:
         """Update position using FIFO cost tracking.
 
@@ -258,6 +461,7 @@ class PortfolioService:
             quantity: Trade quantity
             price: Trade price
             trade_id: Optional trade ID for lot tracking
+            portfolio_id: Optional portfolio ID
 
         Returns:
             Tuple of (updated position, realized P&L for sells)
@@ -267,20 +471,24 @@ class PortfolioService:
 
         if side == "BUY":
             # Add a new cost lot
-            await self.add_cost_lot(user_id, symbol, quantity, price, trade_id)
+            await self.add_cost_lot(
+                user_id, symbol, quantity, price, trade_id, portfolio_id
+            )
         else:  # SELL
             # Consume lots in FIFO order
             realized_pnl = await self.consume_cost_lots_fifo(
-                user_id, symbol, quantity, price
+                user_id, symbol, quantity, price, portfolio_id
             )
 
         # Calculate new position from remaining lots
-        new_avg_cost = await self.calculate_fifo_avg_cost(user_id, symbol)
-        lots = await self.get_cost_lots(user_id, symbol)
+        new_avg_cost = await self.calculate_fifo_avg_cost(user_id, symbol, portfolio_id)
+        lots = await self.get_cost_lots(user_id, symbol, portfolio_id)
         new_quantity = sum(lot.remaining_quantity for lot in lots)
 
         # Update position
-        position = await self.update_position(user_id, symbol, new_quantity, new_avg_cost)
+        position = await self.update_position(
+            user_id, symbol, new_quantity, new_avg_cost, portfolio_id
+        )
 
         # Update realized P&L on position
         if realized_pnl != 0 and position.quantity > 0:

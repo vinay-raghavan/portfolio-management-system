@@ -93,7 +93,7 @@ services:
     container_name: portfolio-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://api:8000/api/v1
+      API_URL: http://api:8000
     ports:
       - "${WEB_PORT:-3001}:3000"
     depends_on:

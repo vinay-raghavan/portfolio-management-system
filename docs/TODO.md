@@ -788,52 +788,52 @@ flowchart TB
     style Backend fill:#e0f2f1,stroke:#00897b
 ```
 
-#### 1.5.1 Dashboard
+#### 1.5.1 Dashboard ✅
 **Tasks:**
-- [ ] Portfolio summary widget
+- [x] Portfolio summary widget
   - Total value, day P&L, overall P&L
-- [ ] Top gainers/losers
-- [ ] Recent trades
-- [ ] Market overview (Nifty, Bank Nifty, Sensex)
+- [x] Top gainers/losers
+- [x] Recent trades
+- [x] Market overview (Nifty, Bank Nifty, Sensex)
 
-#### 1.5.2 Portfolio View
+#### 1.5.2 Portfolio View ✅
 **Tasks:**
-- [ ] Holdings table (symbol, qty, avg cost, LTP, P&L, %)
-- [ ] Sector allocation pie chart
-- [ ] Performance chart (value over time)
-- [ ] Export to CSV
+- [x] Holdings table (symbol, qty, avg cost, LTP, P&L, %)
+- [x] Sector allocation pie chart
+- [x] Performance chart (value over time)
+- [x] Export to CSV
 
-#### 1.5.3 Trading Interface
+#### 1.5.3 Trading Interface ✅
 **Tasks:**
-- [ ] Order entry form
+- [x] Order entry form
   - Buy/Sell toggle
   - Market/Limit selector
   - Quantity, Price, Stop Loss, Target
-- [ ] Order confirmation modal
-- [ ] Order book (pending orders)
-- [ ] Trade history
+- [x] Order confirmation modal
+- [x] Order book (pending orders)
+- [x] Trade history
 
-#### 1.5.4 Charts
+#### 1.5.4 Charts ✅
 **Tasks:**
-- [ ] Candlestick chart (TradingView Lightweight Charts or similar)
-- [ ] Technical indicators overlay (moving averages, Bollinger)
-- [ ] Volume bars
-- [ ] Drawing tools (basic)
+- [x] Candlestick chart (TradingView Lightweight Charts or similar)
+- [x] Technical indicators overlay (moving averages, Bollinger)
+- [x] Volume bars
+- [ ] Drawing tools (basic) - *Deferred to future enhancement*
 
-#### 1.5.5 Watchlist
+#### 1.5.5 Watchlist ✅
 **Tasks:**
-- [ ] Multiple watchlists support
-- [ ] Add/remove symbols
-- [ ] Live price updates
-- [ ] Quick buy/sell from watchlist
+- [x] Multiple watchlists support
+- [x] Add/remove symbols
+- [x] Live price updates
+- [x] Quick buy/sell from watchlist
 
-#### 1.5.6 Alerts Configuration
+#### 1.5.6 Alerts Configuration ✅
 **Tasks:**
-- [ ] Price alerts (above/below threshold)
-- [ ] Order execution alerts
-- [ ] Daily P&L summary alerts
-- [ ] Strategy signal alerts
-- [ ] Risk limit breach alerts
+- [x] Price alerts (above/below threshold)
+- [x] Order execution alerts
+- [x] Daily P&L summary alerts
+- [x] Strategy signal alerts
+- [x] Risk limit breach alerts
 
 ---
 

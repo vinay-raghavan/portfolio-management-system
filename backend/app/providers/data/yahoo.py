@@ -44,6 +44,11 @@ class YahooDataProvider(DataProvider):
         """Convert symbol to Yahoo Finance format."""
         symbol = symbol.upper().strip()
 
+        # Index symbols start with ^ and should be passed as-is
+        # e.g., ^NSEI, ^NSEBANK, ^BSESN, ^GSPC, ^DJI, ^IXIC
+        if symbol.startswith("^"):
+            return symbol
+
         # Already in Yahoo format
         if symbol.endswith(".NS") or symbol.endswith(".BO"):
             return symbol
