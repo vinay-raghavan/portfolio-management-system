@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import DbSession, CurrentUser
 from app.modules.trading.schemas import OrderCreate, OrderResponse, OrderListResponse
-from app.modules.trading.service import TradingService
+from app.modules.trading.service import TradingService, OrderValidationError
 from app.modules.data.service import MarketDataService
 
 router = APIRouter()
@@ -23,7 +23,13 @@ async def create_order(
     market_data_service = MarketDataService()
 
     # Create the order
-    order = await trading_service.create_order(current_user.id, order_data)
+    try:
+        order = await trading_service.create_order(current_user.id, order_data)
+    except OrderValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.detail,
+        )
 
     # For market orders, execute immediately
     if order_data.order_type.value == "MARKET":
