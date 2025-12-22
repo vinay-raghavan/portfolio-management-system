@@ -8,6 +8,7 @@ from app.modules.signals.strategies.composite import (
     CompositeStrategyFactory,
     StrategyComponent,
 )
+from app.modules.signals.strategies.gap_go import GapAndGoStrategy
 from app.modules.signals.strategies.macd import MACDCrossoverStrategy
 from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
 from app.modules.signals.strategies.orb import ORBStrategy
@@ -25,6 +26,7 @@ __all__ = [
     "BollingerSqueezeStrategy",
     "ORBStrategy",
     "VWAPReversionStrategy",
+    "GapAndGoStrategy",
     # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",
