@@ -1,7 +1,6 @@
 """Algo trading service for strategy management."""
 
 import logging
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,4 +160,3 @@ class AlgoService:
             )
         )
         return len(result.scalars().all())
-

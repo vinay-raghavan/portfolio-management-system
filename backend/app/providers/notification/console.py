@@ -40,12 +40,16 @@ class ConsoleNotificationProvider(NotificationProvider):
         }
 
         emoji = priority_emoji.get(priority, "📢")
-        log_level = logging.WARNING if priority in (NotificationPriority.HIGH, NotificationPriority.CRITICAL) else logging.INFO
+        log_level = (
+            logging.WARNING
+            if priority in (NotificationPriority.HIGH, NotificationPriority.CRITICAL)
+            else logging.INFO
+        )
 
         logger.log(
             log_level,
             f"{emoji} NOTIFICATION [{priority.value.upper()}] [{notification_type.value}] "
-            f"User: {user_id} | {title}: {message}"
+            f"User: {user_id} | {title}: {message}",
         )
 
         if data:
@@ -64,12 +68,9 @@ class ConsoleNotificationProvider(NotificationProvider):
         """Send notification to multiple users."""
         results = {}
         for user_id in user_ids:
-            results[user_id] = await self.send(
-                user_id, title, message, priority, notification_type
-            )
+            results[user_id] = await self.send(user_id, title, message, priority, notification_type)
         return results
 
     async def is_available(self, user_id: str) -> bool:
         """Console is always available."""
         return True
-

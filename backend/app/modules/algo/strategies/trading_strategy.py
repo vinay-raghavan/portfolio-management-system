@@ -8,8 +8,6 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
 
-import pandas as pd
-
 from app.modules.algo.models import PositionSizingMethod
 from app.modules.signals.models import SignalType
 from app.modules.signals.strategies.base import BaseStrategy, SignalData
@@ -185,4 +183,3 @@ class TradingStrategy(BaseStrategy):
             if self.should_enter(signal):
                 filtered.append(signal)
         return filtered
-

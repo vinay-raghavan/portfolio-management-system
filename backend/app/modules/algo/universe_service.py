@@ -4,7 +4,6 @@ Manages symbol universes for strategy trading.
 """
 
 import logging
-from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,57 +20,162 @@ PREDEFINED_UNIVERSES = {
         "name": "Nifty 50",
         "description": "Top 50 companies by market cap on NSE",
         "symbols": [
-            "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
-            "HINDUNILVR", "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK",
-            "LT", "AXISBANK", "ASIANPAINT", "MARUTI", "HCLTECH",
-            "SUNPHARMA", "TITAN", "BAJFINANCE", "WIPRO", "ULTRACEMCO",
-            "NESTLEIND", "NTPC", "POWERGRID", "ONGC", "M&M",
-            "TATAMOTORS", "JSWSTEEL", "TATASTEEL", "ADANIENT", "ADANIPORTS",
-            "COALINDIA", "BAJAJFINSV", "TECHM", "INDUSINDBK", "HINDALCO",
-            "DRREDDY", "DIVISLAB", "CIPLA", "GRASIM", "BRITANNIA",
-            "APOLLOHOSP", "EICHERMOT", "HEROMOTOCO", "BPCL", "TATACONSUM",
-            "SBILIFE", "HDFCLIFE", "UPL", "BAJAJ-AUTO", "LTIM",
+            "RELIANCE",
+            "TCS",
+            "HDFCBANK",
+            "INFY",
+            "ICICIBANK",
+            "HINDUNILVR",
+            "SBIN",
+            "BHARTIARTL",
+            "ITC",
+            "KOTAKBANK",
+            "LT",
+            "AXISBANK",
+            "ASIANPAINT",
+            "MARUTI",
+            "HCLTECH",
+            "SUNPHARMA",
+            "TITAN",
+            "BAJFINANCE",
+            "WIPRO",
+            "ULTRACEMCO",
+            "NESTLEIND",
+            "NTPC",
+            "POWERGRID",
+            "ONGC",
+            "M&M",
+            "TATAMOTORS",
+            "JSWSTEEL",
+            "TATASTEEL",
+            "ADANIENT",
+            "ADANIPORTS",
+            "COALINDIA",
+            "BAJAJFINSV",
+            "TECHM",
+            "INDUSINDBK",
+            "HINDALCO",
+            "DRREDDY",
+            "DIVISLAB",
+            "CIPLA",
+            "GRASIM",
+            "BRITANNIA",
+            "APOLLOHOSP",
+            "EICHERMOT",
+            "HEROMOTOCO",
+            "BPCL",
+            "TATACONSUM",
+            "SBILIFE",
+            "HDFCLIFE",
+            "UPL",
+            "BAJAJ-AUTO",
+            "LTIM",
         ],
     },
     "BANKNIFTY": {
         "name": "Bank Nifty",
         "description": "Major banking stocks in Nifty Bank index",
         "symbols": [
-            "HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK",
-            "INDUSINDBK", "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB", "PNB",
-            "BANKBARODA", "AUBANK",
+            "HDFCBANK",
+            "ICICIBANK",
+            "SBIN",
+            "KOTAKBANK",
+            "AXISBANK",
+            "INDUSINDBK",
+            "BANDHANBNK",
+            "FEDERALBNK",
+            "IDFCFIRSTB",
+            "PNB",
+            "BANKBARODA",
+            "AUBANK",
         ],
     },
     "NIFTYNEXT50": {
         "name": "Nifty Next 50",
         "description": "Next 50 companies after Nifty 50",
         "symbols": [
-            "ADANIGREEN", "AMBUJACEM", "AUROPHARMA", "BAJAJHLDNG", "BERGEPAINT",
-            "BIOCON", "BOSCHLTD", "CHOLAFIN", "COLPAL", "DABUR",
-            "DLF", "GAIL", "GODREJCP", "HAVELLS", "ICICIPRULI",
-            "ICICIGI", "INDUSTOWER", "IOC", "IRCTC", "JINDALSTEL",
-            "LICI", "LUPIN", "MARICO", "MCDOWELL-N", "MUTHOOTFIN",
-            "NAUKRI", "NHPC", "NMDC", "PAGEIND", "PGHH",
-            "PIDILITIND", "PFC", "RECLTD", "SAIL", "SBICARD",
-            "SHREECEM", "SIEMENS", "SRF", "TATAPOWER", "TORNTPHARM",
-            "TRENT", "VEDL", "VBL", "YESBANK", "ZOMATO",
-            "ZYDUSLIFE", "ABB", "ATGL", "CANBK", "DMART",
+            "ADANIGREEN",
+            "AMBUJACEM",
+            "AUROPHARMA",
+            "BAJAJHLDNG",
+            "BERGEPAINT",
+            "BIOCON",
+            "BOSCHLTD",
+            "CHOLAFIN",
+            "COLPAL",
+            "DABUR",
+            "DLF",
+            "GAIL",
+            "GODREJCP",
+            "HAVELLS",
+            "ICICIPRULI",
+            "ICICIGI",
+            "INDUSTOWER",
+            "IOC",
+            "IRCTC",
+            "JINDALSTEL",
+            "LICI",
+            "LUPIN",
+            "MARICO",
+            "MCDOWELL-N",
+            "MUTHOOTFIN",
+            "NAUKRI",
+            "NHPC",
+            "NMDC",
+            "PAGEIND",
+            "PGHH",
+            "PIDILITIND",
+            "PFC",
+            "RECLTD",
+            "SAIL",
+            "SBICARD",
+            "SHREECEM",
+            "SIEMENS",
+            "SRF",
+            "TATAPOWER",
+            "TORNTPHARM",
+            "TRENT",
+            "VEDL",
+            "VBL",
+            "YESBANK",
+            "ZOMATO",
+            "ZYDUSLIFE",
+            "ABB",
+            "ATGL",
+            "CANBK",
+            "DMART",
         ],
     },
     "NIFTYIT": {
         "name": "Nifty IT",
         "description": "IT sector stocks",
         "symbols": [
-            "TCS", "INFY", "HCLTECH", "WIPRO", "TECHM",
-            "LTIM", "MPHASIS", "COFORGE", "PERSISTENT", "LTTS",
+            "TCS",
+            "INFY",
+            "HCLTECH",
+            "WIPRO",
+            "TECHM",
+            "LTIM",
+            "MPHASIS",
+            "COFORGE",
+            "PERSISTENT",
+            "LTTS",
         ],
     },
     "NIFTYPHARMA": {
         "name": "Nifty Pharma",
         "description": "Pharmaceutical sector stocks",
         "symbols": [
-            "SUNPHARMA", "DRREDDY", "DIVISLAB", "CIPLA", "APOLLOHOSP",
-            "AUROPHARMA", "BIOCON", "LUPIN", "TORNTPHARM", "ZYDUSLIFE",
+            "SUNPHARMA",
+            "DRREDDY",
+            "DIVISLAB",
+            "CIPLA",
+            "APOLLOHOSP",
+            "AUROPHARMA",
+            "BIOCON",
+            "LUPIN",
+            "TORNTPHARM",
+            "ZYDUSLIFE",
         ],
     },
 }
@@ -122,9 +226,7 @@ class UniverseService:
         )
         return list(result.scalars().all())
 
-    async def update(
-        self, user_id: str, universe_id: str, data: UniverseUpdate
-    ) -> Universe | None:
+    async def update(self, user_id: str, universe_id: str, data: UniverseUpdate) -> Universe | None:
         """Update a universe (only user's own universes)."""
         result = await self.db.execute(
             select(Universe).where(
@@ -261,11 +363,13 @@ class UniverseService:
     async def get_fo_stocks(self) -> list[str]:
         """Get all F&O eligible stocks from instruments."""
         result = await self.db.execute(
-            select(Instrument.symbol).where(
+            select(Instrument.symbol)
+            .where(
                 Instrument.segment == "FO",
                 Instrument.instrument_type == "FUT",
                 Instrument.is_active == True,  # noqa: E712
-            ).distinct()
+            )
+            .distinct()
         )
         return [row[0] for row in result.all()]
 
@@ -300,4 +404,3 @@ class UniverseService:
         await self.db.flush()
         await self.db.refresh(universe)
         return universe
-

@@ -22,17 +22,16 @@ from app.modules.algo.models import (
     ExecutionStatus,
     PositionSizingMethod,
     StrategyExecution,
-    StrategyStatus,
     UserStrategy,
 )
 from app.modules.algo.notifications import AlgoNotificationService
 from app.modules.risk.service import RiskService
-from app.modules.signals.models import Signal, SignalStatus, SignalType
+from app.modules.signals.models import SignalType
 from app.modules.signals.strategies.base import BaseStrategy, SignalData
 from app.modules.signals.strategies.registry import StrategyRegistry
 from app.providers.broker.base import Broker
 from app.providers.data.base import DataProvider
-from app.providers.schemas import OrderRequest, OrderResponse, OrderSide, OrderType, ProductType
+from app.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
 
 logger = logging.getLogger(__name__)
 
@@ -236,20 +235,24 @@ class StrategyExecutor:
         )
 
         if not ohlcv_data or len(ohlcv_data) < 20:
-            logger.debug(f"Insufficient data for {symbol}: {len(ohlcv_data) if ohlcv_data else 0} bars")
+            logger.debug(
+                f"Insufficient data for {symbol}: {len(ohlcv_data) if ohlcv_data else 0} bars"
+            )
             return []
 
         # Convert to DataFrame
-        df = pd.DataFrame([
-            {
-                "Open": float(bar.open),
-                "High": float(bar.high),
-                "Low": float(bar.low),
-                "Close": float(bar.close),
-                "Volume": bar.volume,
-            }
-            for bar in ohlcv_data
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "Open": float(bar.open),
+                    "High": float(bar.high),
+                    "Low": float(bar.low),
+                    "Close": float(bar.close),
+                    "Volume": bar.volume,
+                }
+                for bar in ohlcv_data
+            ]
+        )
         df.index = pd.to_datetime([bar.timestamp for bar in ohlcv_data])
 
         # Run strategy
@@ -334,7 +337,9 @@ class StrategyExecutor:
                 "side": side.value,
                 "quantity": quantity,
                 "status": order_response.status.value,
-                "filled_price": float(order_response.filled_price) if order_response.filled_price else None,
+                "filled_price": float(order_response.filled_price)
+                if order_response.filled_price
+                else None,
             }
 
         except Exception as e:
@@ -419,4 +424,3 @@ class StrategyExecutor:
             "stop_loss": float(signal.stop_loss) if signal.stop_loss else None,
             "take_profit": float(signal.take_profit) if signal.take_profit else None,
         }
-

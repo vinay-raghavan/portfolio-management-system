@@ -2,7 +2,6 @@
 
 import logging
 from decimal import Decimal
-from typing import Any
 
 from app.providers.notification import (
     NotificationPriority,
@@ -168,4 +167,3 @@ class AlgoNotificationService:
             notification_type=NotificationType.KILL_SWITCH_TRIGGERED,
             data={"reason": reason, "strategies_disabled": strategies_disabled},
         )
-

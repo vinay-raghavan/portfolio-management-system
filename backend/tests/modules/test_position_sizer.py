@@ -1,7 +1,6 @@
 """Tests for position sizing service."""
 
 from decimal import Decimal
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -129,4 +128,3 @@ class TestPositionSizer:
         # 60000 / 2500 = 24
         assert result.quantity == 24
         assert result.method_used == PositionSizingMethod.PERCENT_OF_PORTFOLIO
-

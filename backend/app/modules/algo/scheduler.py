@@ -191,15 +191,10 @@ class StrategyScheduler:
 
     async def get_strategy_by_id(self, strategy_id: str) -> UserStrategy | None:
         """Get a strategy by ID."""
-        result = await self.db.execute(
-            select(UserStrategy).where(UserStrategy.id == strategy_id)
-        )
+        result = await self.db.execute(select(UserStrategy).where(UserStrategy.id == strategy_id))
         return result.scalar_one_or_none()
 
     async def get_user_strategies(self, user_id: str) -> list[UserStrategy]:
         """Get all strategies for a user."""
-        result = await self.db.execute(
-            select(UserStrategy).where(UserStrategy.user_id == user_id)
-        )
+        result = await self.db.execute(select(UserStrategy).where(UserStrategy.user_id == user_id))
         return list(result.scalars().all())
-

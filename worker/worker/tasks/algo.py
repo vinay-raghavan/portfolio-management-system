@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
 
 from redis import Redis
 from sqlalchemy import select
@@ -22,7 +21,6 @@ async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False
 async def _run_scheduled_strategies_async() -> dict:
     """Async implementation of scheduled strategy execution."""
     from app.modules.algo.executor import StrategyExecutor
-    from app.modules.algo.models import StrategyStatus, UserStrategy
     from app.modules.algo.safety import AlgoKillSwitch
     from app.modules.algo.scheduler import StrategyScheduler
     from app.providers.broker.factory import get_broker
@@ -42,7 +40,9 @@ async def _run_scheduled_strategies_async() -> dict:
             try:
                 # Check kill switch for user
                 if await kill_switch.is_active(strategy.user_id):
-                    logger.warning(f"Kill switch active for user {strategy.user_id}, skipping strategy")
+                    logger.warning(
+                        f"Kill switch active for user {strategy.user_id}, skipping strategy"
+                    )
                     continue
 
                 # Check if market is open for non-CRON strategies
@@ -66,20 +66,24 @@ async def _run_scheduled_strategies_async() -> dict:
                 await scheduler.update_next_run(strategy)
                 await db.commit()
 
-                results.append({
-                    "strategy_id": strategy.id,
-                    "status": result.status.value,
-                    "signals": result.signals_generated,
-                    "orders": result.orders_placed,
-                })
+                results.append(
+                    {
+                        "strategy_id": strategy.id,
+                        "status": result.status.value,
+                        "signals": result.signals_generated,
+                        "orders": result.orders_placed,
+                    }
+                )
 
             except Exception as e:
                 logger.exception(f"Error executing strategy {strategy.id}: {e}")
-                results.append({
-                    "strategy_id": strategy.id,
-                    "status": "ERROR",
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "strategy_id": strategy.id,
+                        "status": "ERROR",
+                        "error": str(e),
+                    }
+                )
 
         redis_client.close()
         return {"executed": len(results), "results": results}
@@ -98,9 +102,11 @@ def run_scheduled_strategies(self) -> dict:
     return loop.run_until_complete(_run_scheduled_strategies_async())
 
 
-async def _execute_strategy_async(strategy_id: str, symbols_override: list[str] | None = None) -> dict:
+async def _execute_strategy_async(
+    strategy_id: str, symbols_override: list[str] | None = None
+) -> dict:
     """Async implementation of single strategy execution."""
-    from app.modules.algo.executor import ExecutionResult, StrategyExecutor
+    from app.modules.algo.executor import StrategyExecutor
     from app.modules.algo.models import UserStrategy
     from app.modules.algo.safety import AlgoKillSwitch
     from app.modules.algo.scheduler import StrategyScheduler
@@ -167,4 +173,3 @@ def execute_strategy(self, strategy_id: str, symbols_override: list[str] | None 
         asyncio.set_event_loop(loop)
 
     return loop.run_until_complete(_execute_strategy_async(strategy_id, symbols_override))
-

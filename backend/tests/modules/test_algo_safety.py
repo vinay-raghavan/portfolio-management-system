@@ -1,13 +1,12 @@
 """Tests for algo trading safety controls."""
 
 import json
-from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.modules.algo.models import PositionSizingMethod, StrategyStatus, UserStrategy
+from app.modules.algo.models import PositionSizingMethod, UserStrategy
 from app.modules.algo.safety import (
     AlgoKillSwitch,
     AlgoRateLimiter,
@@ -120,10 +119,12 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_trigger_on_daily_loss(self, mock_redis, mock_strategy):
         """Test circuit breaker triggers on daily loss limit."""
-        mock_redis.get.return_value = json.dumps({
-            "daily_loss": "9500",
-            "consecutive_losses": 2,
-        })
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "9500",
+                "consecutive_losses": 2,
+            }
+        )
         circuit_breaker = CircuitBreaker(mock_redis)
 
         state = await circuit_breaker.check_and_update(
@@ -138,10 +139,12 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_trigger_on_consecutive_losses(self, mock_redis, mock_strategy):
         """Test circuit breaker triggers on consecutive losses."""
-        mock_redis.get.return_value = json.dumps({
-            "daily_loss": "1000",
-            "consecutive_losses": 4,
-        })
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "1000",
+                "consecutive_losses": 4,
+            }
+        )
         circuit_breaker = CircuitBreaker(mock_redis)
 
         state = await circuit_breaker.check_and_update(
@@ -155,10 +158,12 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_reset_consecutive_on_win(self, mock_redis, mock_strategy):
         """Test consecutive losses reset on win."""
-        mock_redis.get.return_value = json.dumps({
-            "daily_loss": "1000",
-            "consecutive_losses": 3,
-        })
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "1000",
+                "consecutive_losses": 3,
+            }
+        )
         circuit_breaker = CircuitBreaker(mock_redis)
 
         state = await circuit_breaker.check_and_update(
@@ -248,4 +253,3 @@ class TestStrategyCooldown:
         await cooldown.start_cooldown("test-strategy", 60)
 
         mock_redis.setex.assert_called_once()
-

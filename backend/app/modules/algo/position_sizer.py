@@ -216,7 +216,9 @@ class PositionSizer:
         )
 
     @staticmethod
-    def calculate_atr(highs: list[Decimal], lows: list[Decimal], closes: list[Decimal], period: int = 14) -> Decimal:
+    def calculate_atr(
+        highs: list[Decimal], lows: list[Decimal], closes: list[Decimal], period: int = 14
+    ) -> Decimal:
         """Calculate Average True Range from price data.
 
         Args:
@@ -243,4 +245,3 @@ class PositionSizer:
         recent_trs = true_ranges[-period:]
         atr = sum(recent_trs) / Decimal(len(recent_trs))
         return atr
-

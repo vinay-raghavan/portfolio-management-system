@@ -1,7 +1,7 @@
 """Tests for algo trading service."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,6 @@ from app.modules.algo.models import (
     PositionSizingMethod,
     ScheduleType,
     StrategyStatus,
-    UserStrategy,
 )
 from app.modules.algo.schemas import StrategyCreate, StrategyUpdate
 from app.modules.algo.service import AlgoService
@@ -105,4 +104,3 @@ class TestAlgoService:
         assert StrategyStatus.PAUSED.value == "PAUSED"
         assert StrategyStatus.DISABLED.value == "DISABLED"
         assert StrategyStatus.ERROR.value == "ERROR"
-

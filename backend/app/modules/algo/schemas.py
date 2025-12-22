@@ -12,7 +12,6 @@ from app.modules.algo.models import (
     StrategyStatus,
 )
 
-
 # ============== Universe Schemas ==============
 
 
@@ -446,4 +445,3 @@ class CircuitBreakerStatus(BaseModel):
     triggered_at: datetime | None = None
     max_daily_loss: Decimal
     max_consecutive_losses: int
-

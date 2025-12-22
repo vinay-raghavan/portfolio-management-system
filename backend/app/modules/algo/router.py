@@ -8,9 +8,9 @@ from redis.asyncio import Redis
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.redis import get_redis
-from app.modules.algo.models import StrategyStatus, UserStrategy
+from app.modules.algo.models import StrategyStatus
+from app.modules.algo.notifications import AlgoNotificationService
 from app.modules.algo.safety import AlgoKillSwitch, CircuitBreaker
-from app.modules.algo.scheduler import StrategyScheduler
 from app.modules.algo.schemas import (
     CircuitBreakerStatus,
     ExecutionHistoryResponse,
@@ -23,7 +23,6 @@ from app.modules.algo.schemas import (
     UniverseResponse,
     UniverseUpdate,
 )
-from app.modules.algo.notifications import AlgoNotificationService
 from app.modules.algo.service import AlgoService
 from app.modules.algo.universe_service import UniverseService
 
@@ -289,7 +288,9 @@ async def emergency_stop(
     disabled_count = await service.disable_all_strategies(current_user.id)
     await db.commit()
 
-    logger.critical(f"EMERGENCY STOP by user {current_user.id}: {disabled_count} strategies disabled")
+    logger.critical(
+        f"EMERGENCY STOP by user {current_user.id}: {disabled_count} strategies disabled"
+    )
 
     # Send notification
     await _notification_service.notify_kill_switch_activated(
@@ -395,5 +396,9 @@ async def get_universe_symbols(
         raise HTTPException(status_code=403, detail="Access denied")
 
     symbols = await service.resolve_symbols(universe)
-    return {"universe_id": universe_id, "name": universe.name, "symbols": symbols, "count": len(symbols)}
-
+    return {
+        "universe_id": universe_id,
+        "name": universe.name,
+        "symbols": symbols,
+        "count": len(symbols),
+    }

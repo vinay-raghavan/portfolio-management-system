@@ -97,9 +97,7 @@ class UserStrategy(Base):
     interval_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )  # For INTERVAL type
-    cron_expression: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
-    )  # For CRON type
+    cron_expression: Mapped[str | None] = mapped_column(String(100), nullable=True)  # For CRON type
     timeframe: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
 
     # Universe (symbols to trade)
@@ -151,9 +149,7 @@ class UserStrategy(Base):
     consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -200,9 +196,7 @@ class Universe(Base):
     filter_criteria: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -244,9 +238,7 @@ class StrategyExecution(Base):
     )
 
     # Execution timing
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -324,9 +316,7 @@ class AlgoOrder(Base):
     risk_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships
     execution: Mapped["StrategyExecution"] = relationship(
@@ -341,4 +331,3 @@ class AlgoOrder(Base):
 
     def __repr__(self) -> str:
         return f"<AlgoOrder {self.side} {self.quantity} {self.symbol}>"
-

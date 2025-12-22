@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from redis.asyncio import Redis
 
-from app.modules.algo.models import StrategyStatus, UserStrategy
+from app.modules.algo.models import UserStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,9 @@ class CircuitBreaker:
         trigger_reason = None
 
         if daily_loss >= strategy.max_daily_loss:
-            trigger_reason = f"Daily loss limit breached: ₹{daily_loss:.2f} >= ₹{strategy.max_daily_loss:.2f}"
+            trigger_reason = (
+                f"Daily loss limit breached: ₹{daily_loss:.2f} >= ₹{strategy.max_daily_loss:.2f}"
+            )
 
         if consecutive_losses >= strategy.max_consecutive_losses:
             trigger_reason = (
@@ -208,7 +210,9 @@ class CircuitBreaker:
         await self.redis.setex(key, ttl, json.dumps(state_dict))
 
         if trigger_reason:
-            logger.warning(f"Circuit breaker TRIGGERED for strategy {strategy.id}: {trigger_reason}")
+            logger.warning(
+                f"Circuit breaker TRIGGERED for strategy {strategy.id}: {trigger_reason}"
+            )
 
         return CircuitBreakerState(
             is_triggered=trigger_reason is not None,
@@ -346,4 +350,3 @@ class StrategyCooldown:
         """Clear cooldown for a strategy."""
         key = COOLDOWN_KEY.format(strategy_id=strategy_id)
         await self.redis.delete(key)
-
