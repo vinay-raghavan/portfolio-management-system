@@ -65,6 +65,7 @@ export const useUIStore = create<UIState>()(
       currency: 'INR' as Currency,
       chartInterval: '1d',
       chartIndicators: ['sma_20', 'sma_50'],
+      selectedMarketIndices: DEFAULT_SELECTED_INDICES,
 
       setSelectedSymbol: (symbol) => {
         set({ selectedSymbol: symbol });
@@ -98,6 +99,19 @@ export const useUIStore = create<UIState>()(
           return { chartIndicators: indicators };
         });
       },
+
+      toggleMarketIndex: (symbol) => {
+        set((state) => {
+          const indices = state.selectedMarketIndices.includes(symbol)
+            ? state.selectedMarketIndices.filter((s) => s !== symbol)
+            : [...state.selectedMarketIndices, symbol];
+          return { selectedMarketIndices: indices };
+        });
+      },
+
+      setMarketIndices: (symbols) => {
+        set({ selectedMarketIndices: symbols });
+      },
     }),
     {
       name: 'ui-storage',
@@ -107,6 +121,7 @@ export const useUIStore = create<UIState>()(
         currency: state.currency,
         chartInterval: state.chartInterval,
         chartIndicators: state.chartIndicators,
+        selectedMarketIndices: state.selectedMarketIndices,
       }),
     }
   )
