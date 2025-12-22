@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
+import { NotificationBell } from '@/components/alerts';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -20,6 +21,7 @@ const navigation = [
   { name: 'Analysis', href: '/analysis', icon: LineChart },
   { name: 'Orders', href: '/orders', icon: ListOrdered },
   { name: 'Watchlist', href: '/watchlist', icon: Star },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export default function DashboardLayout({
@@ -76,6 +78,10 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">
+        {/* Header */}
+        <header className="h-16 border-b bg-card flex items-center justify-end px-8">
+          <NotificationBell />
+        </header>
         <div className="p-8">{children}</div>
       </main>
     </div>
