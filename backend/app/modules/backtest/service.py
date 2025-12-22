@@ -1,5 +1,6 @@
 """Backtest service for managing and running backtests."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -8,7 +9,9 @@ import pandas as pd
 import yfinance as yf
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.modules.backtest.models import BacktestResult, BacktestStatus, BacktestTrade
 from app.modules.backtest.runner import BacktestConfig, BacktestRunner
 from app.modules.backtest.schemas import BacktestRequest
@@ -20,6 +23,27 @@ class BacktestService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol for Yahoo Finance.
+
+        For Indian market (NSE/BSE), adds the appropriate suffix.
+        For other markets, returns the symbol as-is.
+        """
+        symbol = symbol.upper().strip()
+
+        # Already has Yahoo Finance suffix
+        if "." in symbol:
+            return symbol
+
+        # Check if default market is Indian
+        default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+        if default_market in ("NSE", "IN", "INDIA"):
+            return f"{symbol}.NS"
+        elif default_market == "BSE":
+            return f"{symbol}.BO"
+
+        return symbol
 
     async def create_backtest(self, user_id: str, request: BacktestRequest) -> BacktestResult:
         """Create a new backtest record.
@@ -59,8 +83,8 @@ class BacktestService:
         Returns:
             Updated BacktestResult with metrics
         """
-        # Get backtest record
-        backtest = await self.get_backtest(backtest_id)
+        # Get backtest record (don't load trades yet, we'll create them)
+        backtest = await self.get_backtest(backtest_id, include_trades=False)
         if not backtest:
             raise ValueError(f"Backtest {backtest_id} not found")
 
@@ -69,37 +93,39 @@ class BacktestService:
         backtest.started_at = datetime.now(UTC)
         await self.db.commit()
 
+        # Extract all needed values from the ORM object BEFORE entering the thread
+        # This prevents SQLAlchemy lazy loading issues in the thread
+        symbol = backtest.symbol
+        start_date = backtest.start_date
+        end_date = backtest.end_date
+        timeframe = backtest.timeframe
+        initial_capital = backtest.initial_capital
+        strategy_name = backtest.strategy_name
+        strategy_params = backtest.strategy_params or {}
+
         try:
             # Get strategy
-            strategy = StrategyRegistry.get_strategy(
-                backtest.strategy_name, backtest.strategy_params or {}
-            )
+            strategy = StrategyRegistry.get_strategy(strategy_name, strategy_params)
             if not strategy:
-                raise ValueError(f"Strategy {backtest.strategy_name} not found")
+                raise ValueError(f"Strategy {strategy_name} not found")
 
-            # Fetch historical data
-            data = self._fetch_historical_data(
-                backtest.symbol,
-                backtest.start_date,
-                backtest.end_date,
-                backtest.timeframe,
+            # Run the blocking operations in a thread to avoid blocking the async event loop
+            # Pass only primitive values, not ORM objects
+            result = await asyncio.to_thread(
+                self._run_backtest_sync,
+                symbol,
+                start_date,
+                end_date,
+                timeframe,
+                initial_capital,
+                strategy,
             )
-
-            # Configure and run backtest
-            config = BacktestConfig(
-                symbol=backtest.symbol,
-                strategy=strategy,
-                start_date=backtest.start_date,
-                end_date=backtest.end_date,
-                initial_capital=backtest.initial_capital,
-            )
-
-            runner = BacktestRunner(config)
-            result = runner.run(data)
 
             # Update backtest with results
             await self._update_backtest_results(backtest, result)
 
+            # Re-fetch backtest with trades eagerly loaded for response
+            backtest = await self.get_backtest(backtest_id, include_trades=True)
             return backtest
 
         except Exception as e:
@@ -109,11 +135,51 @@ class BacktestService:
             await self.db.commit()
             raise
 
-    async def get_backtest(self, backtest_id: str) -> BacktestResult | None:
-        """Get a backtest by ID."""
-        result = await self.db.execute(
-            select(BacktestResult).where(BacktestResult.id == backtest_id)
+    def _run_backtest_sync(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: str,
+        initial_capital: Any,
+        strategy: Any,
+    ) -> Any:
+        """Run backtest synchronously (for use in a thread).
+
+        This method fetches data and runs the backtest engine.
+        It's designed to be run in a separate thread via asyncio.to_thread().
+        """
+        # Fetch historical data
+        data = self._fetch_historical_data(symbol, start_date, end_date, timeframe)
+
+        # Configure and run backtest
+        config = BacktestConfig(
+            symbol=symbol,
+            strategy=strategy,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=initial_capital,
         )
+
+        runner = BacktestRunner(config)
+        return runner.run(data)
+
+    async def get_backtest(
+        self, backtest_id: str, include_trades: bool = True
+    ) -> BacktestResult | None:
+        """Get a backtest by ID.
+
+        Args:
+            backtest_id: ID of the backtest to retrieve
+            include_trades: Whether to eagerly load trades (default True)
+
+        Returns:
+            BacktestResult or None if not found
+        """
+        query = select(BacktestResult).where(BacktestResult.id == backtest_id)
+        if include_trades:
+            query = query.options(selectinload(BacktestResult.trades))
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_user_backtests(
@@ -154,7 +220,9 @@ class BacktestService:
         }
         interval = interval_map.get(timeframe, "1d")
 
-        ticker = yf.Ticker(symbol)
+        # Normalize symbol for Yahoo Finance
+        normalized_symbol = self._normalize_symbol(symbol)
+        ticker = yf.Ticker(normalized_symbol)
         data = ticker.history(start=start_date, end=end_date, interval=interval)
 
         if data.empty:

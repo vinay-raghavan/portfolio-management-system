@@ -54,6 +54,24 @@ class StrategyRegistry:
         return None
 
     @classmethod
+    def get_strategy(cls, name: str, params: dict | None = None) -> BaseStrategy | None:
+        """Get a strategy instance by name with optional parameters.
+
+        Args:
+            name: Strategy name
+            params: Optional parameters to pass to the strategy
+
+        Returns:
+            Strategy instance or None if not found
+        """
+        strategy_class = cls._strategies.get(name)
+        if strategy_class:
+            if params:
+                return strategy_class(**params)
+            return strategy_class()
+        return None
+
+    @classmethod
     def get_class(cls, name: str) -> type[BaseStrategy] | None:
         """Get a strategy class by name.
 
@@ -102,6 +120,18 @@ class StrategyRegistry:
             List of strategy names
         """
         return list(cls._strategies.keys())
+
+    @classmethod
+    def has_strategy(cls, name: str) -> bool:
+        """Check if a strategy with the given name is registered.
+
+        Args:
+            name: Strategy name to check
+
+        Returns:
+            True if strategy exists, False otherwise
+        """
+        return name in cls._strategies
 
     @classmethod
     def clear(cls) -> None:

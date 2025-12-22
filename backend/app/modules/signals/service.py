@@ -159,7 +159,7 @@ class SignalService:
             risk_reward_ratio=data.risk_reward_ratio,
             indicators=data.indicators,
             notes=data.notes,
-            status=SignalStatus.PENDING,
+            status=SignalStatus.PENDING.value,
         )
 
     async def get_signal(self, signal_id: str, user_id: str) -> Signal | None:
@@ -197,9 +197,9 @@ class SignalService:
         if symbol:
             query = query.where(Signal.symbol == symbol.upper())
         if status:
-            query = query.where(Signal.status == status)
+            query = query.where(Signal.status == status.value)
         if signal_type:
-            query = query.where(Signal.signal_type == signal_type)
+            query = query.where(Signal.signal_type == signal_type.value)
         if strategy_name:
             query = query.where(Signal.strategy_name == strategy_name)
 
@@ -244,7 +244,7 @@ class SignalService:
             return None
 
         if status is not None:
-            signal.status = status
+            signal.status = status.value
         if is_executed is not None:
             signal.is_executed = is_executed
             if is_executed:
@@ -269,10 +269,10 @@ class SignalService:
             Cancelled Signal or None
         """
         signal = await self.get_signal(signal_id, user_id)
-        if not signal or signal.status != SignalStatus.PENDING:
+        if not signal or signal.status != SignalStatus.PENDING.value:
             return None
 
-        signal.status = SignalStatus.CANCELLED
+        signal.status = SignalStatus.CANCELLED.value
         await self.db.commit()
         await self.db.refresh(signal)
         return signal
@@ -287,7 +287,7 @@ class SignalService:
             Number of signals expired
         """
         query = select(Signal).where(
-            Signal.status == SignalStatus.PENDING,
+            Signal.status == SignalStatus.PENDING.value,
             Signal.expires_at.isnot(None),
             Signal.expires_at < datetime.now(UTC),
         )
@@ -299,7 +299,7 @@ class SignalService:
         signals = result.scalars().all()
 
         for signal in signals:
-            signal.status = SignalStatus.EXPIRED
+            signal.status = SignalStatus.EXPIRED.value
 
         if signals:
             await self.db.commit()

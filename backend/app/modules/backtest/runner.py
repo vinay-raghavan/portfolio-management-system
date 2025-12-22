@@ -163,7 +163,14 @@ class BacktestRunner:
             # Use data up to current point for signal generation
             historical_data = data.iloc[: i + 1]
             if len(historical_data) >= 20:  # Minimum data for indicators
-                signal = self.config.strategy.generate_signal(self.config.symbol, historical_data)
+                # Strategies expect capitalized column names (Open, High, Low, Close, Volume)
+                # but data may have lowercase columns, so normalize
+                df_normalized = historical_data.copy()
+                df_normalized.columns = [c.capitalize() for c in df_normalized.columns]
+
+                # generate_signals returns a list, get first signal if any
+                signal_list = self.config.strategy.generate_signals(df_normalized, self.config.symbol)
+                signal = signal_list[0] if signal_list else None
                 signals.append(signal)
             else:
                 signals.append(None)
@@ -305,6 +312,9 @@ class BacktestRunner:
             end_date=self.config.end_date,
         )
 
+        # Extract drawdown_curve from metrics to avoid passing it twice
+        drawdown_curve = metrics.pop("drawdown_curve", [])
+
         return BacktestResult(
             symbol=self.config.symbol,
             strategy_name=self.config.strategy.name,
@@ -314,6 +324,6 @@ class BacktestRunner:
             final_capital=self.capital,
             trades=self.trades,
             equity_curve=self.equity_curve,
-            drawdown_curve=metrics.get("drawdown_curve", []),
+            drawdown_curve=drawdown_curve,
             **metrics,
         )

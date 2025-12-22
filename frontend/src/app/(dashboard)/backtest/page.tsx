@@ -43,7 +43,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { backtestApi, BacktestResult, BacktestListItem } from '@/lib/api';
-import { formatPercent, cn } from '@/lib/utils';
+import { formatPercent, safeToFixed, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart';
 
@@ -225,7 +225,9 @@ export default function BacktestPage() {
                   <div className="text-center p-4 bg-muted rounded-lg">
                     <div className="text-sm text-muted-foreground">Sharpe Ratio</div>
                     <div className="text-2xl font-bold">
-                      {selectedBacktest.performance.sharpe_ratio?.toFixed(2) ?? 'N/A'}
+                      {selectedBacktest.performance.sharpe_ratio != null
+                        ? safeToFixed(selectedBacktest.performance.sharpe_ratio, 2)
+                        : 'N/A'}
                     </div>
                   </div>
                   <div className="text-center p-4 bg-muted rounded-lg">
@@ -276,7 +278,9 @@ export default function BacktestPage() {
                   <div>
                     <span className="text-muted-foreground">Profit Factor:</span>
                     <span className="ml-2 font-medium">
-                      {selectedBacktest.trade_stats.profit_factor?.toFixed(2) ?? 'N/A'}
+                      {selectedBacktest.trade_stats.profit_factor != null
+                        ? safeToFixed(selectedBacktest.trade_stats.profit_factor, 2)
+                        : 'N/A'}
                     </span>
                   </div>
                   <div>
@@ -356,7 +360,7 @@ export default function BacktestPage() {
                         {bt.total_return != null ? formatPercent(bt.total_return) : '-'}
                       </span>
                     </TableCell>
-                    <TableCell>{bt.sharpe_ratio?.toFixed(2) ?? '-'}</TableCell>
+                    <TableCell>{bt.sharpe_ratio != null ? safeToFixed(bt.sharpe_ratio, 2) : '-'}</TableCell>
                     <TableCell>{bt.total_trades ?? '-'}</TableCell>
                     <TableCell>
                       {bt.win_rate != null ? formatPercent(bt.win_rate * 100) : '-'}

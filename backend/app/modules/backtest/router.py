@@ -1,5 +1,7 @@
 """API router for backtesting endpoints."""
 
+import logging
+import traceback
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,6 +18,8 @@ from app.modules.backtest.schemas import (
 )
 from app.modules.backtest.service import BacktestService
 from app.modules.signals.strategies.registry import StrategyRegistry
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["backtest"])
 
@@ -52,6 +56,8 @@ async def create_and_run_backtest(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
+        logger.error(f"Backtest failed: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Backtest failed: {str(e)}",
