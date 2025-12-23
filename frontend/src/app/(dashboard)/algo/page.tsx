@@ -44,6 +44,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
@@ -227,79 +233,91 @@ export default function AlgoTradingPage() {
           </h1>
           <p className="text-muted-foreground">Automated strategy execution and monitoring</p>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Universe Management */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => seedUniversesMutation.mutate()}
-              disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
-            >
-              {seedUniversesMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Database className="h-4 w-4" />
-              )}
-              Seed Universes
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => refreshUniversesMutation.mutate()}
-              disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
-            >
-              {refreshUniversesMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Refresh
-            </Button>
-          </div>
-          {/* Kill Switch */}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant={killSwitchStatus?.is_active ? 'default' : 'destructive'}
-                size="lg"
-                className="gap-2"
-              >
-                <Power className="h-5 w-5" />
-                {killSwitchStatus?.is_active ? 'Kill Switch ON' : 'Emergency Stop'}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  {killSwitchStatus?.is_active ? 'Deactivate Kill Switch?' : 'Activate Emergency Stop?'}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {killSwitchStatus?.is_active
-                    ? 'This will allow algo strategies to resume trading.'
-                    : 'This will immediately stop all algo trading and disable all active strategies.'}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    if (killSwitchStatus?.is_active) {
-                      toggleKillSwitchMutation.mutate(false);
-                    } else {
-                      emergencyStopMutation.mutate();
-                    }
-                  }}
-                  className={killSwitchStatus?.is_active ? '' : 'bg-destructive'}
+        <div className="flex items-center gap-2">
+          <TooltipProvider delayDuration={0}>
+            {/* Seed Universes */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => seedUniversesMutation.mutate()}
+                  disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
                 >
-                  {killSwitchStatus?.is_active ? 'Deactivate' : 'Activate Emergency Stop'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  {seedUniversesMutation.isPending ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Database className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Seed Universes</TooltipContent>
+            </Tooltip>
+            {/* Refresh */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => refreshUniversesMutation.mutate()}
+                  disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
+                >
+                  {refreshUniversesMutation.isPending ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+            {/* Kill Switch */}
+            <AlertDialog>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant={killSwitchStatus?.is_active ? 'default' : 'destructive'}
+                      size="icon"
+                    >
+                      <Power className="h-5 w-5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {killSwitchStatus?.is_active ? 'Kill Switch ON' : 'Emergency Stop'}
+                </TooltipContent>
+              </Tooltip>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                    {killSwitchStatus?.is_active ? 'Deactivate Kill Switch?' : 'Activate Emergency Stop?'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {killSwitchStatus?.is_active
+                      ? 'This will allow algo strategies to resume trading.'
+                      : 'This will immediately stop all algo trading and disable all active strategies.'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      if (killSwitchStatus?.is_active) {
+                        toggleKillSwitchMutation.mutate(false);
+                      } else {
+                        emergencyStopMutation.mutate();
+                      }
+                    }}
+                    className={killSwitchStatus?.is_active ? '' : 'bg-destructive'}
+                  >
+                    {killSwitchStatus?.is_active ? 'Deactivate' : 'Activate Emergency Stop'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </TooltipProvider>
         </div>
       </div>
 
