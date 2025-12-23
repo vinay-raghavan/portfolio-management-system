@@ -15,23 +15,16 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pandas as pd
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.algo.models import (
-    AlgoOrder,
-    ExecutionStatus,
-    PositionSizingMethod,
-    StrategyExecution,
-    UserStrategy,
-)
-from app.modules.algo.notifications import AlgoNotificationService
-from app.modules.risk.service import RiskService
-from app.modules.signals.models import SignalType
-from app.modules.signals.strategies.base import BaseStrategy, SignalData
-from app.modules.signals.strategies.registry import StrategyRegistry
-from app.providers.broker.base import Broker
-from app.providers.data.base import DataProvider
-from app.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
+from engine.algo.notifications import AlgoNotificationService
+from engine.algo.safety import SafetyService
+from engine.models.algo import ExecutionStatus, PositionSizingMethod
+from engine.models.signals import SignalData, SignalType
+from engine.providers.broker.base import Broker
+from engine.providers.data.base import DataProvider
+from engine.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
+from engine.strategies.base import BaseStrategy
+from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +46,24 @@ class ExecutionResult:
     duration_ms: int = 0
 
 
+@dataclass
+class StrategyConfig:
+    """Configuration for strategy execution."""
+
+    id: str
+    user_id: str
+    name: str
+    strategy_name: str
+    strategy_params: dict = field(default_factory=dict)
+    timeframe: str = "1d"
+    symbols: list[str] = field(default_factory=list)
+    position_sizing_method: PositionSizingMethod = PositionSizingMethod.FIXED_QUANTITY
+    fixed_quantity: int = 1
+    fixed_amount: Decimal = Decimal("10000")
+    portfolio_percent: Decimal = Decimal("5.0")
+    risk_per_trade_percent: Decimal = Decimal("2.0")
+
+
 class StrategyExecutor:
     """Executes trading strategies and places orders.
 
@@ -61,83 +72,73 @@ class StrategyExecutor:
     2. Fetch market data for universe symbols
     3. Run strategy to generate signals
     4. Apply position sizing
-    5. Validate with risk service
+    5. Validate with safety service
     6. Place orders via broker
     7. Log execution results
     """
 
     def __init__(
         self,
-        db: AsyncSession,
         broker: Broker,
         data_provider: DataProvider,
+        safety_service: SafetyService | None = None,
     ):
         """Initialize the executor.
 
         Args:
-            db: Database session
             broker: Broker provider for order execution
             data_provider: Data provider for market data
+            safety_service: Optional safety service for risk checks
         """
-        self.db = db
         self.broker = broker
         self.data_provider = data_provider
-        self.risk_service = RiskService(db)
+        self.safety_service = safety_service or SafetyService()
         self.notification_service = AlgoNotificationService()
 
     async def execute(
         self,
-        user_strategy: UserStrategy,
+        config: StrategyConfig,
         symbols_override: list[str] | None = None,
     ) -> ExecutionResult:
-        """Execute a user's trading strategy.
+        """Execute a trading strategy.
 
         Args:
-            user_strategy: The strategy configuration to execute
-            symbols_override: Optional list of symbols to override the universe
+            config: The strategy configuration to execute
+            symbols_override: Optional list of symbols to override
 
         Returns:
             ExecutionResult with details of the execution
         """
         start_time = time.time()
-
-        # Create execution record
-        execution = StrategyExecution(
-            strategy_id=user_strategy.id,
-            user_id=user_strategy.user_id,
-            status=ExecutionStatus.RUNNING,
-        )
-        self.db.add(execution)
-        await self.db.flush()
-        await self.db.refresh(execution)
+        execution_id = f"exec_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{config.id}"
 
         result = ExecutionResult(
-            execution_id=execution.id,
+            execution_id=execution_id,
             status=ExecutionStatus.RUNNING,
         )
 
         try:
             # Notify strategy started
             await self.notification_service.notify_strategy_started(
-                user_id=user_strategy.user_id,
-                strategy_name=user_strategy.name,
-                strategy_id=user_strategy.id,
+                user_id=config.user_id,
+                strategy_name=config.name,
+                strategy_id=config.id,
             )
 
             # Get strategy from registry
             strategy = StrategyRegistry.get_strategy(
-                user_strategy.strategy_name,
-                user_strategy.strategy_params,
+                config.strategy_name,
+                config.strategy_params,
             )
             if not strategy:
-                raise ValueError(f"Strategy '{user_strategy.strategy_name}' not found in registry")
+                raise ValueError(f"Strategy '{config.strategy_name}' not found in registry")
 
             # Get symbols to analyze
-            symbols = await self._get_symbols(user_strategy, symbols_override)
+            symbols = symbols_override or config.symbols
             if not symbols:
                 result.status = ExecutionStatus.NO_SIGNAL
-                result.error_message = "No symbols in universe"
-                await self._finalize_execution(execution, result, start_time)
+                result.error_message = "No symbols to analyze"
+                result.duration_ms = int((time.time() - start_time) * 1000)
                 return result
 
             result.symbols_analyzed = len(symbols)
@@ -146,7 +147,7 @@ class StrategyExecutor:
             all_signals: list[tuple[str, SignalData]] = []
             for symbol in symbols:
                 try:
-                    signals = await self._analyze_symbol(strategy, symbol, user_strategy.timeframe)
+                    signals = await self._analyze_symbol(strategy, symbol, config.timeframe)
                     for signal in signals:
                         all_signals.append((symbol, signal))
                 except Exception as e:
@@ -157,16 +158,12 @@ class StrategyExecutor:
 
             if not all_signals:
                 result.status = ExecutionStatus.NO_SIGNAL
-                await self._finalize_execution(execution, result, start_time)
+                result.duration_ms = int((time.time() - start_time) * 1000)
                 return result
 
             # Process signals and place orders
-            for _symbol, signal in all_signals:
-                order_result = await self._process_signal(
-                    user_strategy=user_strategy,
-                    execution=execution,
-                    signal=signal,
-                )
+            for symbol, signal in all_signals:
+                order_result = await self._process_signal(config, signal)
                 if order_result:
                     result.signals_data.append(self._signal_to_dict(signal))
                     result.orders_data.append(order_result)
@@ -177,40 +174,22 @@ class StrategyExecutor:
                         result.orders_rejected += 1
 
             result.status = ExecutionStatus.COMPLETED
-            await self._finalize_execution(execution, result, start_time)
+            result.duration_ms = int((time.time() - start_time) * 1000)
 
         except Exception as e:
             logger.exception(f"Strategy execution failed: {e}")
             result.status = ExecutionStatus.FAILED
             result.error_message = str(e)
-            await self._finalize_execution(execution, result, start_time)
+            result.duration_ms = int((time.time() - start_time) * 1000)
 
-            # Notify strategy error
             await self.notification_service.notify_strategy_error(
-                user_id=user_strategy.user_id,
-                strategy_name=user_strategy.name,
-                strategy_id=user_strategy.id,
+                user_id=config.user_id,
+                strategy_name=config.name,
+                strategy_id=config.id,
                 error=str(e),
             )
 
         return result
-
-    async def _get_symbols(
-        self,
-        user_strategy: UserStrategy,
-        symbols_override: list[str] | None = None,
-    ) -> list[str]:
-        """Get the list of symbols to analyze."""
-        if symbols_override:
-            return symbols_override
-
-        if user_strategy.custom_symbols:
-            return user_strategy.custom_symbols
-
-        if user_strategy.universe:
-            return user_strategy.universe.symbols or []
-
-        return []
 
     async def _analyze_symbol(
         self,
@@ -261,43 +240,40 @@ class StrategyExecutor:
 
     async def _process_signal(
         self,
-        user_strategy: UserStrategy,
-        execution: StrategyExecution,
+        config: StrategyConfig,
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
-        user_id = user_strategy.user_id
-
         # Calculate position size
-        quantity = await self._calculate_position_size(user_strategy, signal)
+        quantity = self._calculate_position_size(config, signal)
         if quantity <= 0:
             logger.debug(f"Position size is 0 for {signal.symbol}, skipping")
             return None
 
-        # Run risk check
+        # Run safety check
         price = signal.entry_price or signal.price_at_signal
-        risk_check = await self.risk_service.check_order_risk(
-            user_id=user_id,
+        side = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
+
+        safety_check = self.safety_service.check_order(
             symbol=signal.symbol,
-            side="BUY" if signal.signal_type == SignalType.BUY else "SELL",
-            quantity=Decimal(quantity),
+            side=side,
+            quantity=quantity,
             price=price,
         )
 
-        if not risk_check.passed:
-            logger.warning(f"Risk check failed for {signal.symbol}: {risk_check.blocked_reason}")
-            execution.status = ExecutionStatus.RISK_BLOCKED
+        if not safety_check.passed:
+            logger.warning(f"Safety check failed for {signal.symbol}: {safety_check.reason}")
             return {
                 "symbol": signal.symbol,
-                "status": "RISK_BLOCKED",
-                "reason": risk_check.blocked_reason,
+                "status": "SAFETY_BLOCKED",
+                "reason": safety_check.reason,
             }
 
         # Create order request
-        side = OrderSide.BUY if signal.signal_type == SignalType.BUY else OrderSide.SELL
+        order_side = OrderSide.BUY if signal.signal_type == SignalType.BUY else OrderSide.SELL
         order_request = OrderRequest(
             symbol=signal.symbol,
-            side=side,
+            side=order_side,
             order_type=OrderType.MARKET,
             quantity=quantity,
             product_type=ProductType.DELIVERY,
@@ -307,34 +283,12 @@ class StrategyExecutor:
 
         # Place order
         try:
-            order_response = await self.broker.place_order(user_id, order_request)
-
-            # Create algo order record
-            algo_order = AlgoOrder(
-                execution_id=execution.id,
-                order_id=order_response.order_id,
-                user_id=user_id,
-                strategy_id=user_strategy.id,
-                symbol=signal.symbol,
-                side=side.value,
-                quantity=quantity,
-                order_type=order_request.order_type.value,
-                price=order_response.filled_price,
-                signal_type=signal.signal_type.value,
-                signal_strength=signal.strength,
-                sizing_method=user_strategy.position_sizing_method.value,
-                calculated_quantity=quantity,
-            )
-            self.db.add(algo_order)
-
-            # Update strategy stats
-            user_strategy.total_trades += 1
-            user_strategy.last_run_at = datetime.now(UTC)
+            order_response = await self.broker.place_order(config.user_id, order_request)
 
             return {
                 "order_id": order_response.order_id,
                 "symbol": signal.symbol,
-                "side": side.value,
+                "side": order_side.value,
                 "quantity": quantity,
                 "status": order_response.status.value,
                 "filled_price": float(order_response.filled_price)
@@ -350,67 +304,24 @@ class StrategyExecutor:
                 "reason": str(e),
             }
 
-    async def _calculate_position_size(
+    def _calculate_position_size(
         self,
-        user_strategy: UserStrategy,
+        config: StrategyConfig,
         signal: SignalData,
     ) -> int:
         """Calculate position size based on strategy config."""
-        method = user_strategy.position_sizing_method
+        method = config.position_sizing_method
         price = signal.entry_price or signal.price_at_signal
 
         if method == PositionSizingMethod.FIXED_QUANTITY:
-            return user_strategy.fixed_quantity or 1
+            return config.fixed_quantity or 1
 
         if method == PositionSizingMethod.FIXED_AMOUNT:
-            amount = user_strategy.fixed_amount or Decimal("10000")
+            amount = config.fixed_amount or Decimal("10000")
             return max(1, int(amount / price))
-
-        if method == PositionSizingMethod.PERCENT_OF_PORTFOLIO:
-            funds = await self.broker.get_funds(user_strategy.user_id)
-            portfolio_value = funds.total_balance
-            target_value = portfolio_value * (user_strategy.portfolio_percent / 100)
-            return max(1, int(target_value / price))
-
-        if method == PositionSizingMethod.RISK_BASED:
-            if not signal.stop_loss:
-                # Fallback to percent of portfolio
-                funds = await self.broker.get_funds(user_strategy.user_id)
-                return max(1, int((funds.total_balance * Decimal("0.05")) / price))
-
-            funds = await self.broker.get_funds(user_strategy.user_id)
-            risk_amount = funds.total_balance * (user_strategy.risk_per_trade_percent / 100)
-            risk_per_share = abs(price - signal.stop_loss)
-            if risk_per_share <= 0:
-                return 1
-            return max(1, int(risk_amount / risk_per_share))
 
         # Default: fixed quantity
         return 1
-
-    async def _finalize_execution(
-        self,
-        execution: StrategyExecution,
-        result: ExecutionResult,
-        start_time: float,
-    ) -> None:
-        """Finalize execution record."""
-        duration_ms = int((time.time() - start_time) * 1000)
-        result.duration_ms = duration_ms
-
-        execution.status = result.status
-        execution.completed_at = datetime.now(UTC)
-        execution.duration_ms = duration_ms
-        execution.symbols_analyzed = result.symbols_analyzed
-        execution.signals_generated = result.signals_generated
-        execution.orders_placed = result.orders_placed
-        execution.orders_filled = result.orders_filled
-        execution.orders_rejected = result.orders_rejected
-        execution.signals_data = result.signals_data
-        execution.orders_data = result.orders_data
-        execution.error_message = result.error_message
-
-        await self.db.flush()
 
     def _signal_to_dict(self, signal: SignalData) -> dict:
         """Convert SignalData to dictionary."""

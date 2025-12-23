@@ -266,22 +266,43 @@ class VWAPMomentumStrategy(BaseStrategy):
         if score >= self.buy_threshold:
             signal_type = SignalType.BUY
             is_strong = score >= self.strong_buy_threshold
-            strength = Decimal(str(0.6 + (score / 5) * 0.4)) if is_strong else Decimal(str(0.5 + (score / 5) * 0.3))
+            strength = (
+                Decimal(str(0.6 + (score / 5) * 0.4))
+                if is_strong
+                else Decimal(str(0.5 + (score / 5) * 0.3))
+            )
             confidence = Decimal(str(0.5 + (score / 5) * 0.4))
-            notes = f"Momentum score {score}/5 ({'Strong ' if is_strong else ''}BUY): " + ", ".join(factors[:3])
+            notes = f"Momentum score {score}/5 ({'Strong ' if is_strong else ''}BUY): " + ", ".join(
+                factors[:3]
+            )
 
-            stop_loss = self.calculate_stop_loss(current_price, signal_type, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, signal_type, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, signal_type, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, signal_type, self.risk_reward_ratio
+            )
 
         elif score <= self.sell_threshold:
             signal_type = SignalType.SELL
             is_strong = score <= self.strong_sell_threshold
-            strength = Decimal(str(0.6 + ((5 - score) / 5) * 0.4)) if is_strong else Decimal(str(0.5 + ((5 - score) / 5) * 0.3))
+            strength = (
+                Decimal(str(0.6 + ((5 - score) / 5) * 0.4))
+                if is_strong
+                else Decimal(str(0.5 + ((5 - score) / 5) * 0.3))
+            )
             confidence = Decimal(str(0.5 + ((5 - score) / 5) * 0.4))
-            notes = f"Momentum score {score}/5 ({'Strong ' if is_strong else ''}SELL): " + ", ".join(factors[:3])
+            notes = (
+                f"Momentum score {score}/5 ({'Strong ' if is_strong else ''}SELL): "
+                + ", ".join(factors[:3])
+            )
 
-            stop_loss = self.calculate_stop_loss(current_price, signal_type, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, signal_type, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, signal_type, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, signal_type, self.risk_reward_ratio
+            )
 
         else:
             signal_type = SignalType.HOLD
@@ -319,4 +340,3 @@ class VWAPMomentumStrategy(BaseStrategy):
         )
 
         return [signal]
-

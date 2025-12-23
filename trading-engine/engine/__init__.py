@@ -1,0 +1,3 @@
+"""Trading Engine - Strategy Execution Service."""
+
+__version__ = "0.1.0"
