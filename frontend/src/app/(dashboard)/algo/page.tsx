@@ -14,6 +14,8 @@ import {
   Clock,
   Activity,
   Shield,
+  RefreshCw,
+  Database,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
+import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, ExecutionHistory, SafetyStatus } from '@/components/algo';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
@@ -61,6 +64,7 @@ const statusLabels: Record<StrategyStatus, string> = {
 
 export default function AlgoTradingPage() {
   const { format: formatPrice } = useCurrency();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedStrategy, setSelectedStrategy] = useState<AlgoStrategy | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -111,6 +115,42 @@ export default function AlgoTradingPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kill-switch'] }),
   });
 
+  const seedUniversesMutation = useMutation({
+    mutationFn: () => algoApi.seedAllUniverses(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['universes'] });
+      toast({
+        title: 'Universes Seeded',
+        description: `Created ${data.data.predefined_count} predefined and ${data.data.dynamic_count} dynamic universes`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Seed Universes',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    },
+  });
+
+  const refreshUniversesMutation = useMutation({
+    mutationFn: () => algoApi.refreshAllUniverses(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['universes'] });
+      toast({
+        title: 'Universes Refreshed',
+        description: `Refreshed ${data.data.refreshed_count} dynamic universes`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Refresh Universes',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    },
+  });
+
   // Calculate summary stats
   const activeCount = strategies?.filter((s) => s.status === 'ACTIVE').length ?? 0;
   const totalPnL = strategies?.reduce((sum, s) => sum + s.total_pnl, 0) ?? 0;
@@ -139,6 +179,37 @@ export default function AlgoTradingPage() {
           <p className="text-muted-foreground">Automated strategy execution and monitoring</p>
         </div>
         <div className="flex items-center gap-4">
+          {/* Universe Management */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => seedUniversesMutation.mutate()}
+              disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
+            >
+              {seedUniversesMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Database className="h-4 w-4" />
+              )}
+              Seed Universes
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => refreshUniversesMutation.mutate()}
+              disabled={seedUniversesMutation.isPending || refreshUniversesMutation.isPending}
+            >
+              {refreshUniversesMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Refresh
+            </Button>
+          </div>
           {/* Kill Switch */}
           <AlertDialog>
             <AlertDialogTrigger asChild>
