@@ -149,19 +149,35 @@ async def trigger_strategy(
     symbols: list[str] | None = None,
 ) -> dict:
     """Manually trigger a strategy execution."""
-    from celery import current_app
+    from app.core.celery_client import celery_client
 
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy = await service.get_strategy(current_user.id, strategy_id, load_universe=True)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    # Queue the execution using send_task (avoids circular import)
-    task = current_app.send_task(
+    # Get symbols from strategy if not overridden
+    strategy_symbols = symbols
+    if not strategy_symbols:
+        if strategy.custom_symbols:
+            strategy_symbols = strategy.custom_symbols
+        elif strategy.universe:
+            strategy_symbols = strategy.universe.symbols
+        else:
+            strategy_symbols = []
+
+    # Queue the execution using send_task
+    # The trading engine will fetch the strategy from the database
+    task = celery_client.send_task(
         "worker.tasks.algo.execute_strategy",
-        args=[strategy_id, symbols],
+        kwargs={"strategy_id": strategy_id},
     )
-    return {"task_id": task.id, "status": "queued", "strategy_id": strategy_id}
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "strategy_id": strategy_id,
+        "symbols_count": len(strategy_symbols) if strategy_symbols else 0,
+    }
 
 
 @router.get("/strategies/{strategy_id}/executions", response_model=list[ExecutionHistoryResponse])

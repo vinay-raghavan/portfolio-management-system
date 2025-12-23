@@ -103,3 +103,48 @@ class DataProvider(ABC):
         """
         return symbol.upper().strip()
 
+    async def check_health(self) -> dict[str, str | bool]:
+        """Check health of the data provider.
+
+        Returns:
+            Dictionary with health status including:
+            - healthy: bool indicating overall health
+            - status: "ok" or "error"
+            - message: Optional error message
+            - latency_ms: Optional response time in milliseconds
+        """
+        import time
+
+        start = time.monotonic()
+        try:
+            # Try to get a quote for a well-known symbol
+            test_symbol = "RELIANCE" if self.name in ("yahoo", "nse") else "AAPL"
+            quote = await self.get_quote(test_symbol)
+
+            latency_ms = int((time.monotonic() - start) * 1000)
+
+            if quote is not None:
+                return {
+                    "healthy": True,
+                    "status": "ok",
+                    "provider": self.name,
+                    "latency_ms": latency_ms,
+                }
+            else:
+                return {
+                    "healthy": False,
+                    "status": "error",
+                    "provider": self.name,
+                    "message": f"Could not fetch quote for {test_symbol}",
+                    "latency_ms": latency_ms,
+                }
+        except Exception as e:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            return {
+                "healthy": False,
+                "status": "error",
+                "provider": self.name,
+                "message": str(e),
+                "latency_ms": latency_ms,
+            }
+

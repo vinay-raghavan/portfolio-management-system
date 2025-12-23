@@ -167,3 +167,6 @@ async def execute_strategy(
         logger.exception(f"Error executing strategy {strategy_id}: {e}")
         return {"status": "error", "message": str(e)}
 
+
+# NOTE: /due-strategies endpoint has been removed.
+# The trading engine now handles this directly via /internal/run-scheduled.

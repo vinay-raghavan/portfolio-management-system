@@ -14,6 +14,19 @@ from sqlalchemy.sql import func
 from engine.core.database import Base
 
 
+class User(Base):
+    """Minimal User model for foreign key references.
+
+    This is a read-only model that mirrors the backend's User table.
+    The trading engine only needs this for foreign key relationships.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+
+
 class StrategyStatus(str, Enum):
     """Strategy status enum."""
 
@@ -208,14 +221,11 @@ class Universe(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_dynamic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    source_type: Mapped[str] = mapped_column(String(50), nullable=False, default="CUSTOM")
-    source_index: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    symbols: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    filter_criteria: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    symbols: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    filters: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-
-    last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -223,11 +233,8 @@ class Universe(Base):
 
     strategies: Mapped[list["UserStrategy"]] = relationship("UserStrategy", back_populates="universe")
 
-    __table_args__ = (
-        Index("ix_universes_user_id", "user_id"),
-        Index("ix_universes_is_system", "is_system"),
-    )
+    __table_args__ = (Index("ix_universes_user", "user_id"),)
 
     def __repr__(self) -> str:
-        return f"<Universe {self.name} ({len(self.symbols)} symbols)>"
+        return f"<Universe {self.name} ({len(self.symbols or [])} symbols)>"
 

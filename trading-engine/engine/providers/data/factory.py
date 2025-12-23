@@ -78,3 +78,21 @@ def get_data_provider() -> DataProvider:
     """
     return DataProviderFactory.get_provider()
 
+
+async def check_data_provider_health() -> dict[str, str | bool]:
+    """Check health of the configured data provider.
+
+    Returns:
+        Health status dictionary
+    """
+    try:
+        provider = get_data_provider()
+        return await provider.check_health()
+    except Exception as e:
+        return {
+            "healthy": False,
+            "status": "error",
+            "provider": settings.DATA_PROVIDER,
+            "message": f"Failed to get provider: {str(e)}",
+        }
+
