@@ -4,7 +4,7 @@ Popular multi-indicator strategies ready to use.
 These combine multiple indicators for higher-probability signals.
 """
 
-from app.modules.signals.strategies.composite import (
+from engine.strategies.composite import (
     CompositeStrategy,
     CompositeStrategyFactory,
 )

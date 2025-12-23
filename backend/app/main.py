@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
-from app.modules.algo.internal_router import router as algo_internal_router
 from app.modules.signals.strategies.prebuilt import register_all_prebuilt_strategies
 
 logger = logging.getLogger(__name__)
@@ -51,9 +50,8 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Include internal API router (for worker-to-backend communication)
-# These endpoints should only be accessible from within the Docker network
-app.include_router(algo_internal_router, prefix="/internal/algo", tags=["Internal - Algo"])
+# NOTE: Internal algo endpoints are now handled by the trading-engine service
+# The worker communicates directly with trading-engine at http://trading-engine:8001/internal/
 
 
 @app.get("/health")

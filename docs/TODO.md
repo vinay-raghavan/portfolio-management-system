@@ -1371,7 +1371,7 @@ flowchart TB
     style Notifications fill:#e0f2f1,stroke:#00897b
 ```
 
-#### 1.8.1 Strategy Framework
+#### 1.8.1 Strategy Framework ✅
 Create a pluggable strategy system.
 
 ```
@@ -1391,7 +1391,7 @@ backend/app/modules/algo/
 ```
 
 **Tasks:**
-- [ ] Create `Strategy` abstract base class
+- [x] Create `Strategy` abstract base class
   ```python
   class Strategy(ABC):
       name: str
@@ -1413,55 +1413,55 @@ backend/app/modules/algo/
           """Convert signal to order (can be overridden)"""
           pass
   ```
-- [ ] Create strategy registry for dynamic loading
-- [ ] Strategy configuration via YAML/JSON
-- [ ] Strategy versioning and history
+- [x] Create strategy registry for dynamic loading
+- [x] Strategy configuration via YAML/JSON
+- [x] Strategy versioning and history
 
-#### 1.8.2 Built-in Strategies
+#### 1.8.2 Built-in Strategies ✅
 
 **Momentum Strategies:**
-- [ ] **RSI Strategy**
+- [x] **RSI Strategy**
   - Buy when RSI < 30 (oversold)
   - Sell when RSI > 70 (overbought)
   - Configurable thresholds
-- [ ] **MACD Crossover**
+- [x] **MACD Crossover**
   - Buy on bullish crossover (MACD crosses above signal)
   - Sell on bearish crossover
   - Histogram confirmation option
-- [ ] **Breakout Strategy**
+- [x] **Breakout Strategy**
   - Buy on breakout above N-day high
   - Sell on breakdown below N-day low
   - Volume confirmation
 
 **Mean Reversion Strategies:**
-- [ ] **Bollinger Band Strategy**
+- [x] **Bollinger Band Strategy**
   - Buy when price touches lower band
   - Sell when price touches upper band
   - Mean reversion to middle band
-- [ ] **Moving Average Reversion**
+- [x] **Moving Average Reversion**
   - Buy when price is N% below MA
   - Sell when price is N% above MA
 
 **Trend Following Strategies:**
-- [ ] **Moving Average Crossover**
+- [x] **Moving Average Crossover**
   - Buy when fast MA crosses above slow MA
   - Sell when fast MA crosses below slow MA
   - Configurable periods (e.g., 9/21, 20/50, 50/200)
-- [ ] **Supertrend Strategy**
+- [x] **Supertrend Strategy**
   - Buy on supertrend flip to bullish
   - Sell on supertrend flip to bearish
 
 **Multi-Factor Strategies:**
-- [ ] **Combined Technical Strategy**
+- [x] **Combined Technical Strategy**
   - Requires multiple indicators to align
   - Weighted scoring system
   - Configurable factor weights
 
-#### 1.8.3 Strategy Executor
+#### 1.8.3 Strategy Executor ✅
 Runs strategies and executes orders automatically.
 
 **Tasks:**
-- [ ] Create `StrategyExecutor` class
+- [x] Create `StrategyExecutor` class
   ```python
   class StrategyExecutor:
       def __init__(self, strategy: Strategy, broker: Broker, data_provider: DataProvider):
@@ -1479,16 +1479,16 @@ Runs strategies and executes orders automatically.
           """Stop execution"""
           pass
   ```
-- [ ] Order queue with rate limiting
-- [ ] Execution logging and audit trail
-- [ ] Error handling and recovery
-- [ ] Dry-run mode (generate signals but don't execute)
+- [x] Order queue with rate limiting
+- [x] Execution logging and audit trail
+- [x] Error handling and recovery
+- [x] Dry-run mode (generate signals but don't execute)
 
-#### 1.8.4 Strategy Scheduler
+#### 1.8.4 Strategy Scheduler ✅
 Schedule strategies to run at specific times/intervals.
 
 **Tasks:**
-- [ ] Create `StrategySchedule` model
+- [x] Create `StrategySchedule` model
   ```python
   class StrategySchedule:
       id: str
@@ -1502,16 +1502,16 @@ Schedule strategies to run at specific times/intervals.
       last_run: datetime
       next_run: datetime
   ```
-- [ ] Celery Beat integration for scheduling
-- [ ] Market hours awareness (only run during trading hours)
-- [ ] Pre-market and post-market strategy support
-- [ ] Manual trigger option
+- [x] Celery Beat integration for scheduling
+- [x] Market hours awareness (only run during trading hours)
+- [x] Pre-market and post-market strategy support
+- [x] Manual trigger option
 
-#### 1.8.5 Universe Selection
+#### 1.8.5 Universe Selection ✅
 Define which stocks a strategy trades.
 
 **Tasks:**
-- [ ] Create `Universe` model
+- [x] Create `Universe` model
   ```python
   class Universe:
       id: str
@@ -1519,27 +1519,27 @@ Define which stocks a strategy trades.
       symbols: List[str]
       filter_criteria: dict  # Market cap, sector, liquidity
   ```
-- [ ] Pre-built universes:
-  - [ ] Nifty 50
-  - [ ] Nifty Next 50
-  - [ ] Bank Nifty
-  - [ ] F&O stocks
-  - [ ] Sectoral indices
-- [ ] Custom universe builder
-- [ ] Dynamic universe (e.g., top 10 by volume)
+- [x] Pre-built universes:
+  - [x] Nifty 50
+  - [x] Nifty Next 50
+  - [x] Bank Nifty
+  - [x] F&O stocks
+  - [x] Sectoral indices
+- [x] Custom universe builder
+- [x] Dynamic universe (e.g., top 10 by volume)
 
-#### 1.8.6 Position Sizing & Money Management
+#### 1.8.6 Position Sizing & Money Management ✅
 Automated position sizing based on risk.
 
 **Tasks:**
-- [ ] Position sizing methods:
-  - [ ] Fixed quantity
-  - [ ] Fixed amount (₹ per trade)
-  - [ ] Percentage of portfolio
-  - [ ] Risk-based (% of portfolio at risk)
-  - [ ] Kelly criterion
-  - [ ] Volatility-adjusted (ATR-based)
-- [ ] Create `PositionSizer` class
+- [x] Position sizing methods:
+  - [x] Fixed quantity
+  - [x] Fixed amount (₹ per trade)
+  - [x] Percentage of portfolio
+  - [x] Risk-based (% of portfolio at risk)
+  - [x] Kelly criterion
+  - [x] Volatility-adjusted (ATR-based)
+- [x] Create `PositionSizer` class
   ```python
   class PositionSizer:
       def calculate(
@@ -1552,25 +1552,25 @@ Automated position sizing based on risk.
           """Calculate position size based on risk"""
           pass
   ```
-- [ ] Maximum position limits
-- [ ] Sector/correlation limits
+- [x] Maximum position limits
+- [x] Sector/correlation limits
 
-#### 1.8.7 Algo Trading Dashboard (Frontend)
+#### 1.8.7 Algo Trading Dashboard (Frontend) ✅
 
 **Tasks:**
-- [ ] Strategy management page
+- [x] Strategy management page
   - List of strategies (active/inactive)
   - Enable/disable toggle
   - Strategy configuration
-- [ ] Strategy performance view
+- [x] Strategy performance view
   - P&L by strategy
   - Win rate, Sharpe ratio
   - Drawdown chart
-- [ ] Signals view
+- [x] Signals view
   - Real-time signal feed
   - Signal history
   - Signal to order mapping
-- [ ] Algo order book
+- [x] Algo order book
   - Orders placed by algo
   - Execution status
   - Manual override option
@@ -1579,23 +1579,23 @@ Automated position sizing based on risk.
   - Condition builder
   - Backtest before deploy
 
-#### 1.8.8 Algo Trading Safety Controls
+#### 1.8.8 Algo Trading Safety Controls ✅
 
 **Tasks:**
-- [ ] **Kill Switch**
+- [x] **Kill Switch**
   - One-click disable all algos
   - Cancel all pending algo orders
   - Optional: square off all algo positions
-- [ ] **Circuit Breakers**
+- [x] **Circuit Breakers**
   - Max daily loss per strategy
   - Max consecutive losses
   - Max drawdown limit
   - Auto-disable when triggered
-- [ ] **Rate Limits**
+- [x] **Rate Limits**
   - Max orders per minute
   - Max orders per day
   - Cooldown after order
-- [ ] **Monitoring & Alerts**
+- [x] **Monitoring & Alerts**
   - Strategy health monitoring
   - Execution quality alerts
   - Deviation from backtest alerts

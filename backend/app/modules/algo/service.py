@@ -51,14 +51,19 @@ class AlgoService:
         logger.info(f"Created strategy {strategy.id}: {strategy.name}")
         return strategy
 
-    async def get_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
+    async def get_strategy(
+        self, user_id: str, strategy_id: str, load_universe: bool = False
+    ) -> UserStrategy | None:
         """Get a strategy by ID for a user."""
-        result = await self.db.execute(
-            select(UserStrategy).where(
-                UserStrategy.id == strategy_id,
-                UserStrategy.user_id == user_id,
-            )
+        from sqlalchemy.orm import selectinload
+
+        query = select(UserStrategy).where(
+            UserStrategy.id == strategy_id,
+            UserStrategy.user_id == user_id,
         )
+        if load_universe:
+            query = query.options(selectinload(UserStrategy.universe))
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_user_strategies(
