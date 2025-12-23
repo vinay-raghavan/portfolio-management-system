@@ -110,7 +110,17 @@ class SignalService:
             return []
 
         # Map timeframe to yfinance period
-        period_map = {"1d": "6mo", "1h": "1mo", "4h": "3mo", "1w": "2y"}
+        # Note: Intraday intervals (1m, 5m, 15m, 30m) only support max 7 days of data
+        period_map = {
+            "1m": "1d",
+            "5m": "5d",
+            "15m": "5d",
+            "30m": "5d",
+            "1h": "1mo",
+            "4h": "3mo",
+            "1d": "6mo",
+            "1w": "2y",
+        }
         period = period_map.get(timeframe, "6mo")
 
         for symbol in symbols:
