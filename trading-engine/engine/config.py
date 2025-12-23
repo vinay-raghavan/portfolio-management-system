@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     DATA_PROVIDER: str = "yahoo"
     DEFAULT_MARKET: str = "IN"
 
+    # Broker
+    BROKER_TYPE: str = "paper"
+    PAPER_TRADING_INITIAL_BALANCE: float = 1000000.0
+
     # Logging
     LOG_LEVEL: str = "INFO"
 
