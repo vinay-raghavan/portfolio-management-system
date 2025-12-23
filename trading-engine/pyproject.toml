@@ -41,7 +41,6 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "httpx>=0.28.0",
 ]
 
 [build-system]
@@ -67,5 +66,8 @@ ignore = ["E501"]
 [dependency-groups]
 dev = [
     "ruff>=0.14.10",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
 ]
 
