@@ -22,6 +22,7 @@ from app.modules.signals.strategies.registry import StrategyRegistry
 from app.modules.signals.strategies.rsi import RSIStrategy
 from app.modules.signals.strategies.twap import TWAPStrategy
 from app.modules.signals.strategies.vwap import VWAPReversionStrategy
+from app.modules.signals.strategies.vwap_momentum import VWAPMomentumStrategy
 
 __all__ = [
     "BaseStrategy",
@@ -33,6 +34,7 @@ __all__ = [
     "BollingerSqueezeStrategy",
     "ORBStrategy",
     "VWAPReversionStrategy",
+    "VWAPMomentumStrategy",
     "GapAndGoStrategy",
     "TWAPStrategy",
     # Composite strategies

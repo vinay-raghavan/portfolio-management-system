@@ -149,15 +149,18 @@ async def trigger_strategy(
     symbols: list[str] | None = None,
 ) -> dict:
     """Manually trigger a strategy execution."""
-    from worker.tasks.algo import execute_strategy
+    from celery import current_app
 
     service = AlgoService(db)
     strategy = await service.get_strategy(current_user.id, strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    # Queue the execution
-    task = execute_strategy.delay(strategy_id, symbols)
+    # Queue the execution using send_task (avoids circular import)
+    task = current_app.send_task(
+        "worker.tasks.algo.execute_strategy",
+        args=[strategy_id, symbols],
+    )
     return {"task_id": task.id, "status": "queued", "strategy_id": strategy_id}
 
 

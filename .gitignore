@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -220,3 +223,4 @@ yarn-error.log*
 
 # Next.js specific
 next-env.d.ts
+intradaysignalAPI.py
