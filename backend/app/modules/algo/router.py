@@ -24,7 +24,11 @@ from app.modules.algo.schemas import (
     UniverseUpdate,
 )
 from app.modules.algo.service import AlgoService
-from app.modules.algo.universe_service import DYNAMIC_UNIVERSES, UniverseService
+from app.modules.algo.universe_service import (
+    DYNAMIC_UNIVERSES,
+    PREDEFINED_UNIVERSES,
+    UniverseService,
+)
 from app.providers.data.nse import NSEDataProvider
 
 logger = logging.getLogger(__name__)
@@ -486,6 +490,49 @@ async def refresh_all_dynamic_universes(
         return {
             "message": f"Successfully refreshed {count} dynamic universes",
             "refreshed_count": count,
+            "dynamic_universes": list(DYNAMIC_UNIVERSES.keys()),
+        }
+    finally:
+        await nse_provider.close()
+
+
+@router.post("/universes/seed-all")
+async def seed_all_universes(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Seed all predefined system universes and optionally refresh dynamic ones.
+
+    This seeds:
+    - All predefined static universes (Nifty 50, Bank Nifty, sectoral indices, etc.)
+    - All dynamic universes from NSE (Nifty 500, Nifty 100, etc.)
+    - All NSE stocks universe
+    - F&O stocks universe
+
+    Returns:
+        Summary of seed operation
+    """
+    service = UniverseService(db)
+
+    # Seed predefined static universes
+    predefined_count = await service.seed_predefined_universes()
+
+    # Seed dynamic universes from NSE
+    nse_provider = NSEDataProvider()
+    try:
+        dynamic_count = await service.seed_dynamic_universes(nse_provider)
+
+        # Also create All NSE and F&O universes
+        await service.create_all_nse_universe()
+        await service.create_fo_universe()
+
+        await db.commit()
+
+        return {
+            "message": f"Successfully seeded {predefined_count} predefined + {dynamic_count} dynamic universes",
+            "predefined_count": predefined_count,
+            "dynamic_count": dynamic_count,
+            "predefined_universes": list(PREDEFINED_UNIVERSES.keys()),
             "dynamic_universes": list(DYNAMIC_UNIVERSES.keys()),
         }
     finally:

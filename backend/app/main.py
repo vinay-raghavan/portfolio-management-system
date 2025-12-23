@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
+from app.modules.signals.strategies.prebuilt import register_all_prebuilt_strategies
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -17,6 +21,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Startup
     if not settings.SKIP_DB_INIT:
         await init_db()
+
+    # Register prebuilt composite strategies
+    prebuilt = register_all_prebuilt_strategies()
+    logger.info(f"Registered {len(prebuilt)} prebuilt composite strategies")
+
     yield
     # Shutdown
 

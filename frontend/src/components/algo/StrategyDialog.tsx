@@ -205,12 +205,32 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                   <SelectValue placeholder="Select a strategy" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
+                  {/* Group combined/composite strategies */}
+                  {availableStrategies?.strategies?.some((s) => s.parameters?.components) && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Combined Strategies ⭐
+                      </div>
+                      {availableStrategies?.strategies
+                        ?.filter((s) => s.parameters?.components)
+                        .map((s) => (
+                          <SelectItem key={s.name} value={s.name}>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                                combo
+                              </span>
+                              <span>{s.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </>
+                  )}
                   {/* Group intraday strategies */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
                     Intraday Strategies (5m)
                   </div>
                   {availableStrategies?.strategies
-                    ?.filter((s) => s.default_timeframe === '5m')
+                    ?.filter((s) => s.default_timeframe === '5m' && !s.parameters?.components)
                     .map((s) => (
                       <SelectItem key={s.name} value={s.name}>
                         <div className="flex items-center gap-2">
@@ -226,7 +246,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                     Swing/Position Strategies (1d)
                   </div>
                   {availableStrategies?.strategies
-                    ?.filter((s) => s.default_timeframe === '1d' || !s.default_timeframe)
+                    ?.filter((s) => (s.default_timeframe === '1d' || !s.default_timeframe) && !s.parameters?.components)
                     .map((s) => (
                       <SelectItem key={s.name} value={s.name}>
                         <div className="flex items-center gap-2">
@@ -276,7 +296,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                         <div className="flex items-center justify-between gap-4 w-full">
                           <span>{u.name}</span>
                           <span className="text-[10px] text-muted-foreground">
-                            {u.symbol_count || 0} stocks
+                            {u.symbols?.length || 0} stocks
                           </span>
                         </div>
                       </SelectItem>
@@ -294,7 +314,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                             <div className="flex items-center justify-between gap-4 w-full">
                               <span>{u.name}</span>
                               <span className="text-[10px] text-muted-foreground">
-                                {u.symbol_count || 0} stocks
+                                {u.symbols?.length || 0} stocks
                               </span>
                             </div>
                           </SelectItem>
