@@ -16,6 +16,10 @@ import {
   Shield,
   RefreshCw,
   Database,
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,7 +47,7 @@ import {
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
-import { StrategyDialog, ExecutionHistory, SafetyStatus } from '@/components/algo';
+import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus } from '@/components/algo';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -71,6 +75,9 @@ export default function AlgoTradingPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<AlgoStrategy | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [strategyToDelete, setStrategyToDelete] = useState<AlgoStrategy | null>(null);
 
   // Fetch strategies
   const { data: strategies, isLoading } = useQuery({
@@ -151,6 +158,26 @@ export default function AlgoTradingPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => algoApi.deleteStrategy(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      toast({
+        title: 'Strategy Deleted',
+        description: 'The strategy has been permanently deleted.',
+      });
+      setDeleteDialogOpen(false);
+      setStrategyToDelete(null);
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Delete Strategy',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    },
+  });
+
   // Calculate summary stats
   const activeCount = strategies?.filter((s) => s.status === 'ACTIVE').length ?? 0;
   const totalPnL = strategies?.reduce((sum, s) => sum + s.total_pnl, 0) ?? 0;
@@ -165,6 +192,28 @@ export default function AlgoTradingPage() {
     } else {
       enableMutation.mutate(strategy.id);
     }
+  };
+
+  const toggleRowExpanded = (strategyId: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(strategyId)) {
+        next.delete(strategyId);
+      } else {
+        next.add(strategyId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteClick = (strategy: AlgoStrategy) => {
+    setStrategyToDelete(strategy);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleEditClick = (strategy: AlgoStrategy) => {
+    setEditingStrategy(strategy);
+    setDialogOpen(true);
   };
 
   return (
@@ -353,6 +402,7 @@ export default function AlgoTradingPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8"></TableHead>
                   <TableHead>Strategy</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Schedule</TableHead>
@@ -373,9 +423,20 @@ export default function AlgoTradingPage() {
                     strategy.strategy_type.includes('pullback') ||
                     strategy.strategy_type.includes('confirmation') ||
                     strategy.strategy_type.includes('momentum');
+                  const isExpanded = expandedRows.has(strategy.id);
 
                   return (
-                  <TableRow key={strategy.id}>
+                  <>
+                  <TableRow key={strategy.id} className="cursor-pointer hover:bg-muted/50" onClick={() => toggleRowExpanded(strategy.id)}>
+                    <TableCell className="w-8">
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <p className="font-medium">{strategy.name}</p>
@@ -421,14 +482,14 @@ export default function AlgoTradingPage() {
                         ? new Date(strategy.last_run_at).toLocaleString()
                         : 'Never'}
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                       <Switch
                         checked={strategy.status === 'ACTIVE'}
                         onCheckedChange={() => handleToggleStrategy(strategy)}
                         disabled={killSwitchStatus?.is_active || enableMutation.isPending || disableMutation.isPending}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <Button
                           variant="outline"
@@ -455,9 +516,34 @@ export default function AlgoTradingPage() {
                         >
                           <Shield className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(strategy)}
+                          title="Edit Strategy"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteClick(strategy)}
+                          title="Delete Strategy"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
+                  {isExpanded && (
+                    <TableRow key={`${strategy.id}-details`}>
+                      <TableCell colSpan={10} className="p-0">
+                        <StrategyDetails strategy={strategy} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </>
                   );
                 })}
               </TableBody>
@@ -486,6 +572,33 @@ export default function AlgoTradingPage() {
         onOpenChange={setSafetyOpen}
         strategy={selectedStrategy}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Delete Strategy?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{strategyToDelete?.name}</strong>?
+              This action cannot be undone. All execution history and statistics for this
+              strategy will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setStrategyToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => strategyToDelete && deleteMutation.mutate(strategyToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete Strategy'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
