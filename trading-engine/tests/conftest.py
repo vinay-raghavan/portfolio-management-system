@@ -17,4 +17,3 @@ def client():
 def internal_headers():
     """Headers with valid internal API key."""
     return {"X-Internal-Key": settings.INTERNAL_API_KEY}
-

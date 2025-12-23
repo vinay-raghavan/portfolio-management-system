@@ -15,7 +15,7 @@ class AlgoNotificationService:
     - Risk limit breaches
     - Kill switch activation
     - Circuit breaker triggers
-    
+
     Currently logs to console. Can be extended to support
     email, SMS, push notifications, etc.
     """
@@ -28,8 +28,7 @@ class AlgoNotificationService:
     ) -> bool:
         """Notify when a strategy execution starts."""
         logger.info(
-            f"[NOTIFICATION] Strategy Started: {strategy_name} "
-            f"(id={strategy_id}, user={user_id})"
+            f"[NOTIFICATION] Strategy Started: {strategy_name} (id={strategy_id}, user={user_id})"
         )
         return True
 
@@ -122,4 +121,3 @@ class AlgoNotificationService:
             f"(id={strategy_id}, user={user_id})"
         )
         return True
-

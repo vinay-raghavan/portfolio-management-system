@@ -8,7 +8,6 @@ from typing import Any, ParamSpec, TypeVar
 
 from tenacity import (
     AsyncRetrying,
-    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -154,4 +153,3 @@ class RetryConfig:
 DATA_PROVIDER_RETRY = RetryConfig(max_attempts=3, min_wait=1.0, max_wait=30.0)
 BROKER_RETRY = RetryConfig(max_attempts=2, min_wait=0.5, max_wait=10.0)
 DATABASE_RETRY = RetryConfig(max_attempts=3, min_wait=0.5, max_wait=15.0)
-

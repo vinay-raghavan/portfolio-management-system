@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from redis.asyncio import Redis
 
-from engine.config import settings
 from engine.core.redis import get_redis_context
 
 logger = logging.getLogger(__name__)
@@ -69,9 +68,7 @@ class DistributedLock:
         """
         for attempt in range(max_retries if blocking else 1):
             # Use SET NX EX for atomic lock acquisition
-            acquired = await self.redis.set(
-                self.key, self.lock_id, nx=True, ex=self.timeout
-            )
+            acquired = await self.redis.set(self.key, self.lock_id, nx=True, ex=self.timeout)
             if acquired:
                 self._acquired = True
                 logger.debug(f"Lock acquired: {self.key}")
@@ -133,9 +130,7 @@ class DistributedLock:
             return 0
         end
         """
-        result = await self.redis.eval(
-            lua_script, 1, self.key, self.lock_id, extend_time
-        )
+        result = await self.redis.eval(lua_script, 1, self.key, self.lock_id, extend_time)
         return result == 1
 
     @property
@@ -149,7 +144,7 @@ async def strategy_lock(
     strategy_id: str,
     timeout: int = DEFAULT_LOCK_TIMEOUT,
     blocking: bool = True,
-) -> AsyncGenerator[DistributedLock, None]:
+) -> AsyncGenerator[DistributedLock]:
     """Context manager for acquiring a strategy execution lock.
 
     Args:
@@ -180,7 +175,7 @@ async def strategy_lock(
 async def scheduled_run_lock(
     timeout: int = 30,
     blocking: bool = False,
-) -> AsyncGenerator[DistributedLock, None]:
+) -> AsyncGenerator[DistributedLock]:
     """Context manager for acquiring the scheduled run lock.
 
     This prevents multiple workers from running scheduled strategies
@@ -245,4 +240,3 @@ async def release_strategy_lock(strategy_id: str, lock_id: str) -> bool:
         lock = DistributedLock(redis, key, lock_id=lock_id)
         lock._acquired = True  # Mark as acquired so release works
         return await lock.release()
-

@@ -158,14 +158,14 @@ async def run_scheduled_strategies(
         try:
             # Check kill switch for user
             if await kill_switch.is_active(strategy.user_id):
-                logger.warning(
-                    f"Kill switch active for user {strategy.user_id}, skipping strategy"
+                logger.warning(f"Kill switch active for user {strategy.user_id}, skipping strategy")
+                results.append(
+                    {
+                        "strategy_id": strategy.id,
+                        "status": "SKIPPED",
+                        "reason": "kill_switch_active",
+                    }
                 )
-                results.append({
-                    "strategy_id": strategy.id,
-                    "status": "SKIPPED",
-                    "reason": "kill_switch_active",
-                })
                 continue
 
             # Check if market is open for non-CRON strategies
@@ -175,11 +175,13 @@ async def run_scheduled_strategies(
                 "MARKET_CLOSE",
             ]:
                 logger.debug(f"Market closed, skipping strategy {strategy.id}")
-                results.append({
-                    "strategy_id": strategy.id,
-                    "status": "SKIPPED",
-                    "reason": "market_closed",
-                })
+                results.append(
+                    {
+                        "strategy_id": strategy.id,
+                        "status": "SKIPPED",
+                        "reason": "market_closed",
+                    }
+                )
                 continue
 
             # Get symbols from universe or custom list
@@ -220,22 +222,26 @@ async def run_scheduled_strategies(
             # Update next run time
             await scheduler.update_next_run(strategy)
 
-            results.append({
-                "strategy_id": strategy.id,
-                "status": result.status.value,
-                "execution_id": result.execution_id,
-                "signals_generated": result.signals_generated,
-                "orders_placed": result.orders_placed,
-            })
+            results.append(
+                {
+                    "strategy_id": strategy.id,
+                    "status": result.status.value,
+                    "execution_id": result.execution_id,
+                    "signals_generated": result.signals_generated,
+                    "orders_placed": result.orders_placed,
+                }
+            )
             executed_count += 1
 
         except Exception as e:
             logger.exception(f"Error executing strategy {strategy.id}: {e}")
-            results.append({
-                "strategy_id": strategy.id,
-                "status": "ERROR",
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "strategy_id": strategy.id,
+                    "status": "ERROR",
+                    "error": str(e),
+                }
+            )
 
     await db.commit()
 
@@ -345,10 +351,12 @@ async def list_available_strategies(_key: InternalKeyDep) -> dict:
     for name in StrategyRegistry.get_names():
         strategy_class = StrategyRegistry._strategies.get(name)
         if strategy_class:
-            strategies.append({
-                "name": name,
-                "description": (strategy_class.__doc__ or "").split("\n")[0].strip(),
-            })
+            strategies.append(
+                {
+                    "name": name,
+                    "description": (strategy_class.__doc__ or "").split("\n")[0].strip(),
+                }
+            )
 
     return {"strategies": strategies, "count": len(strategies)}
 

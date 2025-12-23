@@ -33,7 +33,7 @@ async_session_maker = async_sessionmaker(
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency to get database session."""
     async with async_session_maker() as session:
         try:
@@ -43,7 +43,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 @asynccontextmanager
-async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
+async def get_db_context() -> AsyncGenerator[AsyncSession]:
     """Context manager for database session."""
     async with async_session_maker() as session:
         try:
@@ -60,4 +60,3 @@ async def check_db_health() -> bool:
             return True
     except Exception:
         return False
-

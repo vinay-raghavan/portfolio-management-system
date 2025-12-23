@@ -182,4 +182,3 @@ class Broker(ABC):
                 responses.append(response)
 
         return responses
-

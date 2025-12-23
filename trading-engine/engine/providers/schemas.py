@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class OrderSide(str, Enum):
@@ -158,4 +158,3 @@ class InstrumentInfo(BaseModel):
     tick_size: Decimal = Decimal("0.05")
     isin: str | None = None
     token: str | None = None
-

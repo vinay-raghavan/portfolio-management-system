@@ -147,4 +147,3 @@ class DataProvider(ABC):
                 "message": str(e),
                 "latency_ms": latency_ms,
             }
-

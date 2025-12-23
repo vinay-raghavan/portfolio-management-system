@@ -59,4 +59,3 @@ async def metrics():
     """Prometheus metrics endpoint (placeholder)."""
     # TODO: Implement Prometheus metrics
     return {"message": "metrics endpoint"}
-

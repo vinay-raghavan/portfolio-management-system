@@ -1,7 +1,7 @@
 """Paper trading broker implementation."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -154,7 +154,9 @@ class PaperBroker(Broker):
                 self._orders[user_id][order_id] = response
         else:
             # For SL/GTT orders, store as pending
-            response = await self._handle_trigger_order(user_id, order, order_id, market_price, fees, now)
+            response = await self._handle_trigger_order(
+                user_id, order, order_id, market_price, fees, now
+            )
 
         return response
 
@@ -365,4 +367,3 @@ class PaperBroker(Broker):
         """Get all pending trigger orders (SL/GTT) for a user."""
         self._ensure_user(user_id)
         return list(self._pending_trigger_orders[user_id].values())
-

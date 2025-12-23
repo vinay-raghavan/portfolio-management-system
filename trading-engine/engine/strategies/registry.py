@@ -137,4 +137,3 @@ class StrategyRegistry:
     def clear(cls) -> None:
         """Clear all registered strategies. Mainly for testing."""
         cls._strategies.clear()
-

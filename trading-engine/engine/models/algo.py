@@ -231,10 +231,11 @@ class Universe(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    strategies: Mapped[list["UserStrategy"]] = relationship("UserStrategy", back_populates="universe")
+    strategies: Mapped[list["UserStrategy"]] = relationship(
+        "UserStrategy", back_populates="universe"
+    )
 
     __table_args__ = (Index("ix_universes_user", "user_id"),)
 
     def __repr__(self) -> str:
         return f"<Universe {self.name} ({len(self.symbols or [])} symbols)>"
-

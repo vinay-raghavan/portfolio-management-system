@@ -24,4 +24,3 @@ celery_client.conf.update(
     timezone="UTC",
     enable_utc=True,
 )
-

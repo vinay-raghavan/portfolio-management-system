@@ -170,9 +170,7 @@ class CircuitBreaker:
             )
 
         if consecutive_losses >= max_consecutive_losses:
-            trigger_reason = (
-                f"Consecutive losses: {consecutive_losses} >= {max_consecutive_losses}"
-            )
+            trigger_reason = f"Consecutive losses: {consecutive_losses} >= {max_consecutive_losses}"
 
         # Save state
         state_dict = {

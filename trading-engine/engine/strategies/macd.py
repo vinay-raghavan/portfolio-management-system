@@ -104,32 +104,64 @@ class MACDCrossoverStrategy(BaseStrategy):
         if bullish_crossover and (not self.require_histogram_confirmation or hist_bullish):
             strength = self._calculate_strength(current_macd, current_signal, is_buy=True)
             confidence = self._calculate_confidence(histogram, is_buy=True)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.BUY, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.BUY, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol, signal_type=SignalType.BUY, strength=strength, confidence=confidence,
-                price_at_signal=current_price, entry_price=current_price, stop_loss=stop_loss,
-                take_profit=take_profit, risk_reward_ratio=self.risk_reward_ratio,
-                indicators={"macd": round(current_macd, 4), "signal": round(current_signal, 4),
-                           "histogram": round(current_hist, 4), "atr": float(atr) if atr else None},
-                notes="MACD bullish crossover",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.BUY,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "macd": round(current_macd, 4),
+                        "signal": round(current_signal, 4),
+                        "histogram": round(current_hist, 4),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes="MACD bullish crossover",
+                )
+            )
 
         elif bearish_crossover and (not self.require_histogram_confirmation or hist_bearish):
             strength = self._calculate_strength(current_macd, current_signal, is_buy=False)
             confidence = self._calculate_confidence(histogram, is_buy=False)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.SELL, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol, signal_type=SignalType.SELL, strength=strength, confidence=confidence,
-                price_at_signal=current_price, entry_price=current_price, stop_loss=stop_loss,
-                take_profit=take_profit, risk_reward_ratio=self.risk_reward_ratio,
-                indicators={"macd": round(current_macd, 4), "signal": round(current_signal, 4),
-                           "histogram": round(current_hist, 4), "atr": float(atr) if atr else None},
-                notes="MACD bearish crossover",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.SELL,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "macd": round(current_macd, 4),
+                        "signal": round(current_signal, 4),
+                        "histogram": round(current_hist, 4),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes="MACD bearish crossover",
+                )
+            )
 
         return signals
 
@@ -153,4 +185,3 @@ class MACDCrossoverStrategy(BaseStrategy):
         else:
             confidence = 0.4
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

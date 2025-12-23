@@ -41,4 +41,3 @@ async def is_ready() -> bool:
     """
     health = await check_critical_health()
     return all(status == "ok" for status in health.values())
-

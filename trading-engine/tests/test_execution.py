@@ -1,13 +1,11 @@
 """Tests for the execution routes."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 from fastapi.testclient import TestClient
 
-from engine.main import app
 from engine.config import settings
 from engine.core.redis import get_redis
+from engine.main import app
 
 
 class FakeRedis:
@@ -87,7 +85,7 @@ class TestExecutionRoutes:
         assert "strategies" in data
         assert "count" in data
         assert data["count"] > 0
-        
+
         # Check that expected strategies are present
         strategy_names = [s["name"] for s in data["strategies"]]
         assert "rsi" in strategy_names
@@ -142,4 +140,3 @@ class TestExecutionRoutes:
         data = response.json()
         assert data["strategy_id"] == "strategy-123"
         assert "is_triggered" in data
-

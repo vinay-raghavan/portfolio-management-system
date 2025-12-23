@@ -174,4 +174,3 @@ class PositionSizer:
             risk_amount=risk_amount,
             notes=f"ATR={atr:.2f}, risk/share=₹{risk_per_share:.2f}{notes_suffix}",
         )
-

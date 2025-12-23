@@ -15,7 +15,7 @@ redis_pool = redis.ConnectionPool.from_url(
 )
 
 
-async def get_redis() -> AsyncGenerator[redis.Redis, None]:
+async def get_redis() -> AsyncGenerator[redis.Redis]:
     """Dependency to get Redis client."""
     client = redis.Redis(connection_pool=redis_pool)
     try:
@@ -25,7 +25,7 @@ async def get_redis() -> AsyncGenerator[redis.Redis, None]:
 
 
 @asynccontextmanager
-async def get_redis_context() -> AsyncGenerator[redis.Redis, None]:
+async def get_redis_context() -> AsyncGenerator[redis.Redis]:
     """Context manager for Redis client."""
     client = redis.Redis(connection_pool=redis_pool)
     try:
@@ -48,4 +48,3 @@ async def check_redis_health() -> bool:
 async def close_redis_pool() -> None:
     """Close the Redis connection pool."""
     await redis_pool.disconnect()
-

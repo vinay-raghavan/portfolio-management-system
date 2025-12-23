@@ -7,9 +7,9 @@ from engine.providers.data.base import DataProvider
 from engine.providers.data.factory import DataProviderFactory, get_data_provider
 from engine.providers.data.yahoo import YahooDataProvider
 from engine.providers.schemas import (
+    OHLCV,
     Funds,
     InstrumentInfo,
-    OHLCV,
     OrderRequest,
     OrderResponse,
     OrderSide,

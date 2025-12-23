@@ -136,4 +136,3 @@ class BaseStrategy(ABC):
         if value is None or pd.isna(value):
             return None
         return Decimal(str(round(float(value), 4)))
-

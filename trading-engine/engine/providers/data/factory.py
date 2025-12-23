@@ -95,4 +95,3 @@ async def check_data_provider_health() -> dict[str, str | bool]:
             "provider": settings.DATA_PROVIDER,
             "message": f"Failed to get provider: {str(e)}",
         }
-

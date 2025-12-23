@@ -66,7 +66,10 @@ def create_trend_momentum_pullback() -> CompositeStrategy:
             },
             {
                 "strategy": "rsi",
-                "params": {"oversold_threshold": 40, "overbought_threshold": 60},  # Wider bands for pullbacks
+                "params": {
+                    "oversold_threshold": 40,
+                    "overbought_threshold": 60,
+                },  # Wider bands for pullbacks
                 "weight": 1.0,
                 "required": True,
             },

@@ -101,9 +101,7 @@ class YahooDataProvider(DataProvider):
 
         prev_close = info.get("regularMarketPreviousClose", 0)
         change = Decimal(str(price)) - Decimal(str(prev_close)) if prev_close else None
-        change_pct = (
-            (change / Decimal(str(prev_close)) * 100) if change and prev_close else None
-        )
+        change_pct = (change / Decimal(str(prev_close)) * 100) if change and prev_close else None
 
         return Quote(
             symbol=SymbolMapper.normalize(symbol),
@@ -249,4 +247,3 @@ class YahooDataProvider(DataProvider):
 
         # For US markets, default to True (paper trading always works)
         return True
-

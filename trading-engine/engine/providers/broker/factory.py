@@ -102,4 +102,3 @@ def get_broker() -> Broker:
         Broker instance based on settings.BROKER_TYPE
     """
     return BrokerFactory.get_broker()
-
