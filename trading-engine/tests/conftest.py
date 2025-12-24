@@ -63,13 +63,9 @@ def sample_strategy_config():
 @pytest.fixture
 def mock_user_strategy():
     """Create a mock UserStrategy object."""
-    from datetime import datetime, UTC
-    from engine.models.algo import (
-        UserStrategy,
-        StrategyStatus,
-        ScheduleType,
-        PositionSizingMethod
-    )
+    from datetime import UTC, datetime
+
+    from engine.models.algo import PositionSizingMethod, ScheduleType, StrategyStatus, UserStrategy
 
     strategy = MagicMock(spec=UserStrategy)
     strategy.id = "test-strat-id"

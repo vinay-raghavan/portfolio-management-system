@@ -1,7 +1,7 @@
 """Tests for PositionTracker and P&L calculation."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -100,7 +100,7 @@ class TestPositionTrackerUnit:
         entry_price = Decimal("100.00")
         exit_price = Decimal("110.00")
         quantity = 10
-        
+
         # LONG P&L = (exit - entry) * qty
         expected_pnl = (exit_price - entry_price) * quantity
         assert expected_pnl == Decimal("100.00")
@@ -110,7 +110,7 @@ class TestPositionTrackerUnit:
         entry_price = Decimal("100.00")
         exit_price = Decimal("90.00")
         quantity = 10
-        
+
         expected_pnl = (exit_price - entry_price) * quantity
         assert expected_pnl == Decimal("-100.00")
 
@@ -119,7 +119,7 @@ class TestPositionTrackerUnit:
         entry_price = Decimal("100.00")
         exit_price = Decimal("90.00")
         quantity = 10
-        
+
         # SHORT P&L = (entry - exit) * qty
         expected_pnl = (entry_price - exit_price) * quantity
         assert expected_pnl == Decimal("100.00")
@@ -129,7 +129,7 @@ class TestPositionTrackerUnit:
         entry_price = Decimal("100.00")
         exit_price = Decimal("110.00")
         quantity = 10
-        
+
         expected_pnl = (entry_price - exit_price) * quantity
         assert expected_pnl == Decimal("-100.00")
 
@@ -139,12 +139,13 @@ class TestPositionTrackerUnit:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
-        
+
         # Mock refresh to set an id
         async def mock_refresh(pos):
             pos.id = "new-pos-id"
+
         mock_db.refresh.side_effect = mock_refresh
-        
+
         result = await tracker.open_position(
             strategy_id="strat-1",
             user_id="user-1",
@@ -153,7 +154,7 @@ class TestPositionTrackerUnit:
             quantity=100,
             entry_price=Decimal("1500.00"),
         )
-        
+
         assert result.symbol == "INFY.NS"
         assert result.side == "LONG"
         assert result.quantity == 100
@@ -250,6 +251,7 @@ class TestPositionTrackerUnit:
 
         async def mock_refresh(pos):
             pos.id = "new-pos-id"
+
         mock_db.refresh.side_effect = mock_refresh
 
         result, stats = await tracker.process_order_fill(
@@ -357,4 +359,3 @@ class TestSafetyService:
 
         assert result.passed is False
         assert "value" in result.reason.lower()
-

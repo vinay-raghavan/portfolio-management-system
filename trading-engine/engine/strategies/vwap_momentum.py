@@ -274,4 +274,3 @@ class VWAPMomentumStrategy(BaseStrategy):
         )
 
         return [signal]
-

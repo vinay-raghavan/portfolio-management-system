@@ -526,9 +526,7 @@ class PreExecutionChecker:
 
         # 4. Check max daily trades
         if max_daily_trades > 0:
-            can_trade, reason = await self.daily_trades.can_trade(
-                strategy_id, max_daily_trades
-            )
+            can_trade, reason = await self.daily_trades.can_trade(strategy_id, max_daily_trades)
             if not can_trade:
                 return PreExecutionCheckResult(
                     can_execute=False,

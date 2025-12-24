@@ -18,6 +18,7 @@ from engine.strategies.registry import StrategyRegistry
 @dataclass
 class OpeningRange:
     """Opening range data structure."""
+
     high: Decimal
     low: Decimal
     range_size: Decimal
@@ -296,4 +297,3 @@ class ORBStrategy(BaseStrategy):
     def reset_daily_entries(self) -> None:
         """Reset daily entry tracking."""
         self._daily_entries.clear()
-

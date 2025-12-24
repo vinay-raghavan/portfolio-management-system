@@ -63,9 +63,7 @@ class Order(Base):
     is_amo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -247,9 +245,15 @@ class StrategyExecution(Base):
     orders_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # P&L tracking for this execution
-    realized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
-    unrealized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
-    total_order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    unrealized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    total_order_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
     positions_opened: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     positions_closed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -370,8 +374,12 @@ class AlgoPosition(Base):
     remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # P&L calculation
-    realized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
-    realized_pnl_percent: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=Decimal("0"))
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    realized_pnl_percent: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4), nullable=False, default=Decimal("0")
+    )
     is_winner: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Risk management
@@ -409,12 +417,8 @@ class AlgoOrder(Base):
         ForeignKey("strategy_executions.id", ondelete="CASCADE"),
         nullable=False,
     )
-    order_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False), nullable=True
-    )
-    signal_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False), nullable=True
-    )
+    order_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    signal_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     user_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -433,7 +437,9 @@ class AlgoOrder(Base):
     order_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     filled_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
-    order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    order_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Signal info

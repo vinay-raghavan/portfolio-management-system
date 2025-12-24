@@ -2,10 +2,10 @@
 
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
@@ -233,9 +233,7 @@ class AlgoService:
     async def get_pnl_summary(self, user_id: str) -> PnLSummary:
         """Get overall P&L summary for a user."""
         # Get all positions for the user
-        result = await self.db.execute(
-            select(AlgoPosition).where(AlgoPosition.user_id == user_id)
-        )
+        result = await self.db.execute(select(AlgoPosition).where(AlgoPosition.user_id == user_id))
         positions = list(result.scalars().all())
 
         if not positions:
@@ -337,9 +335,7 @@ class AlgoService:
             total_pnl=total_realized + total_unrealized,
         )
 
-    async def get_pnl_history(
-        self, user_id: str, days: int = 30
-    ) -> PnLHistoryResponse:
+    async def get_pnl_history(self, user_id: str, days: int = 30) -> PnLHistoryResponse:
         """Get P&L history over time for a user."""
         # Get all closed positions for the user
         result = await self.db.execute(

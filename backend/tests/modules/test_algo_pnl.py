@@ -1,6 +1,6 @@
 """Tests for algo trading P&L endpoints and service methods."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,7 +14,7 @@ from app.modules.algo.models import (
     StrategyStatus,
     UserStrategy,
 )
-from app.modules.algo.schemas import PnLSummary, PositionResponse, StrategyPnL
+from app.modules.algo.schemas import PnLSummary, PositionResponse
 from app.modules.algo.service import AlgoService
 
 
@@ -29,8 +29,8 @@ def mock_db():
 @pytest.fixture
 def sample_positions():
     """Create sample AlgoPosition objects for testing."""
-    now = datetime.now(timezone.utc)
-    
+    now = datetime.now(UTC)
+
     pos1 = MagicMock(spec=AlgoPosition)
     pos1.id = "pos-1"
     pos1.strategy_id = "strat-1"
@@ -254,4 +254,3 @@ class TestPositionModels:
         assert PositionStatus.OPEN.value == "OPEN"
         assert PositionStatus.CLOSED.value == "CLOSED"
         assert PositionStatus.PARTIAL.value == "PARTIAL"
-

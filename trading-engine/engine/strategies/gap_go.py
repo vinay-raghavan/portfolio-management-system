@@ -18,6 +18,7 @@ from engine.strategies.registry import StrategyRegistry
 
 class GapType(str, Enum):
     """Type of gap."""
+
     GAP_UP = "gap_up"
     GAP_DOWN = "gap_down"
     NO_GAP = "no_gap"
@@ -26,6 +27,7 @@ class GapType(str, Enum):
 @dataclass
 class GapInfo:
     """Information about an opening gap."""
+
     gap_type: GapType
     gap_size: Decimal
     gap_pct: Decimal
@@ -123,8 +125,12 @@ class GapAndGoStrategy(BaseStrategy):
 
         if abs(gap_pct) < self.min_gap_pct:
             return GapInfo(
-                gap_type=GapType.NO_GAP, gap_size=gap_size, gap_pct=gap_pct,
-                prev_close=prev_close, open_price=today_open, is_full_gap=False
+                gap_type=GapType.NO_GAP,
+                gap_size=gap_size,
+                gap_pct=gap_pct,
+                prev_close=prev_close,
+                open_price=today_open,
+                is_full_gap=False,
             )
 
         if gap_pct > 0:
@@ -135,8 +141,12 @@ class GapAndGoStrategy(BaseStrategy):
             is_full_gap = today_open < prev_low
 
         return GapInfo(
-            gap_type=gap_type, gap_size=abs(gap_size), gap_pct=abs(gap_pct),
-            prev_close=prev_close, open_price=today_open, is_full_gap=is_full_gap
+            gap_type=gap_type,
+            gap_size=abs(gap_size),
+            gap_pct=abs(gap_pct),
+            prev_close=prev_close,
+            open_price=today_open,
+            is_full_gap=is_full_gap,
         )
 
     def _check_confirmation(
@@ -285,4 +295,3 @@ class GapAndGoStrategy(BaseStrategy):
         )
 
         return [signal]
-

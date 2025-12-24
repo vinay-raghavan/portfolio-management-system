@@ -604,7 +604,9 @@ async def list_positions(
     db: DbSession,
     current_user: CurrentUser,
     strategy_id: str | None = Query(default=None, description="Filter by strategy ID"),
-    status: str | None = Query(default=None, description="Filter by status (OPEN, CLOSED, PARTIAL)"),
+    status: str | None = Query(
+        default=None, description="Filter by status (OPEN, CLOSED, PARTIAL)"
+    ),
 ) -> list[PositionResponse]:
     """List all algo positions for the current user.
 
@@ -694,7 +696,7 @@ async def get_unrealized_pnl(
         )
 
     # Get current prices for all symbols
-    symbols = list(set(p.symbol for p in positions))
+    symbols = list({p.symbol for p in positions})
     current_prices: dict[str, Decimal] = {}
 
     data_provider = YahooDataProvider()

@@ -22,7 +22,13 @@ from engine.algo.notifications import AlgoNotificationService
 from engine.algo.position_tracker import PnLStats, PositionTracker
 from engine.algo.safety import SafetyService
 from engine.core.database import get_db_context
-from engine.models.algo import AlgoOrder, ExecutionStatus, Order, PositionSizingMethod, StrategyExecution
+from engine.models.algo import (
+    AlgoOrder,
+    ExecutionStatus,
+    Order,
+    PositionSizingMethod,
+    StrategyExecution,
+)
 from engine.models.signals import SignalData, SignalType
 from engine.providers.broker.base import Broker
 from engine.providers.data.base import DataProvider
@@ -412,7 +418,9 @@ class StrategyExecutor:
 
                     # Create AlgoOrder record linking to the Order
                     order_qty = order_data.get("quantity", 0)
-                    order_value = Decimal(str(filled_price)) * order_qty if filled_price else Decimal("0")
+                    order_value = (
+                        Decimal(str(filled_price)) * order_qty if filled_price else Decimal("0")
+                    )
                     algo_order = AlgoOrder(
                         id=str(uuid4()),
                         execution_id=execution_id,
@@ -458,7 +466,9 @@ class StrategyExecutor:
                             if pnl_stats.consecutive_losses > 0:
                                 aggregated_pnl.consecutive_losses += pnl_stats.consecutive_losses
                         except Exception as e:
-                            logger.warning(f"Position tracking failed for {order_data.get('symbol')}: {e}")
+                            logger.warning(
+                                f"Position tracking failed for {order_data.get('symbol')}: {e}"
+                            )
 
                 await db.commit()
 

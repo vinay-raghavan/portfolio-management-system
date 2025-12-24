@@ -323,7 +323,9 @@ class AlgoOrder(Base):
     order_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     filled_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
-    order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    order_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Signal info
@@ -416,8 +418,12 @@ class AlgoPosition(Base):
     remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # P&L calculation
-    realized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
-    realized_pnl_percent: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=Decimal("0"))
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    realized_pnl_percent: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4), nullable=False, default=Decimal("0")
+    )
     is_winner: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # Risk management

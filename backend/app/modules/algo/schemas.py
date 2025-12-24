@@ -423,8 +423,8 @@ class ExecutionHistoryResponse(BaseModel):
         from_attributes = True
 
 
-class AlgoOrderResponse(BaseModel):
-    """Response for algo order details."""
+class AlgoOrderDetailResponse(BaseModel):
+    """Response for algo order details with execution info."""
 
     id: str
     execution_id: str

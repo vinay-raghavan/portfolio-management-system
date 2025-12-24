@@ -17,6 +17,7 @@ from engine.strategies.registry import StrategyRegistry
 @dataclass
 class TWAPSlice:
     """A single TWAP execution slice."""
+
     slice_number: int
     total_slices: int
     quantity: int
@@ -29,6 +30,7 @@ class TWAPSlice:
 @dataclass
 class TWAPPlan:
     """Complete TWAP execution plan."""
+
     symbol: str
     total_quantity: int
     direction: SignalType
@@ -144,9 +146,7 @@ class TWAPStrategy(BaseStrategy):
                 return slice_info
         return None
 
-    def mark_slice_executed(
-        self, symbol: str, slice_number: int, executed_price: Decimal
-    ) -> None:
+    def mark_slice_executed(self, symbol: str, slice_number: int, executed_price: Decimal) -> None:
         """Mark a slice as executed."""
         plan = self._active_plans.get(symbol)
         if not plan:
@@ -257,4 +257,3 @@ class TWAPStrategy(BaseStrategy):
             del self._active_plans[symbol]
             return True
         return False
-

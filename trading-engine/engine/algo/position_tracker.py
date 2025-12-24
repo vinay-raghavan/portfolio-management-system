@@ -106,7 +106,9 @@ class PositionTracker:
         if existing:
             # Average into existing position
             total_qty = existing.remaining_quantity + quantity
-            total_cost = (existing.entry_price * existing.remaining_quantity) + (entry_price * quantity)
+            total_cost = (existing.entry_price * existing.remaining_quantity) + (
+                entry_price * quantity
+            )
             new_avg_price = total_cost / total_qty
 
             existing.entry_quantity = total_qty
@@ -322,4 +324,3 @@ class PositionTracker:
 
         stats.consecutive_losses = max_consecutive_losses
         return stats
-
