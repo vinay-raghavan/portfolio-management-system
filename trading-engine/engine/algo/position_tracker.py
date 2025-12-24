@@ -1,0 +1,325 @@
+"""Position tracker for algo trading.
+
+Tracks open positions for strategies and calculates P&L when positions are closed.
+"""
+
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from engine.models.algo import AlgoPosition, PositionSide, PositionStatus
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PositionResult:
+    """Result of position operation."""
+
+    position_id: str
+    symbol: str
+    side: str
+    quantity: int
+    entry_price: Decimal
+    exit_price: Decimal | None = None
+    realized_pnl: Decimal = Decimal("0")
+    is_winner: bool | None = None
+    status: str = "OPEN"
+
+
+@dataclass
+class PnLStats:
+    """P&L statistics from position operations."""
+
+    trades_closed: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    total_pnl: Decimal = Decimal("0")
+    consecutive_losses: int = 0
+
+
+class PositionTracker:
+    """Track algo positions and calculate P&L."""
+
+    def __init__(self, db: AsyncSession):
+        """Initialize with database session."""
+        self.db = db
+
+    async def get_open_position(
+        self,
+        strategy_id: str,
+        user_id: str,
+        symbol: str,
+    ) -> AlgoPosition | None:
+        """Get open position for a symbol in a strategy."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.strategy_id == strategy_id,
+                AlgoPosition.user_id == user_id,
+                AlgoPosition.symbol == symbol,
+                AlgoPosition.status == PositionStatus.OPEN,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_all_open_positions(
+        self,
+        strategy_id: str,
+        user_id: str,
+    ) -> list[AlgoPosition]:
+        """Get all open positions for a strategy."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.strategy_id == strategy_id,
+                AlgoPosition.user_id == user_id,
+                AlgoPosition.status == PositionStatus.OPEN,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def open_position(
+        self,
+        strategy_id: str,
+        user_id: str,
+        symbol: str,
+        side: str,
+        quantity: int,
+        entry_price: Decimal,
+        order_id: str | None = None,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
+    ) -> PositionResult:
+        """Open a new position or add to existing one.
+
+        Returns PositionResult with position details.
+        """
+        symbol = symbol.upper()
+        position_side = PositionSide.LONG if side == "BUY" else PositionSide.SHORT
+
+        # Check for existing open position
+        existing = await self.get_open_position(strategy_id, user_id, symbol)
+
+        if existing:
+            # Average into existing position
+            total_qty = existing.remaining_quantity + quantity
+            total_cost = (existing.entry_price * existing.remaining_quantity) + (entry_price * quantity)
+            new_avg_price = total_cost / total_qty
+
+            existing.entry_quantity = total_qty
+            existing.remaining_quantity = total_qty
+            existing.entry_price = new_avg_price
+            await self.db.flush()
+
+            logger.info(f"Added to position {symbol}: qty={total_qty}, avg={new_avg_price}")
+            return PositionResult(
+                position_id=existing.id,
+                symbol=symbol,
+                side=position_side.value,
+                quantity=total_qty,
+                entry_price=new_avg_price,
+                status="OPEN",
+            )
+
+        # Create new position
+        position = AlgoPosition(
+            strategy_id=strategy_id,
+            user_id=user_id,
+            symbol=symbol,
+            side=position_side,
+            entry_quantity=quantity,
+            entry_price=entry_price,
+            entry_order_id=order_id,
+            remaining_quantity=quantity,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            status=PositionStatus.OPEN,
+        )
+        self.db.add(position)
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        logger.info(f"Opened position {symbol}: {side} {quantity} @ {entry_price}")
+        return PositionResult(
+            position_id=position.id,
+            symbol=symbol,
+            side=position_side.value,
+            quantity=quantity,
+            entry_price=entry_price,
+            status="OPEN",
+        )
+
+    async def close_position(
+        self,
+        strategy_id: str,
+        user_id: str,
+        symbol: str,
+        quantity: int | None,
+        exit_price: Decimal,
+        order_id: str | None = None,
+    ) -> PositionResult | None:
+        """Close a position (fully or partially) and calculate P&L."""
+        symbol = symbol.upper()
+        position = await self.get_open_position(strategy_id, user_id, symbol)
+
+        if not position:
+            logger.warning(f"No open position found for {symbol} to close")
+            return None
+
+        # Default to full close
+        close_qty = quantity if quantity else position.remaining_quantity
+        close_qty = min(close_qty, position.remaining_quantity)
+
+        # Calculate P&L
+        if position.side == PositionSide.LONG:
+            pnl = (exit_price - position.entry_price) * close_qty
+        else:  # SHORT
+            pnl = (position.entry_price - exit_price) * close_qty
+
+        pnl_percent = (pnl / (position.entry_price * close_qty)) * 100
+        is_winner = pnl > 0
+
+        # Update position
+        position.remaining_quantity -= close_qty
+        position.exit_price = exit_price
+        position.exit_order_id = order_id
+        position.exit_at = datetime.now(UTC)
+        position.realized_pnl += pnl
+        position.realized_pnl_percent = pnl_percent
+        position.is_winner = is_winner
+
+        if position.remaining_quantity <= 0:
+            position.status = PositionStatus.CLOSED
+            position.exit_quantity = position.entry_quantity
+        else:
+            position.status = PositionStatus.PARTIAL
+            position.exit_quantity = (position.exit_quantity or 0) + close_qty
+
+        await self.db.flush()
+
+        logger.info(f"Closed position {symbol}: qty={close_qty}, pnl={pnl}, is_winner={is_winner}")
+        return PositionResult(
+            position_id=position.id,
+            symbol=symbol,
+            side=position.side.value,
+            quantity=close_qty,
+            entry_price=position.entry_price,
+            exit_price=exit_price,
+            realized_pnl=pnl,
+            is_winner=is_winner,
+            status=position.status.value,
+        )
+
+    async def process_order_fill(
+        self,
+        strategy_id: str,
+        user_id: str,
+        symbol: str,
+        side: str,
+        quantity: int,
+        fill_price: Decimal,
+        order_id: str | None = None,
+    ) -> tuple[PositionResult | None, PnLStats]:
+        """Process an order fill and update positions.
+
+        For BUY orders:
+        - If we have a SHORT position, close it (calculate P&L)
+        - Otherwise, open/add to LONG position
+
+        For SELL orders:
+        - If we have a LONG position, close it (calculate P&L)
+        - Otherwise, open/add to SHORT position
+
+        Returns (position_result, pnl_stats)
+        """
+        symbol = symbol.upper()
+        stats = PnLStats()
+
+        # Check for existing position
+        existing = await self.get_open_position(strategy_id, user_id, symbol)
+
+        if existing:
+            # Determine if this closes or opens position
+            if side == "BUY" and existing.side == PositionSide.SHORT:
+                # Close SHORT position
+                result = await self.close_position(
+                    strategy_id, user_id, symbol, quantity, fill_price, order_id
+                )
+                if result:
+                    stats.trades_closed = 1
+                    stats.total_pnl = result.realized_pnl
+                    if result.is_winner:
+                        stats.winning_trades = 1
+                    else:
+                        stats.losing_trades = 1
+                        stats.consecutive_losses = 1
+                return result, stats
+
+            elif side == "SELL" and existing.side == PositionSide.LONG:
+                # Close LONG position
+                result = await self.close_position(
+                    strategy_id, user_id, symbol, quantity, fill_price, order_id
+                )
+                if result:
+                    stats.trades_closed = 1
+                    stats.total_pnl = result.realized_pnl
+                    if result.is_winner:
+                        stats.winning_trades = 1
+                    else:
+                        stats.losing_trades = 1
+                        stats.consecutive_losses = 1
+                return result, stats
+
+            # Same direction - add to position
+            result = await self.open_position(
+                strategy_id, user_id, symbol, side, quantity, fill_price, order_id
+            )
+            return result, stats
+
+        # No existing position - open new
+        result = await self.open_position(
+            strategy_id, user_id, symbol, side, quantity, fill_price, order_id
+        )
+        return result, stats
+
+    async def calculate_strategy_pnl_stats(
+        self,
+        strategy_id: str,
+        user_id: str,
+    ) -> PnLStats:
+        """Calculate P&L stats from all closed positions for a strategy."""
+        from sqlalchemy import and_
+
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                and_(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.user_id == user_id,
+                    AlgoPosition.status == PositionStatus.CLOSED,
+                )
+            )
+        )
+        closed_positions = result.scalars().all()
+
+        stats = PnLStats()
+        consecutive_losses = 0
+        max_consecutive_losses = 0
+
+        for pos in closed_positions:
+            stats.trades_closed += 1
+            stats.total_pnl += pos.realized_pnl
+
+            if pos.is_winner:
+                stats.winning_trades += 1
+                consecutive_losses = 0
+            else:
+                stats.losing_trades += 1
+                consecutive_losses += 1
+                max_consecutive_losses = max(max_consecutive_losses, consecutive_losses)
+
+        stats.consecutive_losses = max_consecutive_losses
+        return stats
+

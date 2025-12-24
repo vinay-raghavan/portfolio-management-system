@@ -19,6 +19,7 @@ from uuid import uuid4
 import pandas as pd
 
 from engine.algo.notifications import AlgoNotificationService
+from engine.algo.position_tracker import PnLStats, PositionTracker
 from engine.algo.safety import SafetyService
 from engine.core.database import get_db_context
 from engine.models.algo import AlgoOrder, ExecutionStatus, Order, PositionSizingMethod, StrategyExecution
@@ -47,6 +48,8 @@ class ExecutionResult:
     orders_data: list = field(default_factory=list)
     error_message: str | None = None
     duration_ms: int = 0
+    # P&L tracking from position tracker
+    pnl_stats: PnLStats = field(default_factory=PnLStats)
 
 
 @dataclass
@@ -350,10 +353,15 @@ class StrategyExecutor:
     ) -> None:
         """Persist execution results to the database.
 
-        Creates a StrategyExecution record and AlgoOrder records for each order.
+        Creates a StrategyExecution record, AlgoOrder records for each order,
+        and tracks positions with P&L calculation.
         """
         try:
             async with get_db_context() as db:
+                # Initialize position tracker for P&L calculation
+                position_tracker = PositionTracker(db)
+                aggregated_pnl = PnLStats()
+
                 # Create execution record
                 execution_id = str(uuid4())
                 execution = StrategyExecution(
@@ -423,9 +431,36 @@ class StrategyExecutor:
                     )
                     db.add(algo_order)
 
+                    # Track position and calculate P&L for filled orders
+                    if order_status == "FILLED" and filled_price:
+                        try:
+                            _, pnl_stats = await position_tracker.process_order_fill(
+                                strategy_id=config.id,
+                                user_id=config.user_id,
+                                symbol=order_data.get("symbol", ""),
+                                side=order_data.get("side", "BUY"),
+                                quantity=order_data.get("quantity", 0),
+                                fill_price=Decimal(str(filled_price)),
+                                order_id=order_id,
+                            )
+                            # Aggregate P&L stats
+                            aggregated_pnl.trades_closed += pnl_stats.trades_closed
+                            aggregated_pnl.winning_trades += pnl_stats.winning_trades
+                            aggregated_pnl.losing_trades += pnl_stats.losing_trades
+                            aggregated_pnl.total_pnl += pnl_stats.total_pnl
+                            if pnl_stats.consecutive_losses > 0:
+                                aggregated_pnl.consecutive_losses += pnl_stats.consecutive_losses
+                        except Exception as e:
+                            logger.warning(f"Position tracking failed for {order_data.get('symbol')}: {e}")
+
                 await db.commit()
+
+                # Update the result with P&L stats
+                result.pnl_stats = aggregated_pnl
+
                 logger.info(
-                    f"Persisted execution {execution_id} with {len(result.orders_data)} orders"
+                    f"Persisted execution {execution_id} with {len(result.orders_data)} orders, "
+                    f"pnl={aggregated_pnl.total_pnl}, closed={aggregated_pnl.trades_closed}"
                 )
 
         except Exception as e:

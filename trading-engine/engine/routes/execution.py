@@ -225,16 +225,13 @@ async def run_scheduled_strategies(
             # Update next run time
             await scheduler.update_next_run(strategy)
 
-            # Update strategy statistics
-            # For now, count all filled orders as trades
-            # P&L tracking would require position tracking which isn't implemented yet
-            # So we just track the trade counts
+            # Update strategy statistics with P&L from position tracker
             await scheduler.update_strategy_stats(
                 strategy=strategy,
                 orders_filled=result.orders_filled,
-                total_pnl_delta=0.0,  # P&L tracking requires position management
-                winning_trades_delta=0,  # Would need exit price to determine win/loss
-                losing_trades_delta=0,
+                total_pnl_delta=float(result.pnl_stats.total_pnl),
+                winning_trades_delta=result.pnl_stats.winning_trades,
+                losing_trades_delta=result.pnl_stats.losing_trades,
             )
 
             results.append(
@@ -345,13 +342,13 @@ async def execute_strategy_by_id(
         # Update next run time
         await scheduler.update_next_run(strategy)
 
-        # Update strategy statistics
+        # Update strategy statistics with P&L from position tracker
         await scheduler.update_strategy_stats(
             strategy=strategy,
             orders_filled=result.orders_filled,
-            total_pnl_delta=0.0,  # P&L tracking requires position management
-            winning_trades_delta=0,  # Would need exit price to determine win/loss
-            losing_trades_delta=0,
+            total_pnl_delta=float(result.pnl_stats.total_pnl),
+            winning_trades_delta=result.pnl_stats.winning_trades,
+            losing_trades_delta=result.pnl_stats.losing_trades,
         )
 
         await db.commit()
