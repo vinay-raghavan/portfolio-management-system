@@ -1,6 +1,7 @@
 """API routes for algo trading."""
 
 import logging
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,12 +17,17 @@ from app.modules.algo.schemas import (
     ExecutionHistoryResponse,
     KillSwitchResponse,
     KillSwitchToggle,
+    PnLByStrategyResponse,
+    PnLHistoryResponse,
+    PnLSummary,
+    PositionResponse,
     StrategyCreate,
     StrategyResponse,
     StrategyUpdate,
     UniverseCreate,
     UniverseResponse,
     UniverseUpdate,
+    UnrealizedPnLResponse,
 )
 from app.modules.algo.service import AlgoService
 from app.modules.algo.universe_service import (
@@ -588,3 +594,121 @@ async def get_index_constituents(
         }
     finally:
         await nse_provider.close()
+
+
+# ============== P&L Endpoints ==============
+
+
+@router.get("/positions", response_model=list[PositionResponse])
+async def list_positions(
+    db: DbSession,
+    current_user: CurrentUser,
+    strategy_id: str | None = Query(default=None, description="Filter by strategy ID"),
+    status: str | None = Query(
+        default=None, description="Filter by status (OPEN, CLOSED, PARTIAL)"
+    ),
+) -> list[PositionResponse]:
+    """List all algo positions for the current user.
+
+    Optionally filter by strategy ID and/or position status.
+    """
+    service = AlgoService(db)
+    return await service.get_positions(current_user.id, strategy_id, status)
+
+
+@router.get("/pnl/summary", response_model=PnLSummary)
+async def get_pnl_summary(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> PnLSummary:
+    """Get overall P&L summary for the current user's algo trading.
+
+    Returns aggregated metrics including:
+    - Total realized and unrealized P&L
+    - Win rate and trade counts
+    - Best/worst trade performance
+    """
+    service = AlgoService(db)
+    return await service.get_pnl_summary(current_user.id)
+
+
+@router.get("/pnl/by-strategy", response_model=PnLByStrategyResponse)
+async def get_pnl_by_strategy(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> PnLByStrategyResponse:
+    """Get P&L breakdown by strategy.
+
+    Returns P&L metrics for each strategy including:
+    - Realized and unrealized P&L per strategy
+    - Win rate and trade counts per strategy
+    - Open/closed position counts
+    """
+    service = AlgoService(db)
+    return await service.get_pnl_by_strategy(current_user.id)
+
+
+@router.get("/pnl/history", response_model=PnLHistoryResponse)
+async def get_pnl_history(
+    db: DbSession,
+    current_user: CurrentUser,
+    days: int = Query(default=30, ge=1, le=365, description="Number of days to include"),
+) -> PnLHistoryResponse:
+    """Get P&L history over time.
+
+    Returns daily P&L breakdown including:
+    - Realized P&L per day
+    - Cumulative P&L over time
+    - Trade counts per day
+    - Profitable vs losing days summary
+    """
+    service = AlgoService(db)
+    return await service.get_pnl_history(current_user.id, days)
+
+
+@router.get("/pnl/unrealized", response_model=UnrealizedPnLResponse)
+async def get_unrealized_pnl(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> UnrealizedPnLResponse:
+    """Get unrealized P&L for all open positions.
+
+    Fetches current market prices and calculates unrealized P&L
+    for each open position. Returns:
+    - Per-position unrealized P&L
+    - Total unrealized P&L
+    - Entry value vs current value
+    """
+    from app.providers.data.yahoo import YahooDataProvider
+
+    service = AlgoService(db)
+
+    # First get the positions to know which symbols we need prices for
+    positions = await service.get_positions(current_user.id, status="OPEN")
+
+    if not positions:
+        return UnrealizedPnLResponse(
+            positions=[],
+            total_unrealized_pnl=Decimal("0"),
+            total_entry_value=Decimal("0"),
+            total_current_value=Decimal("0"),
+            positions_count=0,
+        )
+
+    # Get current prices for all symbols
+    symbols = list({p.symbol for p in positions})
+    current_prices: dict[str, Decimal] = {}
+
+    data_provider = YahooDataProvider()
+    try:
+        for symbol in symbols:
+            try:
+                quote = await data_provider.get_quote(symbol)
+                if quote and quote.get("price"):
+                    current_prices[symbol] = Decimal(str(quote["price"]))
+            except Exception as e:
+                logger.warning(f"Failed to get price for {symbol}: {e}")
+    finally:
+        await data_provider.close()
+
+    return await service.get_unrealized_pnl(current_user.id, current_prices)

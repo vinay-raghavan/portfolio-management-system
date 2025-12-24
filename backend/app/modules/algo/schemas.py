@@ -412,6 +412,38 @@ class ExecutionHistoryResponse(BaseModel):
     orders_filled: int
     orders_rejected: int
     error_message: str | None
+    # P&L tracking
+    realized_pnl: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
+    total_order_value: Decimal = Decimal("0")
+    positions_opened: int = 0
+    positions_closed: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class AlgoOrderDetailResponse(BaseModel):
+    """Response for algo order details with execution info."""
+
+    id: str
+    execution_id: str
+    order_id: str | None
+    strategy_id: str
+    symbol: str
+    side: str
+    quantity: int
+    order_type: str
+    price: Decimal | None
+    order_status: str = "PENDING"
+    filled_quantity: int = 0
+    filled_price: Decimal | None = None
+    order_value: Decimal = Decimal("0")
+    filled_at: datetime | None = None
+    signal_type: str | None
+    signal_strength: Decimal | None
+    sizing_method: str | None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -436,3 +468,126 @@ class KillSwitchToggle(BaseModel):
 
 # NOTE: CircuitBreakerStatus is defined earlier in this file (line 248)
 # This duplicate was removed to fix F811 redefinition error
+
+
+# ============== P&L Schemas ==============
+
+
+class PositionResponse(BaseModel):
+    """Response for an algo position."""
+
+    id: str
+    strategy_id: str
+    user_id: str
+    symbol: str
+    side: str
+    status: str
+    entry_quantity: int
+    entry_price: Decimal
+    entry_at: datetime
+    exit_quantity: int | None
+    exit_price: Decimal | None
+    exit_at: datetime | None
+    remaining_quantity: int
+    realized_pnl: Decimal
+    realized_pnl_percent: Decimal
+    is_winner: bool | None
+    stop_loss: Decimal | None
+    take_profit: Decimal | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PnLSummary(BaseModel):
+    """Overall P&L summary for a user's algo trading."""
+
+    total_realized_pnl: Decimal = Field(default=Decimal("0"))
+    total_unrealized_pnl: Decimal = Field(default=Decimal("0"))
+    total_pnl: Decimal = Field(default=Decimal("0"))
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    win_rate: Decimal = Field(default=Decimal("0"))
+    open_positions: int = 0
+    closed_positions: int = 0
+    best_trade_pnl: Decimal = Field(default=Decimal("0"))
+    worst_trade_pnl: Decimal = Field(default=Decimal("0"))
+    average_trade_pnl: Decimal = Field(default=Decimal("0"))
+
+
+class StrategyPnL(BaseModel):
+    """P&L summary for a single strategy."""
+
+    strategy_id: str
+    strategy_name: str
+    total_pnl: Decimal = Field(default=Decimal("0"))
+    realized_pnl: Decimal = Field(default=Decimal("0"))
+    unrealized_pnl: Decimal = Field(default=Decimal("0"))
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    win_rate: Decimal = Field(default=Decimal("0"))
+    open_positions: int = 0
+    closed_positions: int = 0
+    status: str
+
+
+class PnLByStrategyResponse(BaseModel):
+    """P&L breakdown by strategy."""
+
+    strategies: list[StrategyPnL]
+    total_realized_pnl: Decimal = Field(default=Decimal("0"))
+    total_unrealized_pnl: Decimal = Field(default=Decimal("0"))
+    total_pnl: Decimal = Field(default=Decimal("0"))
+
+
+class DailyPnL(BaseModel):
+    """P&L for a single day."""
+
+    date: str  # YYYY-MM-DD
+    realized_pnl: Decimal = Field(default=Decimal("0"))
+    unrealized_pnl: Decimal = Field(default=Decimal("0"))
+    total_pnl: Decimal = Field(default=Decimal("0"))
+    trades_opened: int = 0
+    trades_closed: int = 0
+    cumulative_pnl: Decimal = Field(default=Decimal("0"))
+
+
+class PnLHistoryResponse(BaseModel):
+    """P&L history over time."""
+
+    daily_pnl: list[DailyPnL]
+    period_start: str
+    period_end: str
+    total_realized_pnl: Decimal = Field(default=Decimal("0"))
+    total_days: int = 0
+    profitable_days: int = 0
+    losing_days: int = 0
+
+
+class UnrealizedPnLPosition(BaseModel):
+    """Unrealized P&L for a single open position."""
+
+    position_id: str
+    strategy_id: str
+    symbol: str
+    side: str
+    quantity: int
+    entry_price: Decimal
+    current_price: Decimal
+    unrealized_pnl: Decimal
+    unrealized_pnl_percent: Decimal
+    entry_value: Decimal
+    current_value: Decimal
+
+
+class UnrealizedPnLResponse(BaseModel):
+    """Total unrealized P&L with position details."""
+
+    positions: list[UnrealizedPnLPosition]
+    total_unrealized_pnl: Decimal = Field(default=Decimal("0"))
+    total_entry_value: Decimal = Field(default=Decimal("0"))
+    total_current_value: Decimal = Field(default=Decimal("0"))
+    positions_count: int = 0

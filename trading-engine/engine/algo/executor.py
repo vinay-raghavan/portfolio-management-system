@@ -6,6 +6,7 @@ This module handles the execution of trading strategies, including:
 - Applying position sizing
 - Validating with risk service
 - Placing orders via broker
+- Persisting execution results to database
 """
 
 import logging
@@ -13,12 +14,21 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 import pandas as pd
 
 from engine.algo.notifications import AlgoNotificationService
+from engine.algo.position_tracker import PnLStats, PositionTracker
 from engine.algo.safety import SafetyService
-from engine.models.algo import ExecutionStatus, PositionSizingMethod
+from engine.core.database import get_db_context
+from engine.models.algo import (
+    AlgoOrder,
+    ExecutionStatus,
+    Order,
+    PositionSizingMethod,
+    StrategyExecution,
+)
 from engine.models.signals import SignalData, SignalType
 from engine.providers.broker.base import Broker
 from engine.providers.data.base import DataProvider
@@ -44,6 +54,8 @@ class ExecutionResult:
     orders_data: list = field(default_factory=list)
     error_message: str | None = None
     duration_ms: int = 0
+    # P&L tracking from position tracker
+    pnl_stats: PnLStats = field(default_factory=PnLStats)
 
 
 @dataclass
@@ -188,6 +200,9 @@ class StrategyExecutor:
                 strategy_id=config.id,
                 error=str(e),
             )
+
+        # Persist execution results to database
+        await self._persist_execution(config, result, start_time)
 
         return result
 
@@ -335,3 +350,135 @@ class StrategyExecutor:
             "stop_loss": float(signal.stop_loss) if signal.stop_loss else None,
             "take_profit": float(signal.take_profit) if signal.take_profit else None,
         }
+
+    async def _persist_execution(
+        self,
+        config: StrategyConfig,
+        result: ExecutionResult,
+        start_time: float,
+    ) -> None:
+        """Persist execution results to the database.
+
+        Creates a StrategyExecution record, AlgoOrder records for each order,
+        and tracks positions with P&L calculation.
+        """
+        try:
+            async with get_db_context() as db:
+                # Initialize position tracker for P&L calculation
+                position_tracker = PositionTracker(db)
+                aggregated_pnl = PnLStats()
+
+                # Create execution record
+                execution_id = str(uuid4())
+                execution = StrategyExecution(
+                    id=execution_id,
+                    strategy_id=config.id,
+                    user_id=config.user_id,
+                    started_at=datetime.fromtimestamp(start_time, tz=UTC),
+                    completed_at=datetime.now(UTC),
+                    duration_ms=result.duration_ms,
+                    status=result.status,
+                    symbols_analyzed=result.symbols_analyzed,
+                    signals_generated=result.signals_generated,
+                    orders_placed=result.orders_placed,
+                    orders_filled=result.orders_filled,
+                    orders_rejected=result.orders_rejected,
+                    signals_data=result.signals_data,
+                    orders_data=result.orders_data,
+                    error_message=result.error_message,
+                )
+                db.add(execution)
+
+                # Create Order and AlgoOrder records for each order
+                for i, order_data in enumerate(result.orders_data):
+                    signal_data = result.signals_data[i] if i < len(result.signals_data) else {}
+
+                    # Create Order record in the orders table
+                    order_id = str(uuid4())
+                    filled_price = order_data.get("filled_price")
+                    order_status = order_data.get("status", "PENDING")
+
+                    order = Order(
+                        id=order_id,
+                        user_id=config.user_id,
+                        symbol=order_data.get("symbol", ""),
+                        side=order_data.get("side", "BUY"),
+                        order_type="MARKET",
+                        quantity=Decimal(str(order_data.get("quantity", 0))),
+                        price=Decimal(str(filled_price)) if filled_price else None,
+                        status=order_status,
+                        filled_quantity=Decimal(str(order_data.get("quantity", 0)))
+                        if order_status == "FILLED"
+                        else Decimal("0"),
+                        filled_price=Decimal(str(filled_price)) if filled_price else None,
+                        filled_at=datetime.now(UTC) if order_status == "FILLED" else None,
+                        notes=f"Algo order from strategy {config.name}",
+                    )
+                    db.add(order)
+
+                    # Create AlgoOrder record linking to the Order
+                    order_qty = order_data.get("quantity", 0)
+                    order_value = (
+                        Decimal(str(filled_price)) * order_qty if filled_price else Decimal("0")
+                    )
+                    algo_order = AlgoOrder(
+                        id=str(uuid4()),
+                        execution_id=execution_id,
+                        order_id=order_id,
+                        user_id=config.user_id,
+                        strategy_id=config.id,
+                        symbol=order_data.get("symbol", ""),
+                        side=order_data.get("side", "BUY"),
+                        quantity=order_qty,
+                        order_type="MARKET",
+                        price=Decimal(str(filled_price)) if filled_price else None,
+                        order_status=order_status,
+                        filled_quantity=order_qty if order_status == "FILLED" else 0,
+                        filled_price=Decimal(str(filled_price)) if filled_price else None,
+                        order_value=order_value,
+                        filled_at=datetime.now(UTC) if order_status == "FILLED" else None,
+                        signal_type=signal_data.get("signal_type"),
+                        signal_strength=Decimal(str(signal_data.get("strength", 0)))
+                        if signal_data.get("strength")
+                        else None,
+                        sizing_method=config.position_sizing_method.value,
+                        calculated_quantity=order_qty,
+                    )
+                    db.add(algo_order)
+
+                    # Track position and calculate P&L for filled orders
+                    if order_status == "FILLED" and filled_price:
+                        try:
+                            _, pnl_stats = await position_tracker.process_order_fill(
+                                strategy_id=config.id,
+                                user_id=config.user_id,
+                                symbol=order_data.get("symbol", ""),
+                                side=order_data.get("side", "BUY"),
+                                quantity=order_data.get("quantity", 0),
+                                fill_price=Decimal(str(filled_price)),
+                                order_id=order_id,
+                            )
+                            # Aggregate P&L stats
+                            aggregated_pnl.trades_closed += pnl_stats.trades_closed
+                            aggregated_pnl.winning_trades += pnl_stats.winning_trades
+                            aggregated_pnl.losing_trades += pnl_stats.losing_trades
+                            aggregated_pnl.total_pnl += pnl_stats.total_pnl
+                            if pnl_stats.consecutive_losses > 0:
+                                aggregated_pnl.consecutive_losses += pnl_stats.consecutive_losses
+                        except Exception as e:
+                            logger.warning(
+                                f"Position tracking failed for {order_data.get('symbol')}: {e}"
+                            )
+
+                await db.commit()
+
+                # Update the result with P&L stats
+                result.pnl_stats = aggregated_pnl
+
+                logger.info(
+                    f"Persisted execution {execution_id} with {len(result.orders_data)} orders, "
+                    f"pnl={aggregated_pnl.total_pnl}, closed={aggregated_pnl.trades_closed}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to persist execution results: {e}")
