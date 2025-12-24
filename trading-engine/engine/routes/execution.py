@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
-from engine.algo.safety import AlgoKillSwitch, SafetyService
+from engine.algo.safety import AlgoKillSwitch, PreExecutionChecker, SafetyService
 from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
 from engine.core.database import get_db
@@ -144,7 +144,7 @@ async def run_scheduled_strategies(
     Called by Celery worker every 30 seconds.
     This endpoint queries the database for due strategies and executes them.
     """
-    kill_switch = AlgoKillSwitch(redis)
+    pre_checker = PreExecutionChecker(redis)
     scheduler = StrategyScheduler(db)
 
     # Get strategies due to run
@@ -156,14 +156,25 @@ async def run_scheduled_strategies(
 
     for strategy in due_strategies:
         try:
-            # Check kill switch for user
-            if await kill_switch.is_active(strategy.user_id):
-                logger.warning(f"Kill switch active for user {strategy.user_id}, skipping strategy")
+            # Run all pre-execution safety checks
+            check_result = await pre_checker.check_all(
+                user_id=strategy.user_id,
+                strategy_id=strategy.id,
+                cooldown_seconds=strategy.cooldown_seconds or 0,
+                max_daily_trades=strategy.max_daily_trades or 0,
+            )
+
+            if not check_result.can_execute:
+                logger.warning(
+                    f"Strategy {strategy.id} blocked by {check_result.check_type}: "
+                    f"{check_result.reason}"
+                )
                 results.append(
                     {
                         "strategy_id": strategy.id,
                         "status": "SKIPPED",
-                        "reason": "kill_switch_active",
+                        "reason": check_result.check_type,
+                        "message": check_result.reason,
                     }
                 )
                 continue
@@ -234,6 +245,13 @@ async def run_scheduled_strategies(
                 losing_trades_delta=result.pnl_stats.losing_trades,
             )
 
+            # Record trade for cooldown and daily trade tracking
+            if result.orders_placed > 0:
+                await pre_checker.record_trade(
+                    strategy_id=strategy.id,
+                    cooldown_seconds=strategy.cooldown_seconds or 0,
+                )
+
             results.append(
                 {
                     "strategy_id": strategy.id,
@@ -281,7 +299,7 @@ async def execute_strategy_by_id(
         symbols_override: Optional list of symbols to override the strategy's universe
     """
     scheduler = StrategyScheduler(db)
-    kill_switch = AlgoKillSwitch(redis)
+    pre_checker = PreExecutionChecker(redis)
 
     # Get strategy from database
     strategy = await scheduler.get_strategy_by_id(strategy_id)
@@ -291,9 +309,20 @@ async def execute_strategy_by_id(
             detail=f"Strategy {strategy_id} not found",
         )
 
-    # Check kill switch
-    if await kill_switch.is_active(strategy.user_id):
-        return {"status": "blocked", "message": "Kill switch is active"}
+    # Run all pre-execution safety checks
+    check_result = await pre_checker.check_all(
+        user_id=strategy.user_id,
+        strategy_id=strategy.id,
+        cooldown_seconds=strategy.cooldown_seconds or 0,
+        max_daily_trades=strategy.max_daily_trades or 0,
+    )
+
+    if not check_result.can_execute:
+        return {
+            "status": "blocked",
+            "reason": check_result.check_type,
+            "message": check_result.reason,
+        }
 
     try:
         # Get symbols
@@ -350,6 +379,13 @@ async def execute_strategy_by_id(
             winning_trades_delta=result.pnl_stats.winning_trades,
             losing_trades_delta=result.pnl_stats.losing_trades,
         )
+
+        # Record trade for cooldown and daily trade tracking
+        if result.orders_placed > 0:
+            await pre_checker.record_trade(
+                strategy_id=strategy.id,
+                cooldown_seconds=strategy.cooldown_seconds or 0,
+            )
 
         await db.commit()
 

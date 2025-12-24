@@ -249,6 +249,19 @@ class StrategyExecution(Base):
     orders_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     orders_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # P&L tracking for this execution
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    unrealized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    total_order_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    positions_opened: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    positions_closed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     # Details stored as JSON
     signals_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
     orders_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -306,6 +319,13 @@ class AlgoOrder(Base):
     order_type: Mapped[str] = mapped_column(String(20), nullable=False)
     price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
 
+    # Filled/execution details
+    order_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    filled_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Signal info
     signal_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
     signal_strength: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
@@ -331,3 +351,89 @@ class AlgoOrder(Base):
 
     def __repr__(self) -> str:
         return f"<AlgoOrder {self.side} {self.quantity} {self.symbol}>"
+
+
+class PositionSide(str, Enum):
+    """Position side enum."""
+
+    LONG = "LONG"
+    SHORT = "SHORT"
+
+
+class PositionStatus(str, Enum):
+    """Position status enum."""
+
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+    PARTIAL = "PARTIAL"
+
+
+class AlgoPosition(Base):
+    """Track open positions for algo strategies.
+
+    This tracks positions opened by algo strategies to calculate P&L.
+    When a BUY signal opens a position, we track entry price.
+    When a SELL signal closes it, we calculate realized P&L.
+    """
+
+    __tablename__ = "algo_positions"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    strategy_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("user_strategies.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    side: Mapped[PositionSide] = mapped_column(
+        SQLEnum(PositionSide, name="positionside", create_type=False),
+        nullable=False,
+        default=PositionSide.LONG,
+    )
+    status: Mapped[PositionStatus] = mapped_column(
+        SQLEnum(PositionStatus, name="positionstatus", create_type=False),
+        nullable=False,
+        default=PositionStatus.OPEN,
+    )
+
+    # Entry details
+    entry_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    entry_order_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Exit details (filled when position is closed)
+    exit_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    exit_order_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Remaining quantity for partial closes
+    remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # P&L calculation
+    realized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    realized_pnl_percent: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, default=Decimal("0"))
+    is_winner: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # Risk management
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_algo_positions_strategy_status", "strategy_id", "status"),
+        Index("ix_algo_positions_user_symbol", "user_id", "symbol", "status"),
+        Index("ix_algo_positions_open", "status", "symbol"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AlgoPosition {self.side.value} {self.entry_quantity} {self.symbol} @ {self.entry_price} [{self.status.value}]>"

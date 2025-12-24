@@ -314,6 +314,70 @@ class StrategyCooldown:
         await self.redis.delete(key)
 
 
+# Redis key for daily trade counter
+DAILY_TRADES_KEY = "algo:daily_trades:{strategy_id}"
+
+
+class DailyTradeCounter:
+    """Tracks daily trade count for strategies.
+
+    Enforces max_daily_trades limit.
+    """
+
+    def __init__(self, redis: Redis):
+        """Initialize with Redis client."""
+        self.redis = redis
+
+    async def get_trade_count(self, strategy_id: str) -> int:
+        """Get current daily trade count for a strategy."""
+        key = DAILY_TRADES_KEY.format(strategy_id=strategy_id)
+        count = await self.redis.get(key)
+        return int(count) if count else 0
+
+    async def can_trade(self, strategy_id: str, max_daily_trades: int) -> tuple[bool, str | None]:
+        """Check if strategy can place more trades today.
+
+        Args:
+            strategy_id: The strategy ID
+            max_daily_trades: Maximum trades allowed per day
+
+        Returns:
+            Tuple of (can_trade, reason_if_blocked)
+        """
+        if max_daily_trades <= 0:
+            return True, None  # No limit set
+
+        current_count = await self.get_trade_count(strategy_id)
+        if current_count >= max_daily_trades:
+            return False, f"Max daily trades reached: {current_count}/{max_daily_trades}"
+        return True, None
+
+    async def increment(self, strategy_id: str) -> int:
+        """Increment trade count for today.
+
+        Returns:
+            New trade count
+        """
+        key = DAILY_TRADES_KEY.format(strategy_id=strategy_id)
+
+        # Increment counter
+        new_count = await self.redis.incr(key)
+
+        # Set expiry at midnight if this is the first trade
+        if new_count == 1:
+            now = datetime.now(UTC)
+            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            ttl = int((midnight - now).total_seconds())
+            await self.redis.expire(key, ttl)
+
+        return new_count
+
+    async def reset(self, strategy_id: str) -> None:
+        """Reset trade count for a strategy."""
+        key = DAILY_TRADES_KEY.format(strategy_id=strategy_id)
+        await self.redis.delete(key)
+
+
 @dataclass
 class SafetyCheck:
     """Result of a safety check."""
@@ -384,3 +448,114 @@ class SafetyService:
             )
 
         return SafetyCheck(passed=True)
+
+
+@dataclass
+class PreExecutionCheckResult:
+    """Result of pre-execution safety checks."""
+
+    can_execute: bool
+    reason: str | None = None
+    check_type: str | None = None  # kill_switch, circuit_breaker, cooldown, max_trades
+
+
+class PreExecutionChecker:
+    """Performs all pre-execution safety checks for a strategy.
+
+    Checks in order:
+    1. Kill switch (user-level)
+    2. Circuit breaker (strategy-level)
+    3. Cooldown (strategy-level)
+    4. Max daily trades (strategy-level)
+    """
+
+    def __init__(self, redis: Redis):
+        """Initialize with Redis client."""
+        self.redis = redis
+        self.kill_switch = AlgoKillSwitch(redis)
+        self.circuit_breaker = CircuitBreaker(redis)
+        self.cooldown = StrategyCooldown(redis)
+        self.daily_trades = DailyTradeCounter(redis)
+
+    async def check_all(
+        self,
+        user_id: str,
+        strategy_id: str,
+        cooldown_seconds: int = 0,
+        max_daily_trades: int = 0,
+    ) -> PreExecutionCheckResult:
+        """Run all pre-execution checks.
+
+        Args:
+            user_id: The user ID
+            strategy_id: The strategy ID
+            cooldown_seconds: Cooldown period in seconds (0 = no cooldown)
+            max_daily_trades: Max trades per day (0 = no limit)
+
+        Returns:
+            PreExecutionCheckResult with can_execute status
+        """
+        # 1. Check kill switch
+        if await self.kill_switch.is_active(user_id):
+            return PreExecutionCheckResult(
+                can_execute=False,
+                reason="Kill switch is active for user",
+                check_type="kill_switch",
+            )
+
+        # 2. Check circuit breaker
+        if await self.circuit_breaker.is_triggered(strategy_id):
+            state = await self.circuit_breaker.get_state(strategy_id)
+            return PreExecutionCheckResult(
+                can_execute=False,
+                reason=state.trigger_reason or "Circuit breaker triggered",
+                check_type="circuit_breaker",
+            )
+
+        # 3. Check cooldown
+        if cooldown_seconds > 0:
+            in_cooldown, remaining = await self.cooldown.is_in_cooldown(
+                strategy_id, cooldown_seconds
+            )
+            if in_cooldown:
+                return PreExecutionCheckResult(
+                    can_execute=False,
+                    reason=f"Strategy in cooldown, {remaining}s remaining",
+                    check_type="cooldown",
+                )
+
+        # 4. Check max daily trades
+        if max_daily_trades > 0:
+            can_trade, reason = await self.daily_trades.can_trade(
+                strategy_id, max_daily_trades
+            )
+            if not can_trade:
+                return PreExecutionCheckResult(
+                    can_execute=False,
+                    reason=reason,
+                    check_type="max_trades",
+                )
+
+        return PreExecutionCheckResult(can_execute=True)
+
+    async def record_trade(
+        self,
+        strategy_id: str,
+        cooldown_seconds: int = 0,
+    ) -> None:
+        """Record a trade execution for tracking.
+
+        Call this after a successful trade to:
+        - Start cooldown period
+        - Increment daily trade counter
+
+        Args:
+            strategy_id: The strategy ID
+            cooldown_seconds: Cooldown period to start (0 = no cooldown)
+        """
+        # Start cooldown if configured
+        if cooldown_seconds > 0:
+            await self.cooldown.start_cooldown(strategy_id, cooldown_seconds)
+
+        # Increment daily trade counter
+        await self.daily_trades.increment(strategy_id)

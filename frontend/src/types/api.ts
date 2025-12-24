@@ -576,6 +576,33 @@ export interface StrategyExecution {
   orders_filled: number;
   orders_rejected: number;
   error_message: string | null;
+  // P&L tracking
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_order_value: number;
+  positions_opened: number;
+  positions_closed: number;
+}
+
+export interface AlgoOrder {
+  id: string;
+  execution_id: string;
+  order_id: string | null;
+  strategy_id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  order_type: string;
+  price: number | null;
+  order_status: 'PENDING' | 'SUBMITTED' | 'FILLED' | 'PARTIALLY_FILLED' | 'REJECTED' | 'CANCELLED';
+  filled_quantity: number;
+  filled_price: number | null;
+  order_value: number;
+  filled_at: string | null;
+  signal_type: string | null;
+  signal_strength: number | null;
+  sizing_method: string | null;
+  created_at: string;
 }
 
 export interface Universe {
@@ -615,4 +642,82 @@ export interface CircuitBreakerStatus {
   triggered_at: string | null;
   max_daily_loss: number;
   max_consecutive_losses: number;
+}
+
+// ============== Algo P&L Types ==============
+
+export interface AlgoPnLSummary {
+  total_realized_pnl: number;
+  total_unrealized_pnl: number;
+  total_pnl: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  open_positions: number;
+  closed_positions: number;
+}
+
+export interface StrategyPnL {
+  strategy_id: string;
+  strategy_name: string;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  open_positions: number;
+  closed_positions: number;
+  status: StrategyStatus;
+}
+
+export interface PnLByStrategyResponse {
+  strategies: StrategyPnL[];
+  total_realized_pnl: number;
+  total_unrealized_pnl: number;
+  total_pnl: number;
+}
+
+export interface AlgoDailyPnL {
+  date: string;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
+  trades_opened: number;
+  trades_closed: number;
+  cumulative_pnl: number;
+}
+
+export interface PnLHistoryResponse {
+  daily_pnl: AlgoDailyPnL[];
+  period_start: string;
+  period_end: string;
+  total_realized_pnl: number;
+  total_days: number;
+  profitable_days: number;
+  losing_days: number;
+}
+
+export interface UnrealizedPnLPosition {
+  position_id: string;
+  strategy_id: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  entry_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  unrealized_pnl_percent: number;
+  entry_value: number;
+  current_value: number;
+}
+
+export interface UnrealizedPnLResponse {
+  positions: UnrealizedPnLPosition[];
+  total_unrealized_pnl: number;
+  total_entry_value: number;
+  total_current_value: number;
+  positions_count: number;
 }

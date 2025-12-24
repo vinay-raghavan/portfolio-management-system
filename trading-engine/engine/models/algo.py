@@ -246,6 +246,13 @@ class StrategyExecution(Base):
     orders_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     orders_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # P&L tracking for this execution
+    realized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    unrealized_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    total_order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    positions_opened: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    positions_closed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     signals_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
     orders_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -421,6 +428,13 @@ class AlgoOrder(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     order_type: Mapped[str] = mapped_column(String(20), nullable=False)
     price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    # Filled/execution details
+    order_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    filled_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    order_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0"))
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Signal info
     signal_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
