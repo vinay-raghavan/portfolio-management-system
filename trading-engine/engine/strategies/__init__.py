@@ -8,8 +8,10 @@ from engine.strategies.composite import (
     CompositeStrategyFactory,
     StrategyComponent,
 )
+from engine.strategies.gap_go import GapAndGoStrategy
 from engine.strategies.macd import MACDCrossoverStrategy
 from engine.strategies.moving_average import MovingAverageCrossoverStrategy
+from engine.strategies.orb import ORBStrategy
 from engine.strategies.prebuilt import (
     create_bollinger_rsi_squeeze,
     create_gap_momentum,
@@ -21,20 +23,32 @@ from engine.strategies.prebuilt import (
 )
 from engine.strategies.registry import StrategyRegistry
 
-# Import strategies to register them
+# Import strategies to register them (decorator auto-registers on import)
 from engine.strategies.rsi import RSIStrategy
+from engine.strategies.twap import TWAPStrategy
+from engine.strategies.vwap import VWAPReversionStrategy
+from engine.strategies.vwap_momentum import VWAPMomentumStrategy
 
 __all__ = [
     "BaseStrategy",
     "StrategyRegistry",
+    # Single-indicator strategies
     "RSIStrategy",
     "MACDCrossoverStrategy",
     "BollingerSqueezeStrategy",
     "MovingAverageCrossoverStrategy",
+    # Intraday strategies
+    "VWAPMomentumStrategy",
+    "VWAPReversionStrategy",
+    "ORBStrategy",
+    "GapAndGoStrategy",
+    "TWAPStrategy",
+    # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",
     "CombineLogic",
     "StrategyComponent",
+    # Pre-built combined strategies
     "create_rsi_macd_confluence",
     "create_trend_momentum_pullback",
     "create_bollinger_rsi_squeeze",
