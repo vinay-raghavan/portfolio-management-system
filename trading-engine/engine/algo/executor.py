@@ -411,6 +411,8 @@ class StrategyExecutor:
                     db.add(order)
 
                     # Create AlgoOrder record linking to the Order
+                    order_qty = order_data.get("quantity", 0)
+                    order_value = Decimal(str(filled_price)) * order_qty if filled_price else Decimal("0")
                     algo_order = AlgoOrder(
                         id=str(uuid4()),
                         execution_id=execution_id,
@@ -419,15 +421,20 @@ class StrategyExecutor:
                         strategy_id=config.id,
                         symbol=order_data.get("symbol", ""),
                         side=order_data.get("side", "BUY"),
-                        quantity=order_data.get("quantity", 0),
+                        quantity=order_qty,
                         order_type="MARKET",
                         price=Decimal(str(filled_price)) if filled_price else None,
+                        order_status=order_status,
+                        filled_quantity=order_qty if order_status == "FILLED" else 0,
+                        filled_price=Decimal(str(filled_price)) if filled_price else None,
+                        order_value=order_value,
+                        filled_at=datetime.now(UTC) if order_status == "FILLED" else None,
                         signal_type=signal_data.get("signal_type"),
                         signal_strength=Decimal(str(signal_data.get("strength", 0)))
                         if signal_data.get("strength")
                         else None,
                         sizing_method=config.position_sizing_method.value,
-                        calculated_quantity=order_data.get("quantity"),
+                        calculated_quantity=order_qty,
                     )
                     db.add(algo_order)
 

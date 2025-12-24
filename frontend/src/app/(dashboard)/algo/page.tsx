@@ -53,7 +53,7 @@ import {
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
-import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard } from '@/components/algo';
+import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus } from '@/components/algo';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -97,6 +97,13 @@ export default function AlgoTradingPage() {
     queryKey: ['kill-switch'],
     queryFn: () => algoApi.getKillSwitchStatus().then((res) => res.data),
     refetchInterval: 5000,
+  });
+
+  // Fetch P&L summary for enhanced cards
+  const { data: pnlSummary } = useQuery({
+    queryKey: ['algo-pnl-summary'],
+    queryFn: () => algoApi.getPnLSummary().then((res) => res.data),
+    refetchInterval: 30000,
   });
 
   // Enable/disable mutations
@@ -335,7 +342,7 @@ export default function AlgoTradingPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Strategies</CardTitle>
@@ -352,17 +359,24 @@ export default function AlgoTradingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total P&L</CardTitle>
-            {totalPnL >= 0 ? (
+            {(pnlSummary?.total_pnl ?? totalPnL) >= 0 ? (
               <TrendingUp className="h-4 w-4 text-green-500" />
             ) : (
               <TrendingDown className="h-4 w-4 text-red-500" />
             )}
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {formatPrice(totalPnL)}
+            <div className={`text-2xl font-bold ${(pnlSummary?.total_pnl ?? totalPnL) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {formatPrice(pnlSummary?.total_pnl ?? totalPnL)}
             </div>
-            <p className="text-xs text-muted-foreground">All strategies combined</p>
+            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+              <span className={pnlSummary?.total_realized_pnl && pnlSummary.total_realized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                Realized: {formatPrice(pnlSummary?.total_realized_pnl ?? 0)}
+              </span>
+              <span className={pnlSummary?.total_unrealized_pnl && pnlSummary.total_unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                Unrealized: {formatPrice(pnlSummary?.total_unrealized_pnl ?? 0)}
+              </span>
+            </div>
           </CardContent>
         </Card>
 
@@ -372,8 +386,11 @@ export default function AlgoTradingPage() {
             <Bot className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalTrades}</div>
-            <p className="text-xs text-muted-foreground">Executed by algo</p>
+            <div className="text-2xl font-bold">{pnlSummary?.total_trades ?? totalTrades}</div>
+            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+              <span className="text-green-600">{pnlSummary?.winning_trades ?? 0} wins</span>
+              <span className="text-red-600">{pnlSummary?.losing_trades ?? 0} losses</span>
+            </div>
           </CardContent>
         </Card>
 
@@ -383,10 +400,15 @@ export default function AlgoTradingPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{winRate.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
-              {strategies?.reduce((sum, s) => sum + s.winning_trades, 0) ?? 0} winning trades
-            </p>
+            <div className="text-2xl font-bold">
+              {pnlSummary?.win_rate !== undefined
+                ? (pnlSummary.win_rate * 100).toFixed(1)
+                : winRate.toFixed(1)}%
+            </div>
+            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+              <span>{pnlSummary?.open_positions ?? 0} open positions</span>
+              <span>{pnlSummary?.closed_positions ?? 0} closed</span>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -569,9 +591,6 @@ export default function AlgoTradingPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* P&L Dashboard */}
-      <PnLDashboard />
 
       {/* Strategy Dialog */}
       <StrategyDialog

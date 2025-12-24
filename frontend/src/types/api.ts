@@ -721,3 +721,26 @@ export interface UnrealizedPnLResponse {
   total_current_value: number;
   positions_count: number;
 }
+
+export interface AlgoPosition {
+  id: string;
+  strategy_id: string;
+  user_id: string;
+  symbol: string;
+  side: string;
+  status: string;
+  entry_quantity: number;
+  entry_price: number;
+  entry_at: string;
+  exit_quantity: number | null;
+  exit_price: number | null;
+  exit_at: string | null;
+  remaining_quantity: number;
+  realized_pnl: number;
+  realized_pnl_percent: number;
+  is_winner: boolean | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  created_at: string;
+  updated_at: string;
+}

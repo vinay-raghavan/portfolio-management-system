@@ -7,6 +7,7 @@ import {
   TopMovers,
   RecentTrades,
   MarketOverview,
+  AlgoSummary,
 } from '@/components/dashboard';
 
 export default function DashboardPage() {
@@ -32,11 +33,14 @@ export default function DashboardPage() {
       {/* Top Movers */}
       <TopMovers positions={positions} isLoading={isLoading} />
 
-      {/* Recent Trades and Market Overview */}
+      {/* Algo Trading Summary and Market Overview */}
       <div className="grid gap-4 md:grid-cols-2">
-        <RecentTrades limit={5} />
+        <AlgoSummary />
         <MarketOverview />
       </div>
+
+      {/* Recent Trades */}
+      <RecentTrades limit={5} />
     </div>
   );
 }
