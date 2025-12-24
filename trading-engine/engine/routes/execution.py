@@ -209,6 +209,9 @@ async def run_scheduled_strategies(
 
             # Execute strategy
             broker = get_broker()
+            # Ensure broker is connected (initializes data provider for paper broker)
+            if not await broker.is_connected():
+                await broker.connect()
             data_provider = get_data_provider()
             safety_service = SafetyService()
 
@@ -221,6 +224,18 @@ async def run_scheduled_strategies(
 
             # Update next run time
             await scheduler.update_next_run(strategy)
+
+            # Update strategy statistics
+            # For now, count all filled orders as trades
+            # P&L tracking would require position tracking which isn't implemented yet
+            # So we just track the trade counts
+            await scheduler.update_strategy_stats(
+                strategy=strategy,
+                orders_filled=result.orders_filled,
+                total_pnl_delta=0.0,  # P&L tracking requires position management
+                winning_trades_delta=0,  # Would need exit price to determine win/loss
+                losing_trades_delta=0,
+            )
 
             results.append(
                 {
@@ -329,6 +344,16 @@ async def execute_strategy_by_id(
 
         # Update next run time
         await scheduler.update_next_run(strategy)
+
+        # Update strategy statistics
+        await scheduler.update_strategy_stats(
+            strategy=strategy,
+            orders_filled=result.orders_filled,
+            total_pnl_delta=0.0,  # P&L tracking requires position management
+            winning_trades_delta=0,  # Would need exit price to determine win/loss
+            losing_trades_delta=0,
+        )
+
         await db.commit()
 
         return {

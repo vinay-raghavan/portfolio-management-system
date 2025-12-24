@@ -1,7 +1,9 @@
 """Models for Trading Engine."""
 
 from engine.models.algo import (
+    AlgoOrder,
     ExecutionStatus,
+    Order,
     PositionSizingMethod,
     ScheduleType,
     StrategyExecution,
@@ -12,7 +14,9 @@ from engine.models.algo import (
 from engine.models.signals import SignalData, SignalType
 
 __all__ = [
+    "AlgoOrder",
     "ExecutionStatus",
+    "Order",
     "PositionSizingMethod",
     "ScheduleType",
     "StrategyExecution",

@@ -27,6 +27,61 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
 
+class Order(Base):
+    """Order model for paper trading.
+
+    This mirrors the backend's Order table for algo trading persistence.
+    """
+
+    __tablename__ = "orders"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MARKET")
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    trigger_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    filled_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=Decimal("0"))
+    filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    fees: Mapped[Decimal] = mapped_column(Numeric(18, 4), default=Decimal("0"))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # GTT specific fields
+    valid_till: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    parent_order_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+
+    # AMO fields
+    is_amo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_orders_user_status", "user_id", "status"),
+        Index("ix_orders_user_created", "user_id", "created_at"),
+        Index("ix_orders_open_trigger", "status", "trigger_price"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Order {self.side} {self.quantity} {self.symbol} @ {self.price} [{self.status}]>"
+
+
 class StrategyStatus(str, Enum):
     """Strategy status enum."""
 
@@ -171,10 +226,9 @@ class StrategyExecution(Base):
     strategy_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("user_strategies.id", ondelete="CASCADE"), nullable=False
     )
-
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
 
     status: Mapped[ExecutionStatus] = mapped_column(
         SQLEnum(ExecutionStatus, name="executionstatus", create_type=False),
@@ -182,24 +236,29 @@ class StrategyExecution(Base):
         default=ExecutionStatus.RUNNING,
     )
 
-    symbols_scanned: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    symbols_analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     signals_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     orders_placed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     orders_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     orders_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    signals: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    orders: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    signals_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    orders_data: Mapped[list | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     execution_log: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
     strategy: Mapped["UserStrategy"] = relationship("UserStrategy", back_populates="executions")
+    algo_orders: Mapped[list["AlgoOrder"]] = relationship(
+        "AlgoOrder", back_populates="execution", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
-        Index("ix_strategy_executions_strategy_started", "strategy_id", "started_at"),
-        Index("ix_strategy_executions_status", "status"),
+        Index("ix_strategy_executions_strategy", "strategy_id", "started_at"),
+        Index("ix_strategy_executions_user", "user_id", "started_at"),
     )
 
     def __repr__(self) -> str:
@@ -239,3 +298,66 @@ class Universe(Base):
 
     def __repr__(self) -> str:
         return f"<Universe {self.name} ({len(self.symbols or [])} symbols)>"
+
+
+class AlgoOrder(Base):
+    """Orders placed by algo trading strategies.
+
+    Links orders to strategy executions for tracking.
+    """
+
+    __tablename__ = "algo_orders"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    execution_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("strategy_executions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    order_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
+    signal_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), nullable=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    strategy_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("user_strategies.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Order details snapshot
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    # Signal info
+    signal_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    signal_strength: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+
+    # Position sizing info
+    sizing_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    calculated_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    execution: Mapped["StrategyExecution"] = relationship(
+        "StrategyExecution", back_populates="algo_orders"
+    )
+
+    __table_args__ = (
+        Index("ix_algo_orders_execution", "execution_id"),
+        Index("ix_algo_orders_strategy", "strategy_id", "created_at"),
+        Index("ix_algo_orders_user", "user_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AlgoOrder {self.side} {self.quantity} {self.symbol}>"

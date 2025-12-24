@@ -10,6 +10,10 @@ from engine.config import settings
 from engine.core.redis import close_redis_pool
 from engine.routes import execution_router, health_router
 
+# Import strategies module to trigger registration via decorators
+# This ensures all strategies are registered when the app starts
+import engine.strategies  # noqa: F401
+
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper()),
