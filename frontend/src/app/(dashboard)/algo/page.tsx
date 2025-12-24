@@ -402,8 +402,8 @@ export default function AlgoTradingPage() {
           <CardContent>
             <div className="text-2xl font-bold">
               {pnlSummary?.win_rate !== undefined
-                ? (pnlSummary.win_rate * 100).toFixed(1)
-                : winRate.toFixed(1)}%
+                ? ((pnlSummary.win_rate ?? 0) * 100).toFixed(1)
+                : (winRate ?? 0).toFixed(1)}%
             </div>
             <div className="flex gap-3 text-xs text-muted-foreground mt-1">
               <span>{pnlSummary?.open_positions ?? 0} open positions</span>

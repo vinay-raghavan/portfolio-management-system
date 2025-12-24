@@ -169,7 +169,7 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
             <span className="text-muted-foreground">Win Rate:</span>{' '}
             <span className="font-medium">
               {strategyPnL?.win_rate !== undefined
-                ? (strategyPnL.win_rate * 100).toFixed(1)
+                ? ((strategyPnL.win_rate ?? 0) * 100).toFixed(1)
                 : winRate}%
             </span>
           </div>
@@ -255,11 +255,11 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                       <TableCell className="text-right">{pos.exit_price ? formatPrice(pos.exit_price) : '-'}</TableCell>
                       <TableCell className={cn(
                         'text-right font-medium',
-                        pos.realized_pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                        (pos.realized_pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'
                       )}>
-                        {formatPrice(pos.realized_pnl)}
+                        {formatPrice(pos.realized_pnl ?? 0)}
                         <span className="text-xs text-muted-foreground ml-1">
-                          ({pos.realized_pnl_percent >= 0 ? '+' : ''}{pos.realized_pnl_percent.toFixed(2)}%)
+                          ({Number(pos.realized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(pos.realized_pnl_percent ?? 0).toFixed(2)}%)
                         </span>
                       </TableCell>
                     </TableRow>
@@ -309,8 +309,8 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                       <TableCell className="text-right">{exec.signals_generated}</TableCell>
                       <TableCell className="text-right">{exec.orders_placed}</TableCell>
                       <TableCell className="text-right text-muted-foreground">
-                        {exec.completed_at
-                          ? `${((new Date(exec.completed_at).getTime() - new Date(exec.started_at).getTime()) / 1000).toFixed(1)}s`
+                        {exec.completed_at && exec.started_at
+                          ? `${(Math.max(0, (new Date(exec.completed_at).getTime() - new Date(exec.started_at).getTime())) / 1000).toFixed(1)}s`
                           : '-'}
                       </TableCell>
                     </TableRow>

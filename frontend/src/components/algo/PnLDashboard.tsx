@@ -236,7 +236,7 @@ function StrategyPnLTable({
                 <TableCell className={cn('text-right font-medium', s.total_pnl >= 0 ? 'text-green-600' : 'text-red-600')}>
                   {formatPrice(s.total_pnl)}
                 </TableCell>
-                <TableCell className="text-right">{(s.win_rate * 100).toFixed(1)}%</TableCell>
+                <TableCell className="text-right">{((s.win_rate ?? 0) * 100).toFixed(1)}%</TableCell>
                 <TableCell className="text-right">{s.total_trades}</TableCell>
               </TableRow>
             ))}
@@ -362,11 +362,11 @@ function UnrealizedPositionsTable({
                   <TableCell className="text-right">{p.quantity}</TableCell>
                   <TableCell className="text-right">{formatPrice(p.entry_price)}</TableCell>
                   <TableCell className="text-right">{formatPrice(p.current_price)}</TableCell>
-                  <TableCell className={cn('text-right font-medium', p.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600')}>
-                    {formatPrice(p.unrealized_pnl)}
+                  <TableCell className={cn('text-right font-medium', (p.unrealized_pnl ?? 0) >= 0 ? 'text-green-600' : 'text-red-600')}>
+                    {formatPrice(p.unrealized_pnl ?? 0)}
                   </TableCell>
-                  <TableCell className={cn('text-right', p.unrealized_pnl_percent >= 0 ? 'text-green-600' : 'text-red-600')}>
-                    {p.unrealized_pnl_percent >= 0 ? '+' : ''}{p.unrealized_pnl_percent.toFixed(2)}%
+                  <TableCell className={cn('text-right', Number(p.unrealized_pnl_percent ?? 0) >= 0 ? 'text-green-600' : 'text-red-600')}>
+                    {Number(p.unrealized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(p.unrealized_pnl_percent ?? 0).toFixed(2)}%
                   </TableCell>
                 </TableRow>
               ))}
