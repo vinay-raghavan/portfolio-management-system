@@ -10,6 +10,7 @@ It handles:
 - Rate limiting to avoid blocks
 """
 
+import contextlib
 import logging
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -20,7 +21,7 @@ import httpx
 
 from app.providers.data.base import DataProvider
 from app.providers.data.rate_limiter import RateLimiter
-from app.providers.schemas import OHLCV, InstrumentInfo, Quote, SearchResult
+from app.providers.schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -180,8 +181,68 @@ class NSEDataProvider(DataProvider):
                 symbol = symbol[: -len(suffix)]
         return symbol
 
+    def get_market_session(self) -> MarketSession:
+        """Get current NSE market session."""
+        now = datetime.now(IST)
+
+        # Check if it's a weekend
+        if now.weekday() >= 5:
+            return MarketSession.CLOSED
+
+        # Check for trading holidays
+        if now.date() in NSE_HOLIDAYS_2024:
+            return MarketSession.CLOSED
+
+        current_time = now.time()
+
+        # Pre-market session: 9:00 AM - 9:08 AM (order collection)
+        # Pre-open session: 9:08 AM - 9:15 AM (price discovery)
+        if PRE_MARKET_OPEN <= current_time < MARKET_OPEN:
+            return MarketSession.PRE_MARKET
+        elif MARKET_OPEN <= current_time <= MARKET_CLOSE:
+            return MarketSession.REGULAR
+        else:
+            # NSE has no post-market session
+            return MarketSession.CLOSED
+
+    async def get_pre_market_data(self, symbol: str) -> dict | None:
+        """Get pre-market/pre-open session data for a symbol.
+
+        Returns pre-market equilibrium price and order book data during
+        the pre-open session (9:00 AM - 9:15 AM IST).
+        """
+        symbol = self.normalize_symbol(symbol)
+
+        # Try the pre-open market endpoint
+        data = await self._make_request("/market-data-pre-open?key=ALL")
+        if not data or "data" not in data:
+            return None
+
+        try:
+            # Find the symbol in pre-open data
+            for item in data.get("data", []):
+                metadata = item.get("metadata", {})
+                if metadata.get("symbol") == symbol:
+                    detail = item.get("detail", {})
+                    pre_open_market = detail.get("preOpenMarket", {})
+                    return {
+                        "iep": pre_open_market.get("IEP"),  # Indicative Equilibrium Price
+                        "total_buy_qty": pre_open_market.get("totalBuyQuantity"),
+                        "total_sell_qty": pre_open_market.get("totalSellQuantity"),
+                        "final_price": pre_open_market.get("finalPrice"),
+                        "final_qty": pre_open_market.get("finalQuantity"),
+                        "last_update_time": pre_open_market.get("lastUpdateTime"),
+                        "change": metadata.get("change"),
+                        "change_percent": metadata.get("pChange"),
+                        "previous_close": metadata.get("previousClose"),
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing pre-market data for {symbol}: {e}")
+            return None
+
     async def get_quote(self, symbol: str) -> Quote | None:
-        """Get real-time quote for an NSE stock."""
+        """Get real-time quote for an NSE stock including pre-market data."""
         symbol = self.normalize_symbol(symbol)
 
         # Check cache first
@@ -196,6 +257,32 @@ class NSEDataProvider(DataProvider):
 
         try:
             price_info = data["priceInfo"]
+            market_session = self.get_market_session()
+
+            # Extract pre-market data if available
+            pre_open_market = data.get("preOpenMarket", {})
+            pre_market_price = None
+            pre_market_change = None
+            pre_market_change_percent = None
+            pre_market_time = None
+
+            if pre_open_market:
+                iep = pre_open_market.get("IEP")
+                if iep:
+                    pre_market_price = Decimal(str(iep))
+                    prev_close = price_info.get("previousClose", 0)
+                    if prev_close:
+                        pre_market_change = pre_market_price - Decimal(str(prev_close))
+                        pre_market_change_percent = (
+                            pre_market_change / Decimal(str(prev_close)) * 100
+                        )
+                    last_update = pre_open_market.get("lastUpdateTime")
+                    if last_update:
+                        with contextlib.suppress(ValueError):
+                            pre_market_time = datetime.strptime(
+                                last_update, "%d-%b-%Y %H:%M:%S"
+                            ).replace(tzinfo=IST)
+
             return Quote(
                 symbol=symbol,
                 price=Decimal(str(price_info.get("lastPrice", 0))),
@@ -204,10 +291,22 @@ class NSEDataProvider(DataProvider):
                 low=Decimal(str(price_info.get("intraDayHighLow", {}).get("min", 0))) or None,
                 close=Decimal(str(price_info.get("close", 0))) or None,
                 previous_close=Decimal(str(price_info.get("previousClose", 0))) or None,
-                volume=data.get("preOpenMarket", {}).get("totalTradedVolume"),
+                volume=pre_open_market.get("totalTradedVolume"),
                 change=Decimal(str(price_info.get("change", 0))) or None,
                 change_percent=Decimal(str(price_info.get("pChange", 0))) or None,
                 timestamp=datetime.now(IST),
+                # Extended hours - Pre-market data
+                pre_market_price=pre_market_price,
+                pre_market_change=pre_market_change,
+                pre_market_change_percent=pre_market_change_percent,
+                pre_market_time=pre_market_time,
+                # NSE has no post-market session
+                post_market_price=None,
+                post_market_change=None,
+                post_market_change_percent=None,
+                post_market_time=None,
+                # Market session
+                market_session=market_session,
             )
         except Exception as e:
             logger.error(f"Error parsing quote for {symbol}: {e}")

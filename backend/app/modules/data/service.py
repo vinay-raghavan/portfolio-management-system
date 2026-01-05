@@ -40,10 +40,23 @@ class MarketDataService:
         return None
 
     async def get_quote(self, symbol: str) -> StockQuote | None:
-        """Get full quote for a symbol."""
+        """Get full quote for a symbol including extended hours data."""
+        from app.modules.data.schemas import MarketSession as APIMarketSession
+
         quote = await self._provider.get_quote(symbol)
         if quote is None:
             return None
+
+        # Convert provider's MarketSession to API's MarketSession
+        api_market_session = None
+        if quote.market_session:
+            session_map = {
+                "PRE_MARKET": APIMarketSession.PRE_MARKET,
+                "REGULAR": APIMarketSession.REGULAR,
+                "POST_MARKET": APIMarketSession.POST_MARKET,
+                "CLOSED": APIMarketSession.CLOSED,
+            }
+            api_market_session = session_map.get(quote.market_session.value)
 
         return StockQuote(
             symbol=quote.symbol,
@@ -56,6 +69,16 @@ class MarketDataService:
             change=quote.change,
             change_pct=quote.change_percent,
             timestamp=quote.timestamp,
+            # Extended hours data
+            pre_market_price=quote.pre_market_price,
+            pre_market_change=quote.pre_market_change,
+            pre_market_change_pct=quote.pre_market_change_percent,
+            pre_market_time=quote.pre_market_time,
+            post_market_price=quote.post_market_price,
+            post_market_change=quote.post_market_change,
+            post_market_change_pct=quote.post_market_change_percent,
+            post_market_time=quote.post_market_time,
+            market_session=api_market_session,
         )
 
     async def get_stock_info(self, symbol: str) -> StockInfo | None:

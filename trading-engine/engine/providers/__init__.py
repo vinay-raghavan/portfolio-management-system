@@ -10,6 +10,7 @@ from engine.providers.schemas import (
     OHLCV,
     Funds,
     InstrumentInfo,
+    MarketSession,
     OrderRequest,
     OrderResponse,
     OrderSide,
@@ -36,6 +37,7 @@ __all__ = [
     # Schemas
     "Funds",
     "InstrumentInfo",
+    "MarketSession",
     "OHLCV",
     "OrderRequest",
     "OrderResponse",
