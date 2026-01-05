@@ -1,8 +1,9 @@
 """Abstract base class for data providers."""
 
 from abc import ABC, abstractmethod
+from decimal import Decimal
 
-from app.providers.schemas import OHLCV, InstrumentInfo, Quote, SearchResult
+from app.providers.schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
 
 
 class DataProvider(ABC):
@@ -91,6 +92,58 @@ class DataProvider(ABC):
         """
         # Default implementation - override in subclasses for specific markets
         return True
+
+    def get_market_session(self) -> MarketSession:
+        """Get the current market session.
+
+        Returns:
+            MarketSession enum indicating current session type
+        """
+        # Default implementation - override in subclasses for specific markets
+        return MarketSession.REGULAR
+
+    async def get_extended_hours_quote(self, symbol: str) -> Quote | None:
+        """Get quote with extended hours data (pre-market/post-market).
+
+        This is a convenience method that returns the same data as get_quote()
+        but explicitly indicates that extended hours data is expected.
+        Providers that support extended hours will include pre_market_* and
+        post_market_* fields in the Quote response.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Quote object with extended hours data, or None if not found
+        """
+        return await self.get_quote(symbol)
+
+    async def get_effective_price(self, symbol: str) -> Decimal | None:
+        """Get the most relevant current price based on market session.
+
+        During pre-market: returns pre_market_price if available
+        During regular hours: returns regular price
+        During post-market: returns post_market_price if available
+        When closed: returns the last available price
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            The most relevant current price, or None if not available
+        """
+        quote = await self.get_quote(symbol)
+        if not quote:
+            return None
+
+        session = self.get_market_session()
+
+        if session == MarketSession.PRE_MARKET and quote.pre_market_price:
+            return quote.pre_market_price
+        elif session == MarketSession.POST_MARKET and quote.post_market_price:
+            return quote.post_market_price
+        else:
+            return quote.price
 
     def normalize_symbol(self, symbol: str) -> str:
         """Normalize symbol to provider-specific format.

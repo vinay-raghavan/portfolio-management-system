@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from decimal import Decimal
 from functools import partial
 from zoneinfo import ZoneInfo
@@ -12,17 +12,26 @@ import yfinance as yf
 
 from engine.core.retry import DATA_PROVIDER_RETRY, with_async_retry
 from engine.providers.data.base import DataProvider
-from engine.providers.schemas import OHLCV, InstrumentInfo, Quote, SearchResult
+from engine.providers.schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
 from engine.providers.symbols import Exchange, SymbolMapper
 
 logger = logging.getLogger(__name__)
 
 # Indian Standard Time timezone
 IST = ZoneInfo("Asia/Kolkata")
+EST = ZoneInfo("America/New_York")
 
-# NSE market hours
+# NSE market hours (IST)
+NSE_PRE_MARKET_OPEN = time(9, 0)  # 9:00 AM IST
+NSE_PRE_MARKET_CLOSE = time(9, 8)  # 9:08 AM IST
 NSE_MARKET_OPEN = time(9, 15)  # 9:15 AM IST
 NSE_MARKET_CLOSE = time(15, 30)  # 3:30 PM IST
+
+# US market hours (EST)
+US_PRE_MARKET_OPEN = time(4, 0)  # 4:00 AM EST
+US_MARKET_OPEN = time(9, 30)  # 9:30 AM EST
+US_MARKET_CLOSE = time(16, 0)  # 4:00 PM EST
+US_POST_MARKET_CLOSE = time(20, 0)  # 8:00 PM EST
 
 # Thread pool for running synchronous yfinance calls
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -80,10 +89,74 @@ class YahooDataProvider(DataProvider):
         ticker = yf.Ticker(yahoo_symbol)
         return ticker.info
 
-    def _fetch_history(self, yahoo_symbol: str, period: str, interval: str):
+    def _fetch_history(
+        self, yahoo_symbol: str, period: str, interval: str, prepost: bool = False
+    ):
         """Synchronous helper to fetch history (runs in thread pool)."""
         ticker = yf.Ticker(yahoo_symbol)
-        return ticker.history(period=period, interval=interval)
+        return ticker.history(period=period, interval=interval, prepost=prepost)
+
+    def _get_market_session(self) -> MarketSession:
+        """Determine current market session based on exchange and time."""
+        if self.default_exchange in (Exchange.NSE, Exchange.BSE):
+            now = datetime.now(IST)
+            if now.weekday() >= 5:  # Weekend
+                return MarketSession.CLOSED
+            current_time = now.time()
+            if NSE_PRE_MARKET_OPEN <= current_time < NSE_MARKET_OPEN:
+                return MarketSession.PRE_MARKET
+            elif NSE_MARKET_OPEN <= current_time <= NSE_MARKET_CLOSE:
+                return MarketSession.REGULAR
+            else:
+                return MarketSession.CLOSED
+        else:
+            # US markets
+            now = datetime.now(EST)
+            if now.weekday() >= 5:  # Weekend
+                return MarketSession.CLOSED
+            current_time = now.time()
+            if US_PRE_MARKET_OPEN <= current_time < US_MARKET_OPEN:
+                return MarketSession.PRE_MARKET
+            elif US_MARKET_OPEN <= current_time <= US_MARKET_CLOSE:
+                return MarketSession.REGULAR
+            elif US_MARKET_CLOSE < current_time <= US_POST_MARKET_CLOSE:
+                return MarketSession.POST_MARKET
+            else:
+                return MarketSession.CLOSED
+
+    def _parse_extended_hours(self, info: dict) -> dict:
+        """Extract extended hours data from ticker info."""
+        result = {}
+
+        # Pre-market data
+        pre_market_price = info.get("preMarketPrice")
+        if pre_market_price:
+            result["pre_market_price"] = Decimal(str(pre_market_price))
+            pre_market_change = info.get("preMarketChange")
+            if pre_market_change is not None:
+                result["pre_market_change"] = Decimal(str(pre_market_change))
+            pre_market_change_pct = info.get("preMarketChangePercent")
+            if pre_market_change_pct is not None:
+                result["pre_market_change_percent"] = Decimal(str(pre_market_change_pct * 100))
+            pre_market_time = info.get("preMarketTime")
+            if pre_market_time:
+                result["pre_market_time"] = datetime.fromtimestamp(pre_market_time, tz=timezone.utc)
+
+        # Post-market data
+        post_market_price = info.get("postMarketPrice")
+        if post_market_price:
+            result["post_market_price"] = Decimal(str(post_market_price))
+            post_market_change = info.get("postMarketChange")
+            if post_market_change is not None:
+                result["post_market_change"] = Decimal(str(post_market_change))
+            post_market_change_pct = info.get("postMarketChangePercent")
+            if post_market_change_pct is not None:
+                result["post_market_change_percent"] = Decimal(str(post_market_change_pct * 100))
+            post_market_time = info.get("postMarketTime")
+            if post_market_time:
+                result["post_market_time"] = datetime.fromtimestamp(post_market_time, tz=timezone.utc)
+
+        return result
 
     @with_async_retry(
         max_attempts=DATA_PROVIDER_RETRY.max_attempts,
@@ -103,6 +176,9 @@ class YahooDataProvider(DataProvider):
         change = Decimal(str(price)) - Decimal(str(prev_close)) if prev_close else None
         change_pct = (change / Decimal(str(prev_close)) * 100) if change and prev_close else None
 
+        # Parse extended hours data
+        extended_hours = self._parse_extended_hours(info)
+
         return Quote(
             symbol=SymbolMapper.normalize(symbol),
             price=Decimal(str(price)),
@@ -116,10 +192,12 @@ class YahooDataProvider(DataProvider):
             change_percent=change_pct,
             bid=Decimal(str(info.get("bid", 0))) or None,
             ask=Decimal(str(info.get("ask", 0))) or None,
+            market_session=self._get_market_session(),
+            **extended_hours,
         )
 
     async def get_quote(self, symbol: str) -> Quote | None:
-        """Get real-time quote for a symbol."""
+        """Get real-time quote for a symbol including extended hours data."""
         try:
             return await self._get_quote_with_retry(symbol)
         except Exception as e:
@@ -132,11 +210,13 @@ class YahooDataProvider(DataProvider):
         max_wait=DATA_PROVIDER_RETRY.max_wait,
     )
     async def _get_historical_with_retry(
-        self, symbol: str, period: str, interval: str
+        self, symbol: str, period: str, interval: str, include_extended_hours: bool = False
     ) -> list[OHLCV]:
         """Get historical data with retry logic for transient failures."""
         yahoo_symbol = self.normalize_symbol(symbol)
-        hist = await _run_in_executor(self._fetch_history, yahoo_symbol, period, interval)
+        hist = await _run_in_executor(
+            self._fetch_history, yahoo_symbol, period, interval, include_extended_hours
+        )
 
         if hist.empty:
             return []
@@ -161,10 +241,24 @@ class YahooDataProvider(DataProvider):
         symbol: str,
         period: str = "1mo",
         interval: str = "1d",
+        include_extended_hours: bool = False,
     ) -> list[OHLCV]:
-        """Get historical OHLCV data for a symbol."""
+        """Get historical OHLCV data for a symbol.
+
+        Args:
+            symbol: Stock symbol
+            period: Time period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
+            interval: Data interval (1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo)
+            include_extended_hours: If True, includes pre-market and post-market data
+                                   (only applicable for intraday intervals like 1m, 5m, etc.)
+
+        Returns:
+            List of OHLCV data points
+        """
         try:
-            return await self._get_historical_with_retry(symbol, period, interval)
+            return await self._get_historical_with_retry(
+                symbol, period, interval, include_extended_hours
+            )
         except Exception as e:
             logger.error(f"Error fetching historical data for {symbol} after retries: {e}")
             return []
