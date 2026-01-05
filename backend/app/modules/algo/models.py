@@ -29,6 +29,7 @@ class ProfitCutoffAction(str, Enum):
 
     PAUSE_STRATEGY = "PAUSE_STRATEGY"  # Pause strategy for the day/overall
     CLOSE_POSITIONS_AND_PAUSE = "CLOSE_POSITIONS_AND_PAUSE"  # Close positions and pause
+    CLOSE_POSITIONS_AND_CONTINUE = "CLOSE_POSITIONS_AND_CONTINUE"  # Close positions, reset, keep trading
     NOTIFY_ONLY = "NOTIFY_ONLY"  # Only send notification, continue trading
 
 

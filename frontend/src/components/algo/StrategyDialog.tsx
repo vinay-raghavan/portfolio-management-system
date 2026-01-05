@@ -51,6 +51,7 @@ const positionSizingMethods: { value: PositionSizingMethod; label: string }[] = 
 const profitCutoffActions: { value: ProfitCutoffAction; label: string; description: string }[] = [
   { value: 'PAUSE_STRATEGY', label: 'Pause Strategy', description: 'Stop trading for the day' },
   { value: 'CLOSE_POSITIONS_AND_PAUSE', label: 'Close & Pause', description: 'Close all positions and pause' },
+  { value: 'CLOSE_POSITIONS_AND_CONTINUE', label: 'Close & Continue', description: 'Close positions but keep finding new trades' },
   { value: 'NOTIFY_ONLY', label: 'Notify Only', description: 'Send notification but continue trading' },
 ];
 

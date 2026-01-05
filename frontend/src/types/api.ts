@@ -499,7 +499,7 @@ export type StrategyStatus = 'ACTIVE' | 'DISABLED' | 'PAUSED' | 'ERROR' | 'KILLE
 export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' | 'CONTINUOUS';
 export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'NOTIFY_ONLY';
+export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'CLOSE_POSITIONS_AND_CONTINUE' | 'NOTIFY_ONLY';
 
 export interface AlgoStrategy {
   id: string;
