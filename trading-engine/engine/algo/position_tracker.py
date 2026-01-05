@@ -287,6 +287,77 @@ class PositionTracker:
         )
         return result, stats
 
+    async def check_stop_loss_take_profit(
+        self,
+        strategy_id: str,
+        user_id: str,
+        current_prices: dict[str, Decimal],
+    ) -> tuple[list[PositionResult], PnLStats]:
+        """Check open positions for stop-loss or take-profit triggers.
+
+        Args:
+            strategy_id: Strategy ID
+            user_id: User ID
+            current_prices: Dict of symbol -> current price
+
+        Returns:
+            Tuple of (closed positions, aggregated PnL stats)
+        """
+        open_positions = await self.get_all_open_positions(strategy_id, user_id)
+        closed_results: list[PositionResult] = []
+        stats = PnLStats()
+
+        for position in open_positions:
+            current_price = current_prices.get(position.symbol)
+            if not current_price:
+                continue
+
+            should_close = False
+            close_reason = ""
+
+            # Check stop-loss
+            if position.stop_loss:
+                if position.side == PositionSide.LONG and current_price <= position.stop_loss:
+                    should_close = True
+                    close_reason = "stop-loss"
+                elif position.side == PositionSide.SHORT and current_price >= position.stop_loss:
+                    should_close = True
+                    close_reason = "stop-loss"
+
+            # Check take-profit
+            if not should_close and position.take_profit:
+                if position.side == PositionSide.LONG and current_price >= position.take_profit:
+                    should_close = True
+                    close_reason = "take-profit"
+                elif position.side == PositionSide.SHORT and current_price <= position.take_profit:
+                    should_close = True
+                    close_reason = "take-profit"
+
+            if should_close:
+                logger.info(
+                    f"Closing position {position.symbol} due to {close_reason}: "
+                    f"entry={position.entry_price}, current={current_price}, "
+                    f"sl={position.stop_loss}, tp={position.take_profit}"
+                )
+                result = await self.close_position(
+                    strategy_id,
+                    user_id,
+                    position.symbol,
+                    None,  # Close full position
+                    current_price,
+                )
+                if result:
+                    closed_results.append(result)
+                    stats.trades_closed += 1
+                    stats.total_pnl += result.realized_pnl
+                    if result.is_winner:
+                        stats.winning_trades += 1
+                    else:
+                        stats.losing_trades += 1
+                        stats.consecutive_losses += 1
+
+        return closed_results, stats
+
     async def calculate_strategy_pnl_stats(
         self,
         strategy_id: str,

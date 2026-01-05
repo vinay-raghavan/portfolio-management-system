@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -56,7 +57,7 @@ async def check_db_health() -> bool:
     """Check database connectivity."""
     try:
         async with async_session_maker() as session:
-            await session.execute("SELECT 1")
+            await session.execute(text("SELECT 1"))
             return True
     except Exception:
         return False
