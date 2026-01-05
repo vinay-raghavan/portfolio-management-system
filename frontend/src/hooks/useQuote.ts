@@ -49,6 +49,16 @@ export function useQuote(symbol: string, options: UseQuoteOptions = {}) {
         high: query.data?.high ?? null,
         low: query.data?.low ?? null,
         close: query.data?.close ?? null,
+        // Extended hours data from REST API (not in WebSocket)
+        pre_market_price: query.data?.pre_market_price ?? null,
+        pre_market_change: query.data?.pre_market_change ?? null,
+        pre_market_change_pct: query.data?.pre_market_change_pct ?? null,
+        pre_market_time: query.data?.pre_market_time ?? null,
+        post_market_price: query.data?.post_market_price ?? null,
+        post_market_change: query.data?.post_market_change ?? null,
+        post_market_change_pct: query.data?.post_market_change_pct ?? null,
+        post_market_time: query.data?.post_market_time ?? null,
+        market_session: query.data?.market_session ?? null,
       }
     : query.data;
 
@@ -63,7 +73,7 @@ export function useQuote(symbol: string, options: UseQuoteOptions = {}) {
 
 export function useQuotes(symbols: string[], options: UseQuoteOptions = {}) {
   const { enabled = true, useWebSocket = true } = options;
-  
+
   const { subscribe, unsubscribe, isConnected } = useWebSocketStore();
   const quotes = useWebSocketStore((state) => {
     const result: Record<string, StockQuote | undefined> = {};
@@ -81,6 +91,16 @@ export function useQuotes(symbols: string[], options: UseQuoteOptions = {}) {
           high: null,
           low: null,
           close: null,
+          // Extended hours data (not available via WebSocket)
+          pre_market_price: null,
+          pre_market_change: null,
+          pre_market_change_pct: null,
+          pre_market_time: null,
+          post_market_price: null,
+          post_market_change: null,
+          post_market_change_pct: null,
+          post_market_time: null,
+          market_session: null,
         };
       }
     });

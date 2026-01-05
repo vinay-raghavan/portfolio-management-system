@@ -176,6 +176,8 @@ export interface OrderCreate {
 
 // ============== Market Data Types ==============
 
+export type MarketSession = 'pre_market' | 'regular' | 'post_market' | 'closed';
+
 export interface StockQuote {
   symbol: string;
   price: number;
@@ -187,6 +189,18 @@ export interface StockQuote {
   change: number | null;
   change_pct: number | null;
   timestamp: string | null;
+  // Extended hours (pre-market) data
+  pre_market_price: number | null;
+  pre_market_change: number | null;
+  pre_market_change_pct: number | null;
+  pre_market_time: string | null;
+  // Extended hours (post-market/after-hours) data
+  post_market_price: number | null;
+  post_market_change: number | null;
+  post_market_change_pct: number | null;
+  post_market_time: string | null;
+  // Current market session
+  market_session: MarketSession | null;
 }
 
 export interface StockInfo {
