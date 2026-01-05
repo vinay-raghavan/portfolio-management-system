@@ -81,6 +81,42 @@ class PositionTracker:
         )
         return list(result.scalars().all())
 
+    async def calculate_unrealized_pnl(
+        self,
+        strategy_id: str,
+        user_id: str,
+        current_prices: dict[str, Decimal],
+    ) -> Decimal:
+        """Calculate total unrealized P&L for all open positions.
+
+        Args:
+            strategy_id: Strategy ID
+            user_id: User ID
+            current_prices: Dict of symbol -> current price
+
+        Returns:
+            Total unrealized P&L
+        """
+        open_positions = await self.get_all_open_positions(strategy_id, user_id)
+        total_unrealized = Decimal("0")
+
+        for position in open_positions:
+            current_price = current_prices.get(position.symbol)
+            if current_price is None:
+                continue
+
+            entry_value = position.entry_price * position.remaining_quantity
+            current_value = current_price * position.remaining_quantity
+
+            if position.side == PositionSide.LONG:
+                unrealized_pnl = current_value - entry_value
+            else:  # SHORT
+                unrealized_pnl = entry_value - current_value
+
+            total_unrealized += unrealized_pnl
+
+        return total_unrealized
+
     async def open_position(
         self,
         strategy_id: str,

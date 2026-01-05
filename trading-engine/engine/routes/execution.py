@@ -10,12 +10,13 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
-from engine.algo.safety import AlgoKillSwitch, PreExecutionChecker, SafetyService
+from engine.algo.position_tracker import PositionTracker
+from engine.algo.safety import AlgoKillSwitch, CircuitBreaker, PreExecutionChecker, SafetyService
 from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
 from engine.core.database import get_db
 from engine.core.redis import get_redis
-from engine.models.algo import PositionSizingMethod
+from engine.models.algo import PositionSizingMethod, StrategyStatus
 from engine.providers.broker.factory import get_broker
 from engine.providers.data.factory import get_data_provider
 from engine.strategies.registry import StrategyRegistry
@@ -251,6 +252,53 @@ async def run_scheduled_strategies(
                     strategy_id=strategy.id,
                     cooldown_seconds=strategy.cooldown_seconds or 0,
                 )
+
+            # Check profit cutoff with unrealized P&L
+            if strategy.max_daily_profit or strategy.overall_profit_target:
+                # Get current prices for open positions
+                position_tracker = PositionTracker(db)
+                open_positions = await position_tracker.get_all_open_positions(
+                    strategy.id, strategy.user_id
+                )
+
+                if open_positions:
+                    # Fetch current prices
+                    position_symbols = list({p.symbol for p in open_positions})
+                    current_prices: dict[str, Decimal] = {}
+                    for sym in position_symbols:
+                        try:
+                            quote = await data_provider.get_quote(sym)
+                            if quote and quote.price:
+                                current_prices[sym] = quote.price
+                        except Exception as price_err:
+                            logger.warning(f"Failed to get price for {sym}: {price_err}")
+
+                    # Calculate unrealized P&L
+                    unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
+                        strategy.id, strategy.user_id, current_prices
+                    )
+                else:
+                    unrealized_pnl = Decimal("0")
+
+                # Check profit cutoff with circuit breaker
+                circuit_breaker = CircuitBreaker(redis)
+                cb_state = await circuit_breaker.check_and_update(
+                    strategy_id=strategy.id,
+                    max_daily_loss=strategy.max_daily_loss,
+                    max_consecutive_losses=strategy.max_consecutive_losses,
+                    unrealized_pnl=unrealized_pnl,
+                    max_daily_profit=strategy.max_daily_profit,
+                    overall_profit_target=strategy.overall_profit_target,
+                )
+
+                if cb_state.profit_cutoff_triggered:
+                    logger.info(
+                        f"🎯 Profit cutoff triggered for strategy {strategy.id}: "
+                        f"{cb_state.trigger_reason}"
+                    )
+                    # Pause the strategy based on profit_cutoff_action
+                    await scheduler.disable_strategy(strategy, StrategyStatus.PAUSED)
+                    # TODO: Handle CLOSE_POSITIONS_AND_PAUSE action
 
             results.append(
                 {

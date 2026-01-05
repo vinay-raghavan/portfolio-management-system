@@ -121,6 +121,15 @@ class ExecutionStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+class ProfitCutoffAction(str, Enum):
+    """Action to take when profit cutoff is reached."""
+
+    PAUSE_STRATEGY = "PAUSE_STRATEGY"  # Pause strategy for the day/overall
+    CLOSE_POSITIONS_AND_PAUSE = "CLOSE_POSITIONS_AND_PAUSE"  # Close positions and pause
+    CLOSE_POSITIONS_AND_CONTINUE = "CLOSE_POSITIONS_AND_CONTINUE"  # Close positions but continue
+    NOTIFY_ONLY = "NOTIFY_ONLY"  # Just send notification
+
+
 class UserStrategy(Base):
     """User's configured strategy for algo trading."""
 
@@ -185,6 +194,15 @@ class UserStrategy(Base):
     max_consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     max_drawdown_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("10.00")
+    )
+
+    # Profit cutoff settings
+    max_daily_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    overall_profit_target: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    profit_cutoff_action: Mapped[ProfitCutoffAction] = mapped_column(
+        SQLEnum(ProfitCutoffAction, name="profitcutoffaction", create_type=False),
+        nullable=False,
+        default=ProfitCutoffAction.PAUSE_STRATEGY,
     )
 
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
