@@ -21,6 +21,7 @@ from engine.strategies.prebuilt import (
     create_triple_confirmation,
     register_all_prebuilt_strategies,
 )
+from engine.strategies.price_action_volume_swing import PriceActionVolumeSwingStrategy
 from engine.strategies.registry import StrategyRegistry
 
 # Import strategies to register them (decorator auto-registers on import)
@@ -43,6 +44,8 @@ __all__ = [
     "ORBStrategy",
     "GapAndGoStrategy",
     "TWAPStrategy",
+    # Swing trading strategies
+    "PriceActionVolumeSwingStrategy",
     # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",

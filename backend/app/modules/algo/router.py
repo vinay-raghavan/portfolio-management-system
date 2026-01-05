@@ -628,8 +628,27 @@ async def get_pnl_summary(
     - Win rate and trade counts
     - Best/worst trade performance
     """
+    from app.providers.data.yahoo import YahooDataProvider
+
     service = AlgoService(db)
-    return await service.get_pnl_summary(current_user.id)
+
+    # First get open positions to know which symbols we need prices for
+    positions = await service.get_positions(current_user.id, status="OPEN")
+
+    # Fetch current prices for open positions to calculate unrealized P&L
+    current_prices: dict[str, Decimal] = {}
+    if positions:
+        symbols = list({p.symbol for p in positions})
+        data_provider = YahooDataProvider()
+        for symbol in symbols:
+            try:
+                quote = await data_provider.get_quote(symbol)
+                if quote and quote.price:
+                    current_prices[symbol] = quote.price
+            except Exception as e:
+                logger.warning(f"Failed to get price for {symbol}: {e}")
+
+    return await service.get_pnl_summary(current_user.id, current_prices)
 
 
 @router.get("/pnl/by-strategy", response_model=PnLByStrategyResponse)
@@ -644,8 +663,27 @@ async def get_pnl_by_strategy(
     - Win rate and trade counts per strategy
     - Open/closed position counts
     """
+    from app.providers.data.yahoo import YahooDataProvider
+
     service = AlgoService(db)
-    return await service.get_pnl_by_strategy(current_user.id)
+
+    # First get open positions to know which symbols we need prices for
+    positions = await service.get_positions(current_user.id, status="OPEN")
+
+    # Fetch current prices for open positions to calculate unrealized P&L
+    current_prices: dict[str, Decimal] = {}
+    if positions:
+        symbols = list({p.symbol for p in positions})
+        data_provider = YahooDataProvider()
+        for symbol in symbols:
+            try:
+                quote = await data_provider.get_quote(symbol)
+                if quote and quote.price:
+                    current_prices[symbol] = quote.price
+            except Exception as e:
+                logger.warning(f"Failed to get price for {symbol}: {e}")
+
+    return await service.get_pnl_by_strategy(current_user.id, current_prices)
 
 
 @router.get("/pnl/history", response_model=PnLHistoryResponse)
@@ -700,15 +738,12 @@ async def get_unrealized_pnl(
     current_prices: dict[str, Decimal] = {}
 
     data_provider = YahooDataProvider()
-    try:
-        for symbol in symbols:
-            try:
-                quote = await data_provider.get_quote(symbol)
-                if quote and quote.get("price"):
-                    current_prices[symbol] = Decimal(str(quote["price"]))
-            except Exception as e:
-                logger.warning(f"Failed to get price for {symbol}: {e}")
-    finally:
-        await data_provider.close()
+    for symbol in symbols:
+        try:
+            quote = await data_provider.get_quote(symbol)
+            if quote and quote.price:
+                current_prices[symbol] = quote.price
+        except Exception as e:
+            logger.warning(f"Failed to get price for {symbol}: {e}")
 
     return await service.get_unrealized_pnl(current_user.id, current_prices)

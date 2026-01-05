@@ -18,6 +18,9 @@ from app.modules.signals.strategies.prebuilt import (
     list_prebuilt_strategies,
     register_all_prebuilt_strategies,
 )
+from app.modules.signals.strategies.price_action_volume_swing import (
+    PriceActionVolumeSwingStrategy,
+)
 from app.modules.signals.strategies.registry import StrategyRegistry
 from app.modules.signals.strategies.rsi import RSIStrategy
 from app.modules.signals.strategies.twap import TWAPStrategy
@@ -37,6 +40,7 @@ __all__ = [
     "VWAPMomentumStrategy",
     "GapAndGoStrategy",
     "TWAPStrategy",
+    "PriceActionVolumeSwingStrategy",
     # Composite strategies
     "CompositeStrategy",
     "CompositeStrategyFactory",
