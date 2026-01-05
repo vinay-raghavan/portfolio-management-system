@@ -89,9 +89,7 @@ class YahooDataProvider(DataProvider):
         ticker = yf.Ticker(yahoo_symbol)
         return ticker.info
 
-    def _fetch_history(
-        self, yahoo_symbol: str, period: str, interval: str, prepost: bool = False
-    ):
+    def _fetch_history(self, yahoo_symbol: str, period: str, interval: str, prepost: bool = False):
         """Synchronous helper to fetch history (runs in thread pool)."""
         ticker = yf.Ticker(yahoo_symbol)
         return ticker.history(period=period, interval=interval, prepost=prepost)
