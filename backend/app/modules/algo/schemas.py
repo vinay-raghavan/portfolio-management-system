@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.modules.algo.models import (
     ExecutionStatus,
     PositionSizingMethod,
+    ProfitCutoffAction,
     ScheduleType,
     StrategyStatus,
 )
@@ -85,6 +86,10 @@ class RiskConfig(BaseModel):
     cooldown_seconds: int = Field(default=60, ge=0)
     max_consecutive_losses: int = Field(default=3, ge=1, le=20)
     max_drawdown_percent: Decimal = Field(default=Decimal("10.00"), ge=0, le=100)
+    # Profit cutoff settings
+    max_daily_profit: Decimal | None = Field(default=None, ge=0)
+    overall_profit_target: Decimal | None = Field(default=None, ge=0)
+    profit_cutoff_action: ProfitCutoffAction = Field(default=ProfitCutoffAction.PAUSE_STRATEGY)
 
 
 class UserStrategyBase(BaseModel):
@@ -146,6 +151,9 @@ class UserStrategyResponse(UserStrategyBase):
     cooldown_seconds: int
     max_consecutive_losses: int
     max_drawdown_percent: Decimal
+    max_daily_profit: Decimal | None
+    overall_profit_target: Decimal | None
+    profit_cutoff_action: ProfitCutoffAction
     last_run_at: datetime | None
     next_run_at: datetime | None
     total_trades: int
@@ -257,6 +265,12 @@ class CircuitBreakerStatus(BaseModel):
     max_consecutive_losses: int
     current_drawdown_percent: Decimal
     max_drawdown_percent: Decimal
+    # Profit cutoff tracking
+    daily_profit: Decimal = Decimal("0")
+    max_daily_profit: Decimal | None = None
+    overall_profit: Decimal = Decimal("0")
+    overall_profit_target: Decimal | None = None
+    profit_cutoff_triggered: bool = False
 
 
 # ============== Algo Dashboard Schemas ==============
@@ -308,6 +322,9 @@ class StrategyCreate(BaseModel):
     max_position_value: Decimal | None = None
     max_daily_loss: Decimal = Decimal("5000.00")
     max_consecutive_losses: int = 3
+    max_daily_profit: Decimal | None = None
+    overall_profit_target: Decimal | None = None
+    profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
 
 
@@ -327,6 +344,9 @@ class StrategyUpdate(BaseModel):
     max_position_value: Decimal | None = None
     max_daily_loss: Decimal | None = None
     max_consecutive_losses: int | None = None
+    max_daily_profit: Decimal | None = None
+    overall_profit_target: Decimal | None = None
+    profit_cutoff_action: ProfitCutoffAction | None = None
     is_paper_trading: bool | None = None
 
 
@@ -350,6 +370,9 @@ class StrategyResponse(BaseModel):
     max_position_value: Decimal | None
     max_daily_loss: Decimal
     max_consecutive_losses: int
+    max_daily_profit: Decimal | None
+    overall_profit_target: Decimal | None
+    profit_cutoff_action: ProfitCutoffAction
     is_paper_trading: bool
     last_run_at: datetime | None
     next_run_at: datetime | None
@@ -384,6 +407,9 @@ class StrategyResponse(BaseModel):
                 "max_position_value": obj.max_position_value,
                 "max_daily_loss": obj.max_daily_loss,
                 "max_consecutive_losses": obj.max_consecutive_losses,
+                "max_daily_profit": obj.max_daily_profit,
+                "overall_profit_target": obj.overall_profit_target,
+                "profit_cutoff_action": obj.profit_cutoff_action,
                 "is_paper_trading": obj.is_paper_trading,
                 "last_run_at": obj.last_run_at,
                 "next_run_at": obj.next_run_at,

@@ -42,6 +42,10 @@ class CircuitBreakerState:
     daily_loss: Decimal = Decimal("0")
     consecutive_losses: int = 0
     triggered_at: datetime | None = None
+    # Profit cutoff tracking
+    daily_profit: Decimal = Decimal("0")
+    overall_profit: Decimal = Decimal("0")
+    profit_cutoff_triggered: bool = False
 
 
 class AlgoKillSwitch:
@@ -138,6 +142,8 @@ class CircuitBreaker:
     - Max daily loss
     - Max consecutive losing trades
     - Max drawdown
+    - Max daily profit (profit cutoff)
+    - Overall profit target
     """
 
     def __init__(self, redis: Redis):
@@ -167,14 +173,23 @@ class CircuitBreaker:
         if data:
             state_dict = json.loads(data)
             daily_loss = Decimal(state_dict.get("daily_loss", "0"))
+            daily_profit = Decimal(state_dict.get("daily_profit", "0"))
+            overall_profit = Decimal(state_dict.get("overall_profit", "0"))
             consecutive_losses = state_dict.get("consecutive_losses", 0)
         else:
             daily_loss = Decimal("0")
+            daily_profit = Decimal("0")
+            overall_profit = Decimal("0")
             consecutive_losses = 0
 
         # Update with new trade if provided
-        if trade_pnl is not None and trade_pnl < 0:
-            daily_loss += abs(trade_pnl)
+        if trade_pnl is not None:
+            if trade_pnl < 0:
+                daily_loss += abs(trade_pnl)
+            else:
+                daily_profit += trade_pnl
+                overall_profit += trade_pnl
+
         if is_loss is True:
             consecutive_losses += 1
         elif is_loss is False:
@@ -182,7 +197,9 @@ class CircuitBreaker:
 
         # Check thresholds
         trigger_reason = None
+        profit_cutoff_triggered = False
 
+        # Loss thresholds
         if daily_loss >= strategy.max_daily_loss:
             trigger_reason = (
                 f"Daily loss limit breached: ₹{daily_loss:.2f} >= ₹{strategy.max_daily_loss:.2f}"
@@ -193,16 +210,40 @@ class CircuitBreaker:
                 f"Consecutive losses: {consecutive_losses} >= {strategy.max_consecutive_losses}"
             )
 
+        # Profit cutoff thresholds
+        if strategy.max_daily_profit and daily_profit >= strategy.max_daily_profit:
+            trigger_reason = (
+                f"Daily profit target reached: ₹{daily_profit:.2f} >= ₹{strategy.max_daily_profit:.2f}"
+            )
+            profit_cutoff_triggered = True
+            logger.info(
+                f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached daily profit target ₹{daily_profit:.2f}"
+            )
+
+        if strategy.overall_profit_target and overall_profit >= strategy.overall_profit_target:
+            trigger_reason = (
+                f"Overall profit target reached: ₹{overall_profit:.2f} >= "
+                f"₹{strategy.overall_profit_target:.2f}"
+            )
+            profit_cutoff_triggered = True
+            logger.info(
+                f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached overall profit target "
+                f"₹{overall_profit:.2f}"
+            )
+
         # Save state
         state_dict = {
             "daily_loss": str(daily_loss),
+            "daily_profit": str(daily_profit),
+            "overall_profit": str(overall_profit),
             "consecutive_losses": consecutive_losses,
             "is_triggered": trigger_reason is not None,
             "trigger_reason": trigger_reason,
+            "profit_cutoff_triggered": profit_cutoff_triggered,
             "triggered_at": datetime.now(UTC).isoformat() if trigger_reason else None,
         }
 
-        # Expire at midnight (reset daily)
+        # Expire at midnight (reset daily values, but overall_profit persists via strategy.total_pnl)
         now = datetime.now(UTC)
         midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         ttl = int((midnight - now).total_seconds())
@@ -210,9 +251,8 @@ class CircuitBreaker:
         await self.redis.setex(key, ttl, json.dumps(state_dict))
 
         if trigger_reason:
-            logger.warning(
-                f"Circuit breaker TRIGGERED for strategy {strategy.id}: {trigger_reason}"
-            )
+            log_level = logger.info if profit_cutoff_triggered else logger.warning
+            log_level(f"Circuit breaker TRIGGERED for strategy {strategy.id}: {trigger_reason}")
 
         return CircuitBreakerState(
             is_triggered=trigger_reason is not None,
@@ -220,6 +260,9 @@ class CircuitBreaker:
             daily_loss=daily_loss,
             consecutive_losses=consecutive_losses,
             triggered_at=datetime.now(UTC) if trigger_reason else None,
+            daily_profit=daily_profit,
+            overall_profit=overall_profit,
+            profit_cutoff_triggered=profit_cutoff_triggered,
         )
 
     async def is_triggered(self, strategy_id: str) -> bool:
@@ -255,6 +298,9 @@ class CircuitBreaker:
             triggered_at=datetime.fromisoformat(state["triggered_at"])
             if state.get("triggered_at")
             else None,
+            daily_profit=Decimal(state.get("daily_profit", "0")),
+            overall_profit=Decimal(state.get("overall_profit", "0")),
+            profit_cutoff_triggered=state.get("profit_cutoff_triggered", False),
         )
 
 

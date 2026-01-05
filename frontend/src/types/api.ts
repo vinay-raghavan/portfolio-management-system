@@ -499,6 +499,7 @@ export type StrategyStatus = 'ACTIVE' | 'DISABLED' | 'PAUSED' | 'ERROR' | 'KILLE
 export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' | 'CONTINUOUS';
 export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'NOTIFY_ONLY';
 
 export interface AlgoStrategy {
   id: string;
@@ -518,6 +519,10 @@ export interface AlgoStrategy {
   max_position_value: number | null;
   max_daily_loss: number;
   max_consecutive_losses: number;
+  // Profit cutoff settings
+  max_daily_profit: number | null;
+  overall_profit_target: number | null;
+  profit_cutoff_action: ProfitCutoffAction;
   is_paper_trading: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
@@ -543,6 +548,10 @@ export interface AlgoStrategyCreate {
   max_position_value?: number;
   max_daily_loss?: number;
   max_consecutive_losses?: number;
+  // Profit cutoff settings
+  max_daily_profit?: number;
+  overall_profit_target?: number;
+  profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
 }
 
@@ -560,6 +569,10 @@ export interface AlgoStrategyUpdate {
   max_position_value?: number;
   max_daily_loss?: number;
   max_consecutive_losses?: number;
+  // Profit cutoff settings
+  max_daily_profit?: number;
+  overall_profit_target?: number;
+  profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
 }
 

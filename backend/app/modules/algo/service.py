@@ -58,6 +58,9 @@ class AlgoService:
             max_position_value=data.max_position_value,
             max_daily_loss=data.max_daily_loss,
             max_consecutive_losses=data.max_consecutive_losses,
+            max_daily_profit=data.max_daily_profit,
+            overall_profit_target=data.overall_profit_target,
+            profit_cutoff_action=data.profit_cutoff_action,
             is_paper_trading=data.is_paper_trading,
             status=StrategyStatus.DISABLED,
         )
