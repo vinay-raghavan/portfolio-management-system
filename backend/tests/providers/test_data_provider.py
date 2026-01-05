@@ -299,9 +299,7 @@ class TestMarketDataService:
         assert result.market_session is None
 
     @pytest.mark.asyncio
-    async def test_get_quote_returns_none_when_provider_returns_none(
-        self, service, mock_provider
-    ):
+    async def test_get_quote_returns_none_when_provider_returns_none(self, service, mock_provider):
         """Test that service returns None when provider returns None."""
         mock_provider.get_quote = AsyncMock(return_value=None)
 
