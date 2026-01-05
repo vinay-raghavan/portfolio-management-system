@@ -97,9 +97,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             if df["Low"].iloc[idx - i] <= low:
                 return False
         # Check right side (at least 1 bar higher)
-        if df["Low"].iloc[idx + 1] <= low:
-            return False
-        return True
+        return df["Low"].iloc[idx + 1] > low
 
     def _is_swing_high(self, df: pd.DataFrame, idx: int, lookback: int) -> bool:
         """Check if the bar at idx is a swing high.
@@ -115,9 +113,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             if df["High"].iloc[idx - i] >= high:
                 return False
         # Check right side (at least 1 bar lower)
-        if df["High"].iloc[idx + 1] >= high:
-            return False
-        return True
+        return df["High"].iloc[idx + 1] < high
 
     def _is_bullish_engulfing(self, df: pd.DataFrame, idx: int) -> bool:
         """Detect bullish engulfing pattern at index idx."""
@@ -185,9 +181,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             return "bearish_pin_bar", False
         return None, False
 
-    def _find_recent_swing(
-        self, df: pd.DataFrame, is_low: bool, lookback: int = 20
-    ) -> int | None:
+    def _find_recent_swing(self, df: pd.DataFrame, is_low: bool, lookback: int = 20) -> int | None:
         """Find the most recent swing high or low within lookback bars.
 
         Returns the index of the swing point, or None if not found.
@@ -251,8 +245,12 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         # Find recent swing points for context
         recent_swing_low_idx = self._find_recent_swing(df, is_low=True)
         recent_swing_high_idx = self._find_recent_swing(df, is_low=False)
-        near_swing_low = recent_swing_low_idx is not None and (len(df) - 1 - recent_swing_low_idx) <= 3
-        near_swing_high = recent_swing_high_idx is not None and (len(df) - 1 - recent_swing_high_idx) <= 3
+        near_swing_low = (
+            recent_swing_low_idx is not None and (len(df) - 1 - recent_swing_low_idx) <= 3
+        )
+        near_swing_high = (
+            recent_swing_high_idx is not None and (len(df) - 1 - recent_swing_high_idx) <= 3
+        )
 
         # Build indicators dict
         indicators = {
@@ -387,4 +385,3 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             confidence = 0.4 + bearish_bars * 0.08
 
         return Decimal(str(min(0.9, confidence))).quantize(Decimal("0.0001"))
-

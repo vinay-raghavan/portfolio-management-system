@@ -80,9 +80,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         for i in range(1, lookback + 1):
             if df["Low"].iloc[idx - i] <= low:
                 return False
-        if df["Low"].iloc[idx + 1] <= low:
-            return False
-        return True
+        return df["Low"].iloc[idx + 1] > low
 
     def _is_swing_high(self, df: pd.DataFrame, idx: int, lookback: int) -> bool:
         """Check if the bar at idx is a swing high."""
@@ -92,9 +90,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         for i in range(1, lookback + 1):
             if df["High"].iloc[idx - i] >= high:
                 return False
-        if df["High"].iloc[idx + 1] >= high:
-            return False
-        return True
+        return df["High"].iloc[idx + 1] < high
 
     def _is_bullish_engulfing(self, df: pd.DataFrame, idx: int) -> bool:
         """Detect bullish engulfing pattern at index idx."""
@@ -152,9 +148,7 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             return "bearish_pin_bar", False
         return None, False
 
-    def _find_recent_swing(
-        self, df: pd.DataFrame, is_low: bool, lookback: int = 20
-    ) -> int | None:
+    def _find_recent_swing(self, df: pd.DataFrame, is_low: bool, lookback: int = 20) -> int | None:
         """Find the most recent swing high or low within lookback bars."""
         end_idx = len(df) - 2
         start_idx = max(self.swing_lookback, end_idx - lookback)
@@ -228,8 +222,12 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         # Find recent swing points for context
         recent_swing_low_idx = self._find_recent_swing(df, is_low=True)
         recent_swing_high_idx = self._find_recent_swing(df, is_low=False)
-        near_swing_low = recent_swing_low_idx is not None and (len(df) - 1 - recent_swing_low_idx) <= 3
-        near_swing_high = recent_swing_high_idx is not None and (len(df) - 1 - recent_swing_high_idx) <= 3
+        near_swing_low = (
+            recent_swing_low_idx is not None and (len(df) - 1 - recent_swing_low_idx) <= 3
+        )
+        near_swing_high = (
+            recent_swing_high_idx is not None and (len(df) - 1 - recent_swing_high_idx) <= 3
+        )
 
         # Build indicators dict
         indicators = {
@@ -259,8 +257,12 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         if buy_signal:
             strength = self._calculate_strength(volume_confirmed, near_swing_low)
             confidence = self._calculate_confidence(df, is_bullish=True)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.BUY, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.BUY, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio
+            )
 
             signals.append(
                 SignalData(
@@ -280,8 +282,12 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
         elif sell_signal:
             strength = self._calculate_strength(volume_confirmed, near_swing_high)
             confidence = self._calculate_confidence(df, is_bullish=False)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.SELL, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
             signals.append(
                 SignalData(
@@ -322,4 +328,3 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             )
 
         return signals
-

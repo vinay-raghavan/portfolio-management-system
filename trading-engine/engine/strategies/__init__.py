@@ -21,6 +21,7 @@ from engine.strategies.prebuilt import (
     create_triple_confirmation,
     register_all_prebuilt_strategies,
 )
+from engine.strategies.price_action_volume_swing import PriceActionVolumeSwingStrategy
 from engine.strategies.registry import StrategyRegistry
 
 # Import strategies to register them (decorator auto-registers on import)
@@ -28,7 +29,6 @@ from engine.strategies.rsi import RSIStrategy
 from engine.strategies.twap import TWAPStrategy
 from engine.strategies.vwap import VWAPReversionStrategy
 from engine.strategies.vwap_momentum import VWAPMomentumStrategy
-from engine.strategies.price_action_volume_swing import PriceActionVolumeSwingStrategy
 
 __all__ = [
     "BaseStrategy",
