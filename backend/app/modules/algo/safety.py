@@ -212,9 +212,7 @@ class CircuitBreaker:
 
         # Profit cutoff thresholds
         if strategy.max_daily_profit and daily_profit >= strategy.max_daily_profit:
-            trigger_reason = (
-                f"Daily profit target reached: ₹{daily_profit:.2f} >= ₹{strategy.max_daily_profit:.2f}"
-            )
+            trigger_reason = f"Daily profit target reached: ₹{daily_profit:.2f} >= ₹{strategy.max_daily_profit:.2f}"
             profit_cutoff_triggered = True
             logger.info(
                 f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached daily profit target ₹{daily_profit:.2f}"
