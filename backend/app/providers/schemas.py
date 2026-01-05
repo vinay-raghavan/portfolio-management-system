@@ -45,8 +45,17 @@ class ProductType(str, Enum):
     MARGIN = "MARGIN"  # For F&O
 
 
+class MarketSession(str, Enum):
+    """Market session type."""
+
+    PRE_MARKET = "PRE_MARKET"
+    REGULAR = "REGULAR"
+    POST_MARKET = "POST_MARKET"
+    CLOSED = "CLOSED"
+
+
 class Quote(BaseModel):
-    """Real-time quote data."""
+    """Real-time quote data with extended hours support."""
 
     symbol: str
     price: Decimal
@@ -61,6 +70,21 @@ class Quote(BaseModel):
     bid: Decimal | None = None
     ask: Decimal | None = None
     timestamp: datetime | None = None
+
+    # Extended hours (pre-market) data
+    pre_market_price: Decimal | None = None
+    pre_market_change: Decimal | None = None
+    pre_market_change_percent: Decimal | None = None
+    pre_market_time: datetime | None = None
+
+    # Extended hours (post-market/after-hours) data
+    post_market_price: Decimal | None = None
+    post_market_change: Decimal | None = None
+    post_market_change_percent: Decimal | None = None
+    post_market_time: datetime | None = None
+
+    # Current market session
+    market_session: MarketSession | None = None
 
 
 class OHLCV(BaseModel):

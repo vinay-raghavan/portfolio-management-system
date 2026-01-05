@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Annotated
 
 from pydantic import BaseModel, PlainSerializer
@@ -12,8 +13,17 @@ DecimalAsFloat = Annotated[
 ]
 
 
+class MarketSession(str, Enum):
+    """Market session type."""
+
+    PRE_MARKET = "pre_market"
+    REGULAR = "regular"
+    POST_MARKET = "post_market"
+    CLOSED = "closed"
+
+
 class StockQuote(BaseModel):
-    """Schema for stock quote."""
+    """Schema for stock quote with extended hours support."""
 
     symbol: str
     price: DecimalAsFloat
@@ -25,6 +35,21 @@ class StockQuote(BaseModel):
     change: DecimalAsFloat | None = None
     change_pct: DecimalAsFloat | None = None
     timestamp: datetime | None = None
+
+    # Extended hours (pre-market) data
+    pre_market_price: DecimalAsFloat | None = None
+    pre_market_change: DecimalAsFloat | None = None
+    pre_market_change_pct: DecimalAsFloat | None = None
+    pre_market_time: datetime | None = None
+
+    # Extended hours (post-market/after-hours) data
+    post_market_price: DecimalAsFloat | None = None
+    post_market_change: DecimalAsFloat | None = None
+    post_market_change_pct: DecimalAsFloat | None = None
+    post_market_time: datetime | None = None
+
+    # Current market session
+    market_session: MarketSession | None = None
 
 
 class StockInfo(BaseModel):
