@@ -155,6 +155,7 @@ class CircuitBreaker:
         strategy: UserStrategy,
         trade_pnl: Decimal | None = None,
         is_loss: bool | None = None,
+        unrealized_pnl: Decimal | None = None,
     ) -> CircuitBreakerState:
         """Check if circuit breaker should trigger and update state.
 
@@ -162,6 +163,7 @@ class CircuitBreaker:
             strategy: The strategy to check
             trade_pnl: P&L of the last trade (if just completed)
             is_loss: Whether the last trade was a loss
+            unrealized_pnl: Current unrealized P&L from open positions
 
         Returns:
             CircuitBreakerState with current status
@@ -195,6 +197,12 @@ class CircuitBreaker:
         elif is_loss is False:
             consecutive_losses = 0  # Reset on win
 
+        # Calculate total profit including unrealized P&L for profit cutoff checks
+        # This ensures positions with paper gains trigger the cutoff
+        current_unrealized = unrealized_pnl if unrealized_pnl is not None else Decimal("0")
+        total_daily_profit = daily_profit + max(current_unrealized, Decimal("0"))
+        total_overall_profit = overall_profit + max(current_unrealized, Decimal("0"))
+
         # Check thresholds
         trigger_reason = None
         profit_cutoff_triggered = False
@@ -210,23 +218,34 @@ class CircuitBreaker:
                 f"Consecutive losses: {consecutive_losses} >= {strategy.max_consecutive_losses}"
             )
 
-        # Profit cutoff thresholds
-        if strategy.max_daily_profit and daily_profit >= strategy.max_daily_profit:
-            trigger_reason = f"Daily profit target reached: ₹{daily_profit:.2f} >= ₹{strategy.max_daily_profit:.2f}"
+        # Profit cutoff thresholds (using total profit = realized + unrealized)
+        if strategy.max_daily_profit and total_daily_profit >= strategy.max_daily_profit:
+            trigger_reason = (
+                f"Daily profit target reached: ₹{total_daily_profit:.2f} >= "
+                f"₹{strategy.max_daily_profit:.2f} (realized: ₹{daily_profit:.2f}, "
+                f"unrealized: ₹{current_unrealized:.2f})"
+            )
             profit_cutoff_triggered = True
             logger.info(
-                f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached daily profit target ₹{daily_profit:.2f}"
+                f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached daily profit target "
+                f"₹{total_daily_profit:.2f} (realized: ₹{daily_profit:.2f}, "
+                f"unrealized: ₹{current_unrealized:.2f})"
             )
 
-        if strategy.overall_profit_target and overall_profit >= strategy.overall_profit_target:
+        if (
+            strategy.overall_profit_target
+            and total_overall_profit >= strategy.overall_profit_target
+        ):
             trigger_reason = (
-                f"Overall profit target reached: ₹{overall_profit:.2f} >= "
-                f"₹{strategy.overall_profit_target:.2f}"
+                f"Overall profit target reached: ₹{total_overall_profit:.2f} >= "
+                f"₹{strategy.overall_profit_target:.2f} (realized: ₹{overall_profit:.2f}, "
+                f"unrealized: ₹{current_unrealized:.2f})"
             )
             profit_cutoff_triggered = True
             logger.info(
                 f"🎯 PROFIT CUTOFF: Strategy {strategy.id} reached overall profit target "
-                f"₹{overall_profit:.2f}"
+                f"₹{total_overall_profit:.2f} (realized: ₹{overall_profit:.2f}, "
+                f"unrealized: ₹{current_unrealized:.2f})"
             )
 
         # Save state
