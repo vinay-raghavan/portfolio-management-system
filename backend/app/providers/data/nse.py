@@ -10,6 +10,7 @@ It handles:
 - Rate limiting to avoid blocks
 """
 
+import contextlib
 import logging
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -213,7 +214,7 @@ class NSEDataProvider(DataProvider):
         symbol = self.normalize_symbol(symbol)
 
         # Try the pre-open market endpoint
-        data = await self._make_request(f"/market-data-pre-open?key=ALL")
+        data = await self._make_request("/market-data-pre-open?key=ALL")
         if not data or "data" not in data:
             return None
 
@@ -277,12 +278,10 @@ class NSEDataProvider(DataProvider):
                         )
                     last_update = pre_open_market.get("lastUpdateTime")
                     if last_update:
-                        try:
+                        with contextlib.suppress(ValueError):
                             pre_market_time = datetime.strptime(
                                 last_update, "%d-%b-%Y %H:%M:%S"
                             ).replace(tzinfo=IST)
-                        except ValueError:
-                            pass
 
             return Quote(
                 symbol=symbol,

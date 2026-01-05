@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from functools import partial
 from zoneinfo import ZoneInfo
@@ -140,7 +140,7 @@ class YahooDataProvider(DataProvider):
                 result["pre_market_change_percent"] = Decimal(str(pre_market_change_pct * 100))
             pre_market_time = info.get("preMarketTime")
             if pre_market_time:
-                result["pre_market_time"] = datetime.fromtimestamp(pre_market_time, tz=timezone.utc)
+                result["pre_market_time"] = datetime.fromtimestamp(pre_market_time, tz=UTC)
 
         # Post-market data
         post_market_price = info.get("postMarketPrice")
@@ -154,7 +154,7 @@ class YahooDataProvider(DataProvider):
                 result["post_market_change_percent"] = Decimal(str(post_market_change_pct * 100))
             post_market_time = info.get("postMarketTime")
             if post_market_time:
-                result["post_market_time"] = datetime.fromtimestamp(post_market_time, tz=timezone.utc)
+                result["post_market_time"] = datetime.fromtimestamp(post_market_time, tz=UTC)
 
         return result
 
