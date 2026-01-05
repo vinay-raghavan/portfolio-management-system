@@ -297,6 +297,138 @@ class TestPositionTrackerUnit:
         assert stats.winning_trades == 1
         assert stats.total_pnl == Decimal("20000.00")  # (3200-3000)*100
 
+    async def test_check_stop_loss_long_position(self, tracker, mock_db):
+        """Test stop-loss trigger for LONG position."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-sl"
+        position.symbol = "RELIANCE"
+        position.side = PositionSide.LONG
+        position.remaining_quantity = 100
+        position.entry_quantity = 100
+        position.entry_price = Decimal("1000.00")
+        position.stop_loss = Decimal("950.00")  # 5% stop loss
+        position.take_profit = Decimal("1100.00")
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+
+        # Mock both get_all_open_positions and get_open_position
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_result_one = MagicMock()
+        mock_result_one.scalar_one_or_none.return_value = position
+        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+
+        current_prices = {"RELIANCE": Decimal("940.00")}  # Below stop loss
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        assert len(closed_positions) == 1
+        assert stats.trades_closed == 1
+        assert stats.losing_trades == 1
+        assert stats.total_pnl == Decimal("-6000.00")  # (940-1000)*100
+
+    async def test_check_take_profit_long_position(self, tracker, mock_db):
+        """Test take-profit trigger for LONG position."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-tp"
+        position.symbol = "INFY"
+        position.side = PositionSide.LONG
+        position.remaining_quantity = 50
+        position.entry_quantity = 50
+        position.entry_price = Decimal("1500.00")
+        position.stop_loss = Decimal("1400.00")
+        position.take_profit = Decimal("1600.00")  # Take profit level
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+
+        # Mock both get_all_open_positions and get_open_position
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_result_one = MagicMock()
+        mock_result_one.scalar_one_or_none.return_value = position
+        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+
+        current_prices = {"INFY": Decimal("1650.00")}  # Above take profit
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        assert len(closed_positions) == 1
+        assert stats.trades_closed == 1
+        assert stats.winning_trades == 1
+        assert stats.total_pnl == Decimal("7500.00")  # (1650-1500)*50
+
+    async def test_check_stop_loss_short_position(self, tracker, mock_db):
+        """Test stop-loss trigger for SHORT position."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-short-sl"
+        position.symbol = "TCS"
+        position.side = PositionSide.SHORT
+        position.remaining_quantity = 20
+        position.entry_quantity = 20
+        position.entry_price = Decimal("3500.00")
+        position.stop_loss = Decimal("3600.00")  # Stop loss above entry for shorts
+        position.take_profit = Decimal("3300.00")
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+
+        # Mock both get_all_open_positions and get_open_position
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_result_one = MagicMock()
+        mock_result_one.scalar_one_or_none.return_value = position
+        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+
+        current_prices = {"TCS": Decimal("3650.00")}  # Above stop loss
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        assert len(closed_positions) == 1
+        assert stats.trades_closed == 1
+        assert stats.losing_trades == 1
+        # SHORT P&L = (entry - exit) * qty = (3500 - 3650) * 20 = -3000
+        assert stats.total_pnl == Decimal("-3000.00")
+
+    async def test_no_exit_when_price_in_range(self, tracker, mock_db):
+        """Test no exit when price is between stop-loss and take-profit."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-in-range"
+        position.symbol = "HDFC"
+        position.side = PositionSide.LONG
+        position.remaining_quantity = 30
+        position.entry_quantity = 30
+        position.entry_price = Decimal("2000.00")
+        position.stop_loss = Decimal("1900.00")
+        position.take_profit = Decimal("2200.00")
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [position]
+        mock_db.execute.return_value = mock_result
+
+        current_prices = {"HDFC": Decimal("2050.00")}  # Between SL and TP
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        assert len(closed_positions) == 0
+        assert stats.trades_closed == 0
+
 
 class TestSafetyService:
     """Tests for SafetyService basic checks."""

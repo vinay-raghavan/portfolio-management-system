@@ -157,9 +157,14 @@ class StrategyExecutor:
 
             # Fetch market data and run strategy for each symbol
             all_signals: list[tuple[str, SignalData]] = []
+            symbol_prices: dict[str, Decimal] = {}
             for symbol in symbols:
                 try:
-                    signals = await self._analyze_symbol(strategy, symbol, config.timeframe)
+                    signals, current_price = await self._analyze_symbol(
+                        strategy, symbol, config.timeframe
+                    )
+                    if current_price:
+                        symbol_prices[symbol] = current_price
                     for signal in signals:
                         all_signals.append((symbol, signal))
                 except Exception as e:
@@ -167,6 +172,9 @@ class StrategyExecutor:
                     continue
 
             result.signals_generated = len(all_signals)
+
+            # Check open positions for stop-loss/take-profit exits
+            await self._check_exit_conditions(config, symbol_prices, result)
 
             if not all_signals:
                 result.status = ExecutionStatus.NO_SIGNAL
@@ -211,8 +219,12 @@ class StrategyExecutor:
         strategy: BaseStrategy,
         symbol: str,
         timeframe: str,
-    ) -> list[SignalData]:
-        """Fetch data and run strategy for a symbol."""
+    ) -> tuple[list[SignalData], Decimal | None]:
+        """Fetch data and run strategy for a symbol.
+
+        Returns:
+            Tuple of (signals, current_price)
+        """
         # Map timeframe to data provider interval
         interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
         interval = interval_map.get(timeframe, "1d")
@@ -232,7 +244,10 @@ class StrategyExecutor:
             logger.debug(
                 f"Insufficient data for {symbol}: {len(ohlcv_data) if ohlcv_data else 0} bars"
             )
-            return []
+            return [], None
+
+        # Get current price from latest bar
+        current_price = Decimal(str(ohlcv_data[-1].close))
 
         # Convert to DataFrame
         df = pd.DataFrame(
@@ -251,7 +266,7 @@ class StrategyExecutor:
 
         # Run strategy
         signals = strategy.generate_signals(df, symbol)
-        return signals
+        return signals, current_price
 
     async def _process_signal(
         self,
@@ -338,6 +353,62 @@ class StrategyExecutor:
         # Default: fixed quantity
         return 1
 
+    async def _check_exit_conditions(
+        self,
+        config: StrategyConfig,
+        symbol_prices: dict[str, Decimal],
+        result: ExecutionResult,
+    ) -> None:
+        """Check open positions for stop-loss/take-profit exits.
+
+        If any positions hit their SL/TP, places exit orders.
+        """
+        if not symbol_prices:
+            return
+
+        try:
+            async with get_db_context() as db:
+                position_tracker = PositionTracker(db)
+                closed_positions, pnl_stats = await position_tracker.check_stop_loss_take_profit(
+                    strategy_id=config.id,
+                    user_id=config.user_id,
+                    current_prices=symbol_prices,
+                )
+
+                if closed_positions:
+                    logger.info(
+                        f"Auto-closed {len(closed_positions)} positions due to SL/TP: "
+                        f"pnl={pnl_stats.total_pnl}, winners={pnl_stats.winning_trades}"
+                    )
+
+                    # Add exit orders to result
+                    for pos in closed_positions:
+                        exit_order = {
+                            "symbol": pos.symbol,
+                            "side": "SELL" if pos.side == "LONG" else "BUY",
+                            "quantity": pos.quantity,
+                            "status": "FILLED",
+                            "filled_price": float(pos.exit_price) if pos.exit_price else None,
+                            "exit_type": "stop_loss" if not pos.is_winner else "take_profit",
+                        }
+                        result.orders_data.append(exit_order)
+                        result.orders_placed += 1
+                        result.orders_filled += 1
+
+                    # Update P&L stats on result
+                    if result.pnl_stats:
+                        result.pnl_stats.trades_closed += pnl_stats.trades_closed
+                        result.pnl_stats.winning_trades += pnl_stats.winning_trades
+                        result.pnl_stats.losing_trades += pnl_stats.losing_trades
+                        result.pnl_stats.total_pnl += pnl_stats.total_pnl
+                    else:
+                        result.pnl_stats = pnl_stats
+
+                await db.commit()
+
+        except Exception as e:
+            logger.warning(f"Error checking exit conditions: {e}")
+
     def _signal_to_dict(self, signal: SignalData) -> dict:
         """Convert SignalData to dictionary."""
         return {
@@ -415,6 +486,8 @@ class StrategyExecutor:
                         notes=f"Algo order from strategy {config.name}",
                     )
                     db.add(order)
+                    # Flush to ensure Order is persisted before AlgoOrder (FK constraint)
+                    await db.flush()
 
                     # Create AlgoOrder record linking to the Order
                     order_qty = order_data.get("quantity", 0)

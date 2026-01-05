@@ -230,8 +230,18 @@ class AlgoService:
             for p in positions
         ]
 
-    async def get_pnl_summary(self, user_id: str) -> PnLSummary:
-        """Get overall P&L summary for a user."""
+    async def get_pnl_summary(
+        self, user_id: str, current_prices: dict[str, Decimal] | None = None
+    ) -> PnLSummary:
+        """Get overall P&L summary for a user.
+
+        Args:
+            user_id: The user ID
+            current_prices: Optional dict mapping symbol to current price for unrealized P&L
+        """
+        if current_prices is None:
+            current_prices = {}
+
         # Get all positions for the user
         result = await self.db.execute(select(AlgoPosition).where(AlgoPosition.user_id == user_id))
         positions = list(result.scalars().all())
@@ -257,10 +267,24 @@ class AlgoService:
             total_realized_pnl / len(closed_positions) if closed_positions else Decimal("0")
         )
 
+        # Calculate unrealized P&L for open positions
+        total_unrealized_pnl = Decimal("0")
+        for p in open_positions:
+            current_price = current_prices.get(p.symbol, p.entry_price)
+            entry_value = p.entry_price * p.remaining_quantity
+            current_value = current_price * p.remaining_quantity
+
+            if p.side.value == "LONG":
+                unrealized_pnl = current_value - entry_value
+            else:  # SHORT
+                unrealized_pnl = entry_value - current_value
+
+            total_unrealized_pnl += unrealized_pnl
+
         return PnLSummary(
             total_realized_pnl=total_realized_pnl,
-            total_unrealized_pnl=Decimal("0"),  # Would need current prices to calculate
-            total_pnl=total_realized_pnl,
+            total_unrealized_pnl=total_unrealized_pnl,
+            total_pnl=total_realized_pnl + total_unrealized_pnl,
             total_trades=len(closed_positions),
             winning_trades=len(winning_trades),
             losing_trades=len(losing_trades),
@@ -272,8 +296,18 @@ class AlgoService:
             average_trade_pnl=avg_trade_pnl,
         )
 
-    async def get_pnl_by_strategy(self, user_id: str) -> PnLByStrategyResponse:
-        """Get P&L breakdown by strategy."""
+    async def get_pnl_by_strategy(
+        self, user_id: str, current_prices: dict[str, Decimal] | None = None
+    ) -> PnLByStrategyResponse:
+        """Get P&L breakdown by strategy.
+
+        Args:
+            user_id: The user ID
+            current_prices: Optional dict mapping symbol to current price for unrealized P&L
+        """
+        if current_prices is None:
+            current_prices = {}
+
         # Get all strategies for the user
         strategies_result = await self.db.execute(
             select(UserStrategy).where(UserStrategy.user_id == user_id)
@@ -310,13 +344,27 @@ class AlgoService:
             if closed:
                 win_rate = Decimal(len(winning)) / Decimal(len(closed)) * 100
 
+            # Calculate unrealized P&L for open positions in this strategy
+            strategy_unrealized_pnl = Decimal("0")
+            for p in open_pos:
+                current_price = current_prices.get(p.symbol, p.entry_price)
+                entry_value = p.entry_price * p.remaining_quantity
+                current_value = current_price * p.remaining_quantity
+
+                if p.side.value == "LONG":
+                    unrealized_pnl = current_value - entry_value
+                else:  # SHORT
+                    unrealized_pnl = entry_value - current_value
+
+                strategy_unrealized_pnl += unrealized_pnl
+
             strategy_pnls.append(
                 StrategyPnL(
                     strategy_id=strategy.id,
                     strategy_name=strategy.name,
-                    total_pnl=realized_pnl,
+                    total_pnl=realized_pnl + strategy_unrealized_pnl,
                     realized_pnl=realized_pnl,
-                    unrealized_pnl=Decimal("0"),
+                    unrealized_pnl=strategy_unrealized_pnl,
                     total_trades=len(closed),
                     winning_trades=len(winning),
                     losing_trades=len(losing),
@@ -327,6 +375,7 @@ class AlgoService:
                 )
             )
             total_realized += realized_pnl
+            total_unrealized += strategy_unrealized_pnl
 
         return PnLByStrategyResponse(
             strategies=strategy_pnls,
