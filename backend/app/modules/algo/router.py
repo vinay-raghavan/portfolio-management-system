@@ -221,9 +221,15 @@ async def get_circuit_breaker_status(
         trigger_reason=state.trigger_reason,
         daily_loss=state.daily_loss,
         consecutive_losses=state.consecutive_losses,
-        triggered_at=state.triggered_at,
         max_daily_loss=strategy.max_daily_loss,
         max_consecutive_losses=strategy.max_consecutive_losses,
+        current_drawdown_percent=Decimal("0"),  # TODO: Calculate from positions
+        max_drawdown_percent=strategy.max_drawdown_percent,
+        daily_profit=state.daily_profit,
+        max_daily_profit=strategy.max_daily_profit,
+        overall_profit=state.overall_profit,
+        overall_profit_target=strategy.overall_profit_target,
+        profit_cutoff_triggered=state.profit_cutoff_triggered,
     )
 
 

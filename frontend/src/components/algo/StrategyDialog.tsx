@@ -24,7 +24,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { algoApi, signalsApi } from '@/lib/api';
-import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod } from '@/types';
+import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction } from '@/types';
 
 interface StrategyDialogProps {
   open: boolean;
@@ -48,6 +48,13 @@ const positionSizingMethods: { value: PositionSizingMethod; label: string }[] = 
   { value: 'VOLATILITY_ADJUSTED', label: 'Volatility Adjusted' },
 ];
 
+const profitCutoffActions: { value: ProfitCutoffAction; label: string; description: string }[] = [
+  { value: 'PAUSE_STRATEGY', label: 'Pause Strategy', description: 'Stop trading for the day' },
+  { value: 'CLOSE_POSITIONS_AND_PAUSE', label: 'Close & Pause', description: 'Close all positions and pause' },
+  { value: 'CLOSE_POSITIONS_AND_CONTINUE', label: 'Close & Continue', description: 'Close positions but keep finding new trades' },
+  { value: 'NOTIFY_ONLY', label: 'Notify Only', description: 'Send notification but continue trading' },
+];
+
 export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogProps) {
   const queryClient = useQueryClient();
   const isEditing = !!strategy;
@@ -66,6 +73,10 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [maxPositionValue, setMaxPositionValue] = useState('100000');
   const [maxDailyLoss, setMaxDailyLoss] = useState('10000');
   const [maxConsecutiveLosses, setMaxConsecutiveLosses] = useState('3');
+  // Profit cutoff state
+  const [maxDailyProfit, setMaxDailyProfit] = useState('');
+  const [overallProfitTarget, setOverallProfitTarget] = useState('');
+  const [profitCutoffAction, setProfitCutoffAction] = useState<ProfitCutoffAction>('PAUSE_STRATEGY');
   const [isPaperTrading, setIsPaperTrading] = useState(true);
 
   // Fetch available strategies and universes
@@ -95,6 +106,10 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setMaxPositionValue(String(strategy.max_position_value || 100000));
       setMaxDailyLoss(String(strategy.max_daily_loss));
       setMaxConsecutiveLosses(String(strategy.max_consecutive_losses));
+      // Profit cutoff fields
+      setMaxDailyProfit(strategy.max_daily_profit ? String(strategy.max_daily_profit) : '');
+      setOverallProfitTarget(strategy.overall_profit_target ? String(strategy.overall_profit_target) : '');
+      setProfitCutoffAction(strategy.profit_cutoff_action || 'PAUSE_STRATEGY');
       setIsPaperTrading(strategy.is_paper_trading);
     } else {
       // Reset to defaults
@@ -111,6 +126,10 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setMaxPositionValue('100000');
       setMaxDailyLoss('10000');
       setMaxConsecutiveLosses('3');
+      // Profit cutoff defaults
+      setMaxDailyProfit('');
+      setOverallProfitTarget('');
+      setProfitCutoffAction('PAUSE_STRATEGY');
       setIsPaperTrading(true);
     }
   }, [strategy, open]);
@@ -146,6 +165,10 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       max_position_value: parseFloat(maxPositionValue),
       max_daily_loss: parseFloat(maxDailyLoss),
       max_consecutive_losses: parseInt(maxConsecutiveLosses),
+      // Profit cutoff fields
+      max_daily_profit: maxDailyProfit ? parseFloat(maxDailyProfit) : undefined,
+      overall_profit_target: overallProfitTarget ? parseFloat(overallProfitTarget) : undefined,
+      profit_cutoff_action: profitCutoffAction,
       is_paper_trading: isPaperTrading,
     };
 
@@ -454,6 +477,64 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 onChange={(e) => setMaxConsecutiveLosses(e.target.value)}
                 min="1"
               />
+            </div>
+
+            {/* Profit Cutoff Section */}
+            <div className="col-span-2 border-t pt-4 mt-2">
+              <h4 className="text-sm font-medium mb-3">Profit Cutoff Settings</h4>
+              <p className="text-xs text-muted-foreground mb-4">
+                Automatically stop trading when profit targets are reached to lock in gains.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maxDailyProfit">Max Daily Profit (₹)</Label>
+              <Input
+                id="maxDailyProfit"
+                type="number"
+                value={maxDailyProfit}
+                onChange={(e) => setMaxDailyProfit(e.target.value)}
+                placeholder="e.g., 20000"
+              />
+              <p className="text-xs text-muted-foreground">
+                Stop trading for the day after reaching this profit. Leave empty to disable.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overallProfitTarget">Overall Profit Target (₹)</Label>
+              <Input
+                id="overallProfitTarget"
+                type="number"
+                value={overallProfitTarget}
+                onChange={(e) => setOverallProfitTarget(e.target.value)}
+                placeholder="e.g., 100000"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lifetime profit target for this strategy. Leave empty to disable.
+              </p>
+            </div>
+
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="profitCutoffAction">Action When Target Reached</Label>
+              <Select
+                value={profitCutoffAction}
+                onValueChange={(value: ProfitCutoffAction) => setProfitCutoffAction(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {profitCutoffActions.map((action) => (
+                    <SelectItem key={action.value} value={action.value}>
+                      <div className="flex flex-col">
+                        <span>{action.label}</span>
+                        <span className="text-xs text-muted-foreground">{action.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </TabsContent>
         </Tabs>

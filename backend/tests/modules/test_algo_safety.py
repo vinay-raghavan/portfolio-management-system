@@ -44,6 +44,10 @@ def mock_strategy():
     strategy.max_consecutive_losses = 5
     strategy.position_sizing_method = PositionSizingMethod.FIXED_QUANTITY
     strategy.position_sizing_value = Decimal("10")
+    # Profit cutoff fields - None means disabled
+    strategy.max_daily_profit = None
+    strategy.overall_profit_target = None
+    strategy.profit_cutoff_action = None
     return strategy
 
 
@@ -182,6 +186,76 @@ class TestCircuitBreaker:
         await circuit_breaker.reset("test-strategy-id")
 
         mock_redis.delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_trigger_on_daily_profit_target(self, mock_redis, mock_strategy):
+        """Test circuit breaker triggers when daily profit target is reached."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "18000",
+                "consecutive_losses": 0,
+            }
+        )
+        # Set daily profit target
+        mock_strategy.max_daily_profit = Decimal("20000")
+        circuit_breaker = CircuitBreaker(mock_redis)
+
+        state = await circuit_breaker.check_and_update(
+            strategy=mock_strategy,
+            trade_pnl=Decimal("3000"),  # This brings total to 21000
+            is_loss=False,
+        )
+
+        assert state.is_triggered is True
+        assert "Daily profit target" in state.trigger_reason
+
+    @pytest.mark.asyncio
+    async def test_trigger_on_overall_profit_target(self, mock_redis, mock_strategy):
+        """Test circuit breaker triggers when overall profit target is reached."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "5000",
+                "overall_profit": "98000",  # Already at 98k
+                "consecutive_losses": 0,
+            }
+        )
+        # Set overall profit target
+        mock_strategy.overall_profit_target = Decimal("100000")
+        circuit_breaker = CircuitBreaker(mock_redis)
+
+        state = await circuit_breaker.check_and_update(
+            strategy=mock_strategy,
+            trade_pnl=Decimal("3000"),  # This brings total to 101k
+            is_loss=False,
+        )
+
+        assert state.is_triggered is True
+        assert "Overall profit target" in state.trigger_reason
+
+    @pytest.mark.asyncio
+    async def test_no_trigger_when_profit_targets_disabled(self, mock_redis, mock_strategy):
+        """Test no trigger when profit targets are None (disabled)."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "50000",
+                "consecutive_losses": 0,
+            }
+        )
+        # Profit targets are None (disabled)
+        mock_strategy.max_daily_profit = None
+        mock_strategy.overall_profit_target = None
+        circuit_breaker = CircuitBreaker(mock_redis)
+
+        state = await circuit_breaker.check_and_update(
+            strategy=mock_strategy,
+            trade_pnl=Decimal("10000"),
+            is_loss=False,
+        )
+
+        assert state.is_triggered is False
 
 
 class TestAlgoRateLimiter:

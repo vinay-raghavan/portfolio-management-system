@@ -24,6 +24,17 @@ class StrategyStatus(str, Enum):
     KILLED = "KILLED"  # Stopped by kill switch
 
 
+class ProfitCutoffAction(str, Enum):
+    """Action to take when profit cutoff is reached."""
+
+    PAUSE_STRATEGY = "PAUSE_STRATEGY"  # Pause strategy for the day/overall
+    CLOSE_POSITIONS_AND_PAUSE = "CLOSE_POSITIONS_AND_PAUSE"  # Close positions and pause
+    CLOSE_POSITIONS_AND_CONTINUE = (
+        "CLOSE_POSITIONS_AND_CONTINUE"  # Close positions, reset, keep trading
+    )
+    NOTIFY_ONLY = "NOTIFY_ONLY"  # Only send notification, continue trading
+
+
 class ScheduleType(str, Enum):
     """Schedule type for strategy execution."""
 
@@ -138,6 +149,19 @@ class UserStrategy(Base):
     max_consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     max_drawdown_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("10.00")
+    )
+
+    # Profit cutoff settings
+    max_daily_profit: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True, default=None
+    )  # Stop trading for the day after this profit (e.g., ₹20,000)
+    overall_profit_target: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True, default=None
+    )  # Optional: lifetime target for the strategy
+    profit_cutoff_action: Mapped[ProfitCutoffAction] = mapped_column(
+        SQLEnum(ProfitCutoffAction, name="profitcutoffaction", create_type=False),
+        nullable=False,
+        default=ProfitCutoffAction.PAUSE_STRATEGY,
     )
 
     # Tracking

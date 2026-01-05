@@ -142,6 +142,108 @@ class TestCircuitBreaker:
         assert state.is_triggered is False
         assert state.consecutive_losses == 0  # Should reset
 
+    async def test_circuit_breaker_triggers_on_daily_profit_target(
+        self, circuit_breaker, mock_redis
+    ):
+        """Test circuit breaker triggers when daily profit target is reached."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "18000",
+                "overall_profit": "50000",
+                "consecutive_losses": 0,
+            }
+        ).encode()
+
+        # Add a profit that pushes us over the daily target
+        state = await circuit_breaker.check_and_update(
+            strategy_id="strat-1",
+            max_daily_loss=Decimal("5000"),
+            max_consecutive_losses=3,
+            trade_pnl=Decimal("3000"),  # Takes daily profit to 21000
+            max_daily_profit=Decimal("20000"),
+        )
+
+        assert state.is_triggered is True
+        assert state.profit_cutoff_triggered is True
+        assert "Daily profit target" in (state.trigger_reason or "")
+
+    async def test_circuit_breaker_triggers_on_overall_profit_target(
+        self, circuit_breaker, mock_redis
+    ):
+        """Test circuit breaker triggers when overall profit target is reached."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "5000",
+                "overall_profit": "95000",
+                "consecutive_losses": 0,
+            }
+        ).encode()
+
+        # Add a profit that pushes us over the overall target
+        state = await circuit_breaker.check_and_update(
+            strategy_id="strat-1",
+            max_daily_loss=Decimal("5000"),
+            max_consecutive_losses=3,
+            trade_pnl=Decimal("10000"),  # Takes overall profit to 105000
+            overall_profit_target=Decimal("100000"),
+        )
+
+        assert state.is_triggered is True
+        assert state.profit_cutoff_triggered is True
+        assert "Overall profit target" in (state.trigger_reason or "")
+
+    async def test_circuit_breaker_includes_unrealized_pnl_in_profit_check(
+        self, circuit_breaker, mock_redis
+    ):
+        """Test that unrealized P&L is included when checking profit targets."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "15000",  # Realized profit
+                "overall_profit": "50000",
+                "consecutive_losses": 0,
+            }
+        ).encode()
+
+        # Unrealized P&L of 6000 should push total daily profit to 21000
+        state = await circuit_breaker.check_and_update(
+            strategy_id="strat-1",
+            max_daily_loss=Decimal("5000"),
+            max_consecutive_losses=3,
+            unrealized_pnl=Decimal("6000"),
+            max_daily_profit=Decimal("20000"),
+        )
+
+        assert state.is_triggered is True
+        assert state.profit_cutoff_triggered is True
+        assert "unrealized" in (state.trigger_reason or "").lower()
+
+    async def test_circuit_breaker_no_trigger_when_below_profit_target(
+        self, circuit_breaker, mock_redis
+    ):
+        """Test circuit breaker does not trigger when below profit target."""
+        mock_redis.get.return_value = json.dumps(
+            {
+                "daily_loss": "0",
+                "daily_profit": "10000",
+                "overall_profit": "50000",
+                "consecutive_losses": 0,
+            }
+        ).encode()
+
+        state = await circuit_breaker.check_and_update(
+            strategy_id="strat-1",
+            max_daily_loss=Decimal("5000"),
+            max_consecutive_losses=3,
+            trade_pnl=Decimal("5000"),  # Takes daily profit to 15000
+            max_daily_profit=Decimal("20000"),
+        )
+
+        assert state.is_triggered is False
+        assert state.profit_cutoff_triggered is False
+
 
 class TestStrategyCooldown:
     """Tests for StrategyCooldown."""
