@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.providers.data.nse import IST, NSEDataProvider
+from shared.providers.data.nse import IST, NSEDataProvider
 
 
 class TestNSEDataProvider:
@@ -57,7 +57,7 @@ class TestNSEDataProvider:
         # Create a weekday datetime during market hours (11 AM IST)
         market_time = datetime(2024, 1, 15, 11, 0, 0, tzinfo=IST)  # Monday
 
-        with patch("app.providers.data.nse.datetime") as mock_datetime:
+        with patch("shared.providers.data.nse.datetime") as mock_datetime:
             mock_datetime.now.return_value = market_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
             # We need to check the actual implementation
@@ -70,7 +70,7 @@ class TestNSEDataProvider:
         # 9:00 AM IST - before market open
         market_time = datetime(2024, 1, 15, 9, 0, 0, tzinfo=IST)
 
-        with patch("app.providers.data.nse.datetime") as mock_datetime:
+        with patch("shared.providers.data.nse.datetime") as mock_datetime:
             mock_datetime.now.return_value = market_time
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
             # Market should be closed - result depends on implementation

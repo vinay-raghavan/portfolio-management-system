@@ -4,9 +4,7 @@ This module re-exports the broker abstraction from the providers layer.
 Use app.providers.broker for direct access to broker functionality.
 """
 
-from app.providers.broker.base import Broker
-from app.providers.broker.factory import BrokerFactory, get_broker
-from app.providers.broker.paper import PaperBroker
+from app.providers.broker import Broker, BrokerFactory, PaperBroker, get_broker
 
 # Legacy alias for backward compatibility
 BrokerInterface = Broker

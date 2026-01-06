@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.providers.broker.paper import PaperBroker
+from app.providers.broker import PaperBroker
 from app.providers.schemas import (
     OrderRequest,
     OrderSide,
@@ -19,11 +19,8 @@ class TestPaperBrokerStopLossOrders:
 
     @pytest.fixture
     def broker(self):
-        """Create PaperBroker instance with mocked data provider."""
-        broker = PaperBroker()
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=100.00)
-        broker._data_provider = mock_provider
+        """Create PaperBroker instance with mocked price fetcher."""
+        broker = PaperBroker(price_fetcher=lambda symbol: 100.00)
         broker._connected = True
         return broker
 
@@ -79,7 +76,7 @@ class TestPaperBrokerStopLossOrders:
     async def test_sl_order_triggered_executes(self, broker):
         """Test that SL order executes when trigger is hit."""
         # Set current price at trigger level
-        broker._data_provider.get_current_price = AsyncMock(return_value=89.00)
+        broker._price_fetcher = lambda symbol: 89.00
 
         order = OrderRequest(
             symbol="RELIANCE",
@@ -108,7 +105,7 @@ class TestPaperBrokerStopLossOrders:
     @pytest.mark.asyncio
     async def test_slm_order_triggered_executes_at_market(self, broker):
         """Test that SL-M order executes at market price when triggered."""
-        broker._data_provider.get_current_price = AsyncMock(return_value=85.00)
+        broker._price_fetcher = lambda symbol: 85.00
 
         order = OrderRequest(
             symbol="RELIANCE",
@@ -137,7 +134,7 @@ class TestPaperBrokerStopLossOrders:
     async def test_buy_sl_order_trigger_condition(self, broker):
         """Test BUY SL order triggers when price goes up."""
         # For BUY SL, triggers when price >= trigger_price
-        broker._data_provider.get_current_price = AsyncMock(return_value=110.00)
+        broker._price_fetcher = lambda symbol: 110.00
 
         order = OrderRequest(
             symbol="RELIANCE",
@@ -157,11 +154,8 @@ class TestPaperBrokerGTTOrders:
 
     @pytest.fixture
     def broker(self):
-        """Create PaperBroker instance with mocked data provider."""
-        broker = PaperBroker()
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=100.00)
-        broker._data_provider = mock_provider
+        """Create PaperBroker instance with mocked price fetcher."""
+        broker = PaperBroker(price_fetcher=lambda symbol: 100.00)
         broker._connected = True
         return broker
 
@@ -201,7 +195,7 @@ class TestPaperBrokerGTTOrders:
     @pytest.mark.asyncio
     async def test_gtt_order_triggered_executes(self, broker):
         """Test that GTT order executes when trigger is hit."""
-        broker._data_provider.get_current_price = AsyncMock(return_value=110.00)
+        broker._price_fetcher = lambda symbol: 110.00
 
         order = OrderRequest(
             symbol="RELIANCE",
@@ -241,11 +235,8 @@ class TestPaperBrokerTriggerCheck:
 
     @pytest.fixture
     def broker(self):
-        """Create PaperBroker instance with mocked data provider."""
-        broker = PaperBroker()
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=100.00)
-        broker._data_provider = mock_provider
+        """Create PaperBroker instance with mocked price fetcher."""
+        broker = PaperBroker(price_fetcher=lambda symbol: 100.00)
         broker._connected = True
         return broker
 
@@ -277,7 +268,7 @@ class TestPaperBrokerTriggerCheck:
         assert response.status == OrderStatus.OPEN
 
         # Now price drops below trigger
-        broker._data_provider.get_current_price = AsyncMock(return_value=85.00)
+        broker._price_fetcher = lambda symbol: 85.00
 
         executed = await broker.check_trigger_orders("user1")
         assert len(executed) == 1
@@ -308,7 +299,7 @@ class TestPaperBrokerTriggerCheck:
         await broker.place_order("user1", order)
 
         # Price stays above trigger
-        broker._data_provider.get_current_price = AsyncMock(return_value=95.00)
+        broker._price_fetcher = lambda symbol: 95.00
 
         executed = await broker.check_trigger_orders("user1")
         assert len(executed) == 0

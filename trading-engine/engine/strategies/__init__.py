@@ -1,49 +1,75 @@
-"""Trading strategies for signal generation."""
+"""Trading strategies for signal generation.
 
-from engine.strategies.base import BaseStrategy
-from engine.strategies.bollinger import BollingerSqueezeStrategy
-from engine.strategies.composite import (
+This module re-exports strategies from the shared package for backward compatibility.
+All strategy implementations are now in the shared package.
+"""
+
+# Re-export everything from shared.strategies
+from shared.models.signals import SignalData
+from shared.strategies import (
+    PREBUILT_STRATEGIES,
+    BaseStrategy,
+    BollingerBandsStrategy,
     CombineLogic,
     CompositeStrategy,
     CompositeStrategyFactory,
+    GapAndGoStrategy,
+    GapInfo,
+    GapType,
+    MACDStrategy,
+    MovingAverageCrossoverStrategy,
+    OpeningRange,
+    ORBStrategy,
+    PriceActionVolumeSwingStrategy,
+    RSIStrategy,
     StrategyComponent,
+    StrategyRegistry,
+    TWAPPlan,
+    TWAPSlice,
+    TWAPStrategy,
+    VWAPMomentumStrategy,
+    VWAPReversionStrategy,
+    get_prebuilt_strategy,
+    list_prebuilt_strategies,
+    register_all_prebuilt_strategies,
 )
-from engine.strategies.gap_go import GapAndGoStrategy
-from engine.strategies.macd import MACDCrossoverStrategy
-from engine.strategies.moving_average import MovingAverageCrossoverStrategy
-from engine.strategies.orb import ORBStrategy
-from engine.strategies.prebuilt import (
+from shared.strategies.prebuilt import (
     create_bollinger_rsi_squeeze,
     create_gap_momentum,
     create_intraday_momentum,
     create_rsi_macd_confluence,
     create_trend_momentum_pullback,
     create_triple_confirmation,
-    register_all_prebuilt_strategies,
 )
-from engine.strategies.price_action_volume_swing import PriceActionVolumeSwingStrategy
-from engine.strategies.registry import StrategyRegistry
 
-# Import strategies to register them (decorator auto-registers on import)
-from engine.strategies.rsi import RSIStrategy
-from engine.strategies.twap import TWAPStrategy
-from engine.strategies.vwap import VWAPReversionStrategy
-from engine.strategies.vwap_momentum import VWAPMomentumStrategy
+# Aliases for backward compatibility with old naming
+BollingerSqueezeStrategy = BollingerBandsStrategy
+MACDCrossoverStrategy = MACDStrategy
+MovingAverageStrategy = MovingAverageCrossoverStrategy
 
 __all__ = [
     "BaseStrategy",
+    "SignalData",
     "StrategyRegistry",
     # Single-indicator strategies
     "RSIStrategy",
     "MACDCrossoverStrategy",
+    "MACDStrategy",
     "BollingerSqueezeStrategy",
+    "BollingerBandsStrategy",
     "MovingAverageCrossoverStrategy",
+    "MovingAverageStrategy",
     # Intraday strategies
     "VWAPMomentumStrategy",
     "VWAPReversionStrategy",
     "ORBStrategy",
+    "OpeningRange",
     "GapAndGoStrategy",
+    "GapType",
+    "GapInfo",
     "TWAPStrategy",
+    "TWAPSlice",
+    "TWAPPlan",
     # Swing trading strategies
     "PriceActionVolumeSwingStrategy",
     # Composite strategies
@@ -52,6 +78,7 @@ __all__ = [
     "CombineLogic",
     "StrategyComponent",
     # Pre-built combined strategies
+    "PREBUILT_STRATEGIES",
     "create_rsi_macd_confluence",
     "create_trend_momentum_pullback",
     "create_bollinger_rsi_squeeze",
@@ -59,4 +86,6 @@ __all__ = [
     "create_intraday_momentum",
     "create_gap_momentum",
     "register_all_prebuilt_strategies",
+    "get_prebuilt_strategy",
+    "list_prebuilt_strategies",
 ]

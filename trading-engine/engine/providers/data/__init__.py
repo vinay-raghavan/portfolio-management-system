@@ -1,12 +1,16 @@
-"""Data providers package."""
+"""Data providers package.
 
-from engine.providers.data.base import DataProvider
-from engine.providers.data.factory import (
+This module re-exports from the shared package for backward compatibility.
+"""
+
+from shared.providers.data import (
+    DataProvider,
     DataProviderFactory,
+    NSEDataProvider,
+    YahooDataProvider,
     check_data_provider_health,
     get_data_provider,
 )
-from engine.providers.data.yahoo import YahooDataProvider
 
 __all__ = [
     "DataProvider",
@@ -14,4 +18,5 @@ __all__ = [
     "check_data_provider_health",
     "get_data_provider",
     "YahooDataProvider",
+    "NSEDataProvider",
 ]

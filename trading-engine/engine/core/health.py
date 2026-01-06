@@ -2,7 +2,7 @@
 
 from engine.core.database import check_db_health
 from engine.core.redis import check_redis_health
-from engine.providers.data.factory import check_data_provider_health
+from engine.providers.data import check_data_provider_health
 
 
 async def check_all_health() -> dict[str, str | dict]:

@@ -1,8 +1,9 @@
-"""Broker provider abstraction layer."""
+"""Broker provider abstraction layer.
 
-from app.providers.broker.base import Broker
-from app.providers.broker.factory import BrokerFactory, get_broker
-from app.providers.broker.paper import PaperBroker
+This module re-exports from the shared package for backward compatibility.
+"""
+
+from shared.providers.broker import Broker, BrokerFactory, PaperBroker, get_broker
 
 __all__ = [
     "Broker",

@@ -1,8 +1,9 @@
-"""Broker providers package."""
+"""Broker providers package.
 
-from engine.providers.broker.base import Broker
-from engine.providers.broker.factory import BrokerFactory, get_broker
-from engine.providers.broker.paper import PaperBroker
+This module re-exports from the shared package for backward compatibility.
+"""
+
+from shared.providers.broker import Broker, BrokerFactory, PaperBroker, get_broker
 
 __all__ = [
     "Broker",

@@ -4,12 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.providers.broker.base import Broker
-from app.providers.broker.factory import BrokerFactory
-from app.providers.broker.paper import PaperBroker
-from app.providers.data.base import DataProvider
-from app.providers.data.factory import DataProviderFactory, get_data_provider
-from app.providers.data.yahoo import YahooDataProvider
+from app.providers.broker import Broker, BrokerFactory, PaperBroker
+from app.providers.data import DataProvider, DataProviderFactory, YahooDataProvider, get_data_provider
 
 
 class TestDataProviderFactory:
@@ -64,13 +60,10 @@ class TestDataProviderFactory:
 
     def test_get_data_provider_uses_settings(self):
         """Test get_data_provider uses settings."""
-        with patch("app.providers.data.factory.settings") as mock_settings:
-            mock_settings.DATA_PROVIDER = "yahoo"
-            mock_settings.DEFAULT_MARKET = "IN"
-            # Clear cache
-            get_data_provider.cache_clear()
-            provider = get_data_provider()
-            assert isinstance(provider, YahooDataProvider)
+        # Clear cache and get provider
+        get_data_provider.cache_clear()
+        provider = get_data_provider("yahoo")
+        assert isinstance(provider, YahooDataProvider)
 
 
 class TestBrokerFactory:
@@ -109,12 +102,8 @@ class TestBrokerFactory:
 
     def test_is_paper_trading(self):
         """Test paper trading detection."""
-        with patch("app.providers.broker.factory.settings") as mock_settings:
-            mock_settings.BROKER_TYPE = "paper"
-            assert BrokerFactory.is_paper_trading() is True
-
-            mock_settings.BROKER_TYPE = "angelone"
-            assert BrokerFactory.is_paper_trading() is False
+        assert BrokerFactory.is_paper_trading("paper") is True
+        assert BrokerFactory.is_paper_trading("angelone") is False
 
     def test_register_custom_broker(self):
         """Test registering custom broker."""

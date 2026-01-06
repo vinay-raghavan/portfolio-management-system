@@ -30,8 +30,8 @@ from engine.models.algo import (
     StrategyExecution,
 )
 from engine.models.signals import SignalData, SignalType
-from engine.providers.broker.base import Broker
-from engine.providers.data.base import DataProvider
+from engine.providers.broker import Broker
+from engine.providers.data import DataProvider
 from engine.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
 from engine.strategies.base import BaseStrategy
 from engine.strategies.registry import StrategyRegistry
