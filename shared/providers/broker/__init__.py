@@ -1,15 +1,24 @@
-"""
-Broker providers module.
+"""Broker providers for order execution.
+
+This module provides abstract and concrete broker implementations
+for executing trades across different brokers.
 """
 
-from shared.providers.broker.base import Broker
-from shared.providers.broker.factory import BrokerFactory, get_broker
-from shared.providers.broker.paper import PaperBroker
+from .base import Broker
+from .factory import (
+    BrokerFactory,
+    get_broker,
+    set_config_getter,
+    set_default_broker_type,
+)
+from .paper import PaperBroker, set_initial_balance
 
 __all__ = [
     "Broker",
     "BrokerFactory",
-    "get_broker",
     "PaperBroker",
+    "get_broker",
+    "set_config_getter",
+    "set_default_broker_type",
+    "set_initial_balance",
 ]
-

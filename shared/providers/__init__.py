@@ -2,8 +2,7 @@
 Providers module - Broker and Data provider abstractions.
 """
 
-from shared.providers.schemas import (
-    Exchange,
+from .schemas import (
     Funds,
     InstrumentInfo,
     MarketSession,
@@ -17,9 +16,8 @@ from shared.providers.schemas import (
     ProductType,
     Quote,
     SearchResult,
-    Segment,
 )
-from shared.providers.symbols import Symbol, SymbolMapper
+from .symbols import Exchange, Segment, Symbol, SymbolMapper
 
 __all__ = [
     # Enums
