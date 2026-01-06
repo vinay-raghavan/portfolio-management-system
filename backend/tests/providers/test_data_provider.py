@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.modules.data.service import MarketDataService
-from app.providers.data.base import DataProvider
-from app.providers.data.yahoo import YahooDataProvider
+from app.providers.data import DataProvider, YahooDataProvider
 from app.providers.schemas import MarketSession, Quote
 
 

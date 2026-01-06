@@ -5,10 +5,12 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from app.modules.signals.strategies.bollinger import BollingerSqueezeStrategy
-from app.modules.signals.strategies.macd import MACDCrossoverStrategy
-from app.modules.signals.strategies.moving_average import MovingAverageCrossoverStrategy
-from app.modules.signals.strategies.rsi import RSIStrategy
+from app.modules.signals.strategies import (
+    BollingerSqueezeStrategy,
+    MACDCrossoverStrategy,
+    MovingAverageCrossoverStrategy,
+    RSIStrategy,
+)
 
 
 def create_price_data(
@@ -98,7 +100,7 @@ class TestMACDStrategy:
     def test_strategy_name(self):
         """Test strategy name."""
         strategy = MACDCrossoverStrategy()
-        assert strategy.name == "macd_crossover"
+        assert strategy.name == "macd"
 
     def test_get_parameters(self):
         """Test get_parameters returns expected keys."""
@@ -153,9 +155,9 @@ class TestMovingAverageCrossoverStrategy:
 
     def test_ema_mode(self):
         """Test EMA mode configuration."""
-        strategy = MovingAverageCrossoverStrategy(ma_type="EMA")
+        strategy = MovingAverageCrossoverStrategy(ma_type="ema")
         params = strategy.get_parameters()
-        assert params["ma_type"] == "EMA"
+        assert params["ma_type"] == "ema"
 
     def test_signal_generation_uptrend(self):
         """Test signal generation on uptrend."""
@@ -203,7 +205,7 @@ class TestBollingerSqueezeStrategy:
     def test_strategy_name(self):
         """Test strategy name."""
         strategy = BollingerSqueezeStrategy()
-        assert strategy.name == "bollinger_squeeze"
+        assert strategy.name == "bollinger"
 
     def test_get_parameters(self):
         """Test get_parameters returns expected keys."""
@@ -211,7 +213,7 @@ class TestBollingerSqueezeStrategy:
         params = strategy.get_parameters()
         assert "bb_period" in params
         assert "bb_std" in params
-        assert "squeeze_percentile" in params
+        assert "atr_period" in params
 
     def test_signal_generation_with_sufficient_data(self):
         """Test signal generation with sufficient data."""
@@ -244,20 +246,20 @@ class TestStrategyRegistry:
 
     def test_registry_has_strategies(self):
         """Test that registry contains all strategies."""
-        from app.modules.signals.strategies.registry import StrategyRegistry
+        from app.modules.signals.strategies import StrategyRegistry
 
         strategies = StrategyRegistry.list_strategies()
         assert len(strategies) >= 4
 
         names = [s["name"] for s in strategies]
         assert "rsi" in names
-        assert "macd_crossover" in names
+        assert "macd" in names
         assert "ma_crossover" in names
-        assert "bollinger_squeeze" in names
+        assert "bollinger" in names
 
     def test_get_strategy_by_name(self):
         """Test getting strategy by name."""
-        from app.modules.signals.strategies.registry import StrategyRegistry
+        from app.modules.signals.strategies import StrategyRegistry
 
         strategy = StrategyRegistry.get("rsi")
         assert strategy is not None
@@ -265,14 +267,14 @@ class TestStrategyRegistry:
 
     def test_get_nonexistent_strategy(self):
         """Test getting non-existent strategy returns None."""
-        from app.modules.signals.strategies.registry import StrategyRegistry
+        from app.modules.signals.strategies import StrategyRegistry
 
         strategy = StrategyRegistry.get("NonExistent Strategy")
         assert strategy is None
 
     def test_get_all_strategies(self):
         """Test getting all strategy instances."""
-        from app.modules.signals.strategies.registry import StrategyRegistry
+        from app.modules.signals.strategies import StrategyRegistry
 
         strategies = StrategyRegistry.get_all()
         assert len(strategies) >= 4

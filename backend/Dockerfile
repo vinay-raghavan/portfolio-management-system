@@ -6,20 +6,23 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-RUN pip install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy shared package first (for dependency resolution)
+COPY shared /shared
 
 # Copy dependency files and README (required by pyproject.toml)
-COPY pyproject.toml uv.lock README.md ./
+COPY backend/pyproject.toml backend/README.md ./
 
 # Copy application code (needed for editable install)
-COPY app ./app
+COPY backend/app ./app
 
 # Copy Alembic configuration and migrations
-COPY alembic.ini ./
-COPY alembic ./alembic
+COPY backend/alembic.ini ./
+COPY backend/alembic ./alembic
 
 # Install dependencies
-RUN uv sync --frozen --no-dev
+RUN uv sync --no-dev
 
 # Expose port
 EXPOSE 8000

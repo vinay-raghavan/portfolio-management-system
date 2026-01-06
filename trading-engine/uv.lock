@@ -537,6 +537,43 @@ wheels = [
 ]
 
 [[package]]
+name = "portfolio-shared"
+version = "0.1.0"
+source = { editable = "../shared" }
+dependencies = [
+    { name = "httpx" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+    { name = "ta" },
+    { name = "tenacity" },
+    { name = "yfinance" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "redis", specifier = ">=5.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "ta", specifier = ">=0.11.0" },
+    { name = "tenacity", specifier = ">=8.0.0" },
+    { name = "yfinance", specifier = ">=0.2.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "prometheus-client"
 version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
@@ -911,6 +948,7 @@ dependencies = [
     { name = "httpx" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "portfolio-shared" },
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -944,6 +982,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pandas", specifier = ">=2.2.0" },
+    { name = "portfolio-shared", editable = "../shared" },
     { name = "prometheus-client", specifier = ">=0.21.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },

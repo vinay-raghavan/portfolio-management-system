@@ -10,14 +10,17 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy shared package first (for dependency resolution)
+COPY shared /shared
 
-# Install dependencies
+# Copy dependency files
+COPY trading-engine/pyproject.toml ./
+
+# Install dependencies (including shared package)
 RUN uv sync --no-dev --no-install-project
 
 # Copy application code
-COPY . .
+COPY trading-engine/ .
 
 # Install the project
 RUN uv sync --no-dev

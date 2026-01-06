@@ -11,8 +11,7 @@ from app.modules.data.schemas import (
     StockInfo,
     StockQuote,
 )
-from app.providers.data.base import DataProvider
-from app.providers.data.factory import get_data_provider
+from app.providers.data import DataProvider, get_data_provider
 
 logger = logging.getLogger(__name__)
 

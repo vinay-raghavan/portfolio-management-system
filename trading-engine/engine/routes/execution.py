@@ -17,8 +17,8 @@ from engine.config import settings
 from engine.core.database import get_db
 from engine.core.redis import get_redis
 from engine.models.algo import PositionSizingMethod, StrategyStatus
-from engine.providers.broker.factory import get_broker
-from engine.providers.data.factory import get_data_provider
+from engine.providers.broker import get_broker
+from engine.providers.data import get_data_provider
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)

@@ -35,7 +35,7 @@ from app.modules.algo.universe_service import (
     PREDEFINED_UNIVERSES,
     UniverseService,
 )
-from app.providers.data.nse import NSEDataProvider
+from app.providers.data import NSEDataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -634,7 +634,7 @@ async def get_pnl_summary(
     - Win rate and trade counts
     - Best/worst trade performance
     """
-    from app.providers.data.yahoo import YahooDataProvider
+    from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
 
@@ -669,7 +669,7 @@ async def get_pnl_by_strategy(
     - Win rate and trade counts per strategy
     - Open/closed position counts
     """
-    from app.providers.data.yahoo import YahooDataProvider
+    from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
 
@@ -723,7 +723,7 @@ async def get_unrealized_pnl(
     - Total unrealized P&L
     - Entry value vs current value
     """
-    from app.providers.data.yahoo import YahooDataProvider
+    from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
 

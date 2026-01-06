@@ -14,21 +14,23 @@ services:
   # Migrations - development mode with volume mount
   migrations:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     volumes:
       - ./backend:/app
+      - ./shared:/shared
       - /app/.venv
 
   # Backend API - development mode with hot reload
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: backend/Dockerfile.dev
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./shared:/shared
       - /app/.venv
     environment:
       DEBUG: "true"
