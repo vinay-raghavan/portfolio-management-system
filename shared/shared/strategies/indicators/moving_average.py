@@ -92,76 +92,90 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
         if golden_cross:
             strength = self._calculate_strength(current_fast, current_slow, fast_ma, slow_ma)
             confidence = self._calculate_confidence(fast_ma, slow_ma, is_bullish=True)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.BUY, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.BUY, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.BUY,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={
-                    "fast_ma": round(current_fast, 2),
-                    "slow_ma": round(current_slow, 2),
-                    "ma_type": self.ma_type.upper(),
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"Golden Cross: {self.fast_period} {self.ma_type.upper()} crossed above {self.slow_period} {self.ma_type.upper()}",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.BUY,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "fast_ma": round(current_fast, 2),
+                        "slow_ma": round(current_slow, 2),
+                        "ma_type": self.ma_type.upper(),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"Golden Cross: {self.fast_period} {self.ma_type.upper()} crossed above {self.slow_period} {self.ma_type.upper()}",
+                )
+            )
 
         elif death_cross:
             strength = self._calculate_strength(current_fast, current_slow, fast_ma, slow_ma)
             confidence = self._calculate_confidence(fast_ma, slow_ma, is_bullish=False)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.SELL, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.SELL,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={
-                    "fast_ma": round(current_fast, 2),
-                    "slow_ma": round(current_slow, 2),
-                    "ma_type": self.ma_type.upper(),
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"Death Cross: {self.fast_period} {self.ma_type.upper()} crossed below {self.slow_period} {self.ma_type.upper()}",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.SELL,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "fast_ma": round(current_fast, 2),
+                        "slow_ma": round(current_slow, 2),
+                        "ma_type": self.ma_type.upper(),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"Death Cross: {self.fast_period} {self.ma_type.upper()} crossed below {self.slow_period} {self.ma_type.upper()}",
+                )
+            )
 
         else:
             ma_diff = current_fast - current_slow
             relative_diff = abs(ma_diff) / current_slow if current_slow != 0 else 0
             strength = Decimal(str(0.5 + min(0.3, relative_diff * 10))).quantize(Decimal("0.0001"))
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.HOLD,
-                strength=strength,
-                confidence=Decimal("0.6"),
-                price_at_signal=current_price,
-                entry_price=None,
-                stop_loss=None,
-                take_profit=None,
-                risk_reward_ratio=None,
-                indicators={
-                    "fast_ma": round(current_fast, 2),
-                    "slow_ma": round(current_slow, 2),
-                    "ma_type": self.ma_type.upper(),
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"No crossover. Fast MA {'above' if current_fast > current_slow else 'below'} Slow MA",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.6"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={
+                        "fast_ma": round(current_fast, 2),
+                        "slow_ma": round(current_slow, 2),
+                        "ma_type": self.ma_type.upper(),
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"No crossover. Fast MA {'above' if current_fast > current_slow else 'below'} Slow MA",
+                )
+            )
 
         return signals
 
@@ -209,4 +223,3 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 confidence = 0.5
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

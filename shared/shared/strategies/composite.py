@@ -218,12 +218,22 @@ class CompositeStrategy(BaseStrategy):
             strength = self._avg_strength(buy_signals)
             confidence = self._avg_confidence(buy_signals)
             strategies = [c.strategy_name for c, _ in buy_signals]
-            return (SignalType.BUY, strength, confidence, f"All agree: BUY ({', '.join(strategies)})")
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"All agree: BUY ({', '.join(strategies)})",
+            )
         if len(sell_signals) == total:
             strength = self._avg_strength(sell_signals)
             confidence = self._avg_confidence(sell_signals)
             strategies = [c.strategy_name for c, _ in sell_signals]
-            return (SignalType.SELL, strength, confidence, f"All agree: SELL ({', '.join(strategies)})")
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"All agree: SELL ({', '.join(strategies)})",
+            )
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No unanimous agreement"
 
     def _combine_or(
@@ -237,16 +247,36 @@ class CompositeStrategy(BaseStrategy):
             sell_strength = self._max_strength(sell_signals)
             if buy_strength >= sell_strength:
                 best = max(buy_signals, key=lambda x: float(x[1].strength))
-                return (SignalType.BUY, best[1].strength, best[1].confidence, f"BUY from {best[0].strategy_name}")
+                return (
+                    SignalType.BUY,
+                    best[1].strength,
+                    best[1].confidence,
+                    f"BUY from {best[0].strategy_name}",
+                )
             else:
                 best = max(sell_signals, key=lambda x: float(x[1].strength))
-                return (SignalType.SELL, best[1].strength, best[1].confidence, f"SELL from {best[0].strategy_name}")
+                return (
+                    SignalType.SELL,
+                    best[1].strength,
+                    best[1].confidence,
+                    f"SELL from {best[0].strategy_name}",
+                )
         elif buy_signals:
             best = max(buy_signals, key=lambda x: float(x[1].strength))
-            return (SignalType.BUY, best[1].strength, best[1].confidence, f"BUY from {best[0].strategy_name}")
+            return (
+                SignalType.BUY,
+                best[1].strength,
+                best[1].confidence,
+                f"BUY from {best[0].strategy_name}",
+            )
         elif sell_signals:
             best = max(sell_signals, key=lambda x: float(x[1].strength))
-            return (SignalType.SELL, best[1].strength, best[1].confidence, f"SELL from {best[0].strategy_name}")
+            return (
+                SignalType.SELL,
+                best[1].strength,
+                best[1].confidence,
+                f"SELL from {best[0].strategy_name}",
+            )
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No signals triggered"
 
     def _combine_majority(
@@ -260,12 +290,29 @@ class CompositeStrategy(BaseStrategy):
         if len(buy_signals) >= min_agreement:
             strength = self._avg_strength(buy_signals)
             confidence = self._avg_confidence(buy_signals) * Decimal(str(len(buy_signals) / total))
-            return (SignalType.BUY, strength, confidence, f"Majority BUY ({len(buy_signals)}/{total})")
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"Majority BUY ({len(buy_signals)}/{total})",
+            )
         if len(sell_signals) >= min_agreement:
             strength = self._avg_strength(sell_signals)
-            confidence = self._avg_confidence(sell_signals) * Decimal(str(len(sell_signals) / total))
-            return (SignalType.SELL, strength, confidence, f"Majority SELL ({len(sell_signals)}/{total})")
-        return (SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), f"No majority (need {min_agreement}/{total})")
+            confidence = self._avg_confidence(sell_signals) * Decimal(
+                str(len(sell_signals) / total)
+            )
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"Majority SELL ({len(sell_signals)}/{total})",
+            )
+        return (
+            SignalType.HOLD,
+            Decimal("0.5"),
+            Decimal("0.5"),
+            f"No majority (need {min_agreement}/{total})",
+        )
 
     def _combine_weighted(
         self,
@@ -279,13 +326,27 @@ class CompositeStrategy(BaseStrategy):
         if total_weight == 0:
             return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "No weighted signals"
         if buy_weight > sell_weight and buy_weight >= self.min_combined_strength:
-            strength = Decimal(str(buy_weight / (buy_weight + sell_weight + 0.001))).quantize(Decimal("0.0001"))
+            strength = Decimal(str(buy_weight / (buy_weight + sell_weight + 0.001))).quantize(
+                Decimal("0.0001")
+            )
             confidence = self._avg_confidence(buy_signals)
-            return (SignalType.BUY, strength, confidence, f"Weighted BUY ({buy_weight:.2f} vs {sell_weight:.2f})")
+            return (
+                SignalType.BUY,
+                strength,
+                confidence,
+                f"Weighted BUY ({buy_weight:.2f} vs {sell_weight:.2f})",
+            )
         elif sell_weight > buy_weight and sell_weight >= self.min_combined_strength:
-            strength = Decimal(str(sell_weight / (buy_weight + sell_weight + 0.001))).quantize(Decimal("0.0001"))
+            strength = Decimal(str(sell_weight / (buy_weight + sell_weight + 0.001))).quantize(
+                Decimal("0.0001")
+            )
             confidence = self._avg_confidence(sell_signals)
-            return (SignalType.SELL, strength, confidence, f"Weighted SELL ({sell_weight:.2f} vs {buy_weight:.2f})")
+            return (
+                SignalType.SELL,
+                strength,
+                confidence,
+                f"Weighted SELL ({sell_weight:.2f} vs {buy_weight:.2f})",
+            )
         return SignalType.HOLD, Decimal("0.5"), Decimal("0.5"), "Weighted signals inconclusive"
 
     def _avg_strength(self, signals: list[tuple[StrategyComponent, SignalData]]) -> Decimal:
@@ -381,4 +442,3 @@ class CompositeStrategyFactory:
         strategy_class.__init__ = new_init
         StrategyRegistry.register(strategy_class)
         return strategy
-
