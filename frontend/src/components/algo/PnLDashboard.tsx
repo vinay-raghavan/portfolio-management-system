@@ -115,7 +115,7 @@ export function PnLDashboard({ className }: PnLDashboardProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {((summary?.win_rate ?? 0) * 100).toFixed(1)}%
+              {Number(summary?.win_rate ?? 0).toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
               {summary?.winning_trades ?? 0}W / {summary?.losing_trades ?? 0}L
@@ -240,7 +240,7 @@ function StrategyPnLTable({
                 <TableCell className={cn('text-right font-medium', s.total_pnl >= 0 ? 'text-green-600' : 'text-red-600')}>
                   {formatPrice(s.total_pnl)}
                 </TableCell>
-                <TableCell className="text-right">{((s.win_rate ?? 0) * 100).toFixed(1)}%</TableCell>
+                <TableCell className="text-right">{Number(s.win_rate ?? 0).toFixed(1)}%</TableCell>
                 <TableCell className="text-right">{s.total_trades}</TableCell>
               </TableRow>
             ))}

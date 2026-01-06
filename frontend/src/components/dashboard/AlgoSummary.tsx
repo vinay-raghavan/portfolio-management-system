@@ -138,7 +138,7 @@ export function AlgoSummary() {
             <span className="text-muted-foreground">Win Rate: </span>
             <span className="font-medium">
               {pnlSummary?.win_rate !== undefined
-                ? (pnlSummary.win_rate * 100).toFixed(1)
+                ? Number(pnlSummary.win_rate).toFixed(1)
                 : '0.0'}%
             </span>
           </div>

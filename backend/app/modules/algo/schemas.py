@@ -517,6 +517,10 @@ class PositionResponse(BaseModel):
     remaining_quantity: int
     realized_pnl: Decimal
     realized_pnl_percent: Decimal
+    # Unrealized P&L fields (for open positions)
+    current_price: Decimal | None = None
+    unrealized_pnl: Decimal | None = None
+    unrealized_pnl_percent: Decimal | None = None
     is_winner: bool | None
     stop_loss: Decimal | None
     take_profit: Decimal | None
@@ -617,3 +621,56 @@ class UnrealizedPnLResponse(BaseModel):
     total_entry_value: Decimal = Field(default=Decimal("0"))
     total_current_value: Decimal = Field(default=Decimal("0"))
     positions_count: int = 0
+
+
+# ============== Exit Position Schemas ==============
+
+
+class ClosePositionRequest(BaseModel):
+    """Request to close a position."""
+
+    exit_price: Decimal | None = Field(
+        default=None,
+        description="Exit price. If not provided, will fetch current market price.",
+    )
+    quantity: int | None = Field(
+        default=None,
+        description="Quantity to close. If not provided, closes entire position.",
+    )
+
+
+class ClosePositionResponse(BaseModel):
+    """Response from closing a position."""
+
+    position_id: str
+    symbol: str
+    side: str
+    closed_quantity: int
+    remaining_quantity: int
+    entry_price: Decimal
+    exit_price: Decimal
+    realized_pnl: Decimal
+    realized_pnl_percent: Decimal
+    is_winner: bool
+    status: str
+    message: str
+
+
+class SquareOffStrategyRequest(BaseModel):
+    """Request to square off all positions for a strategy."""
+
+    exit_prices: dict[str, Decimal] | None = Field(
+        default=None,
+        description="Optional dict of symbol -> exit price. Missing symbols will use market price.",
+    )
+
+
+class SquareOffStrategyResponse(BaseModel):
+    """Response from squaring off a strategy."""
+
+    strategy_id: str
+    strategy_name: str
+    positions_closed: int
+    total_realized_pnl: Decimal
+    closed_positions: list[ClosePositionResponse]
+    message: str

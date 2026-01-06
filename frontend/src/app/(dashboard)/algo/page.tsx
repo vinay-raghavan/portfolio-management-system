@@ -106,6 +106,13 @@ export default function AlgoTradingPage() {
     refetchInterval: 30000,
   });
 
+  // Fetch P&L by strategy for accurate trade counts
+  const { data: pnlByStrategy } = useQuery({
+    queryKey: ['algo-pnl-by-strategy'],
+    queryFn: () => algoApi.getPnLByStrategy().then((res) => res.data),
+    refetchInterval: 30000,
+  });
+
   // Enable/disable mutations
   const enableMutation = useMutation({
     mutationFn: (id: string) => algoApi.enableStrategy(id),
@@ -402,7 +409,7 @@ export default function AlgoTradingPage() {
           <CardContent>
             <div className="text-2xl font-bold">
               {pnlSummary?.win_rate !== undefined
-                ? ((pnlSummary.win_rate ?? 0) * 100).toFixed(1)
+                ? Number(pnlSummary.win_rate ?? 0).toFixed(1)
                 : (winRate ?? 0).toFixed(1)}%
             </div>
             <div className="flex gap-3 text-xs text-muted-foreground mt-1">
@@ -465,6 +472,12 @@ export default function AlgoTradingPage() {
                     strategy.strategy_type.includes('momentum');
                   const isExpanded = expandedRows.has(strategy.id);
 
+                  // Get P&L data for this strategy (based on closed positions)
+                  const strategyPnL = pnlByStrategy?.strategies.find((s) => s.strategy_id === strategy.id);
+                  const totalTrades = strategyPnL?.total_trades ?? 0;
+                  const winningTrades = strategyPnL?.winning_trades ?? 0;
+                  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+
                   return (
                   <>
                   <TableRow key={strategy.id} className="cursor-pointer hover:bg-muted/50" onClick={() => toggleRowExpanded(strategy.id)}>
@@ -508,11 +521,9 @@ export default function AlgoTradingPage() {
                         {strategy.schedule_type}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{strategy.total_trades}</TableCell>
+                    <TableCell className="text-right">{totalTrades}</TableCell>
                     <TableCell className="text-right">
-                      {strategy.total_trades > 0
-                        ? ((strategy.winning_trades / strategy.total_trades) * 100).toFixed(1)
-                        : 0}%
+                      {winRate.toFixed(1)}%
                     </TableCell>
                     <TableCell className={`text-right ${strategy.total_pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       {formatPrice(strategy.total_pnl)}

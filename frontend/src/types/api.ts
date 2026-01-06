@@ -777,10 +777,47 @@ export interface AlgoPosition {
   remaining_quantity: number;
   realized_pnl: number;
   realized_pnl_percent: number;
+  // Unrealized P&L fields (for open positions)
+  current_price: number | null;
+  unrealized_pnl: number | null;
+  unrealized_pnl_percent: number | null;
   is_winner: boolean | null;
   stop_loss: number | null;
   take_profit: number | null;
   profit_booking_rules?: ProfitBookingRules | null;
   created_at: string;
   updated_at: string;
+}
+
+// ============== Close Position Types ==============
+
+export interface ClosePositionRequest {
+  exit_price?: number;
+  quantity?: number;
+}
+
+export interface ClosePositionResponse {
+  position_id: string;
+  symbol: string;
+  side: string;
+  quantity_closed: number;
+  remaining_quantity: number;
+  exit_price: number;
+  realized_pnl: number;
+  realized_pnl_percent: number;
+  status: string;
+  message: string;
+}
+
+export interface SquareOffStrategyRequest {
+  exit_prices?: Record<string, number>;
+}
+
+export interface SquareOffStrategyResponse {
+  strategy_id: string;
+  strategy_name: string;
+  positions_closed: number;
+  total_realized_pnl: number;
+  closed_positions: ClosePositionResponse[];
+  message: string;
 }
