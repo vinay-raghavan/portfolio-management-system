@@ -1,11 +1,14 @@
 """Tests for provider factories."""
 
-from unittest.mock import patch
-
 import pytest
 
 from app.providers.broker import Broker, BrokerFactory, PaperBroker
-from app.providers.data import DataProvider, DataProviderFactory, YahooDataProvider, get_data_provider
+from app.providers.data import (
+    DataProvider,
+    DataProviderFactory,
+    YahooDataProvider,
+    get_data_provider,
+)
 
 
 class TestDataProviderFactory:

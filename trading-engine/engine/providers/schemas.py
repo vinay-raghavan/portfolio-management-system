@@ -4,10 +4,10 @@ This module re-exports from the shared package for backward compatibility.
 """
 
 from shared.providers.schemas import (
+    OHLCV,
     Funds,
     InstrumentInfo,
     MarketSession,
-    OHLCV,
     OrderRequest,
     OrderResponse,
     OrderSide,

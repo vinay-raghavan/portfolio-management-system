@@ -1,7 +1,6 @@
 """Tests for broker abstraction and implementations."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -67,7 +66,7 @@ class TestPaperBroker:
         await broker.connect()
 
         # Set price fetcher to return a fixed price
-        broker._price_fetcher = lambda symbol: 150.00
+        broker._price_fetcher = lambda _: 150.00
 
         order = OrderRequest(
             symbol="AAPL",
@@ -88,7 +87,7 @@ class TestPaperBroker:
         await broker.connect()
 
         # Set price fetcher
-        broker._price_fetcher = lambda symbol: 150.00
+        broker._price_fetcher = lambda _: 150.00
 
         # First buy
         buy_order = OrderRequest(
@@ -100,7 +99,7 @@ class TestPaperBroker:
         await broker.place_order("user1", buy_order)
 
         # Then sell
-        broker._price_fetcher = lambda symbol: 155.00
+        broker._price_fetcher = lambda _: 155.00
         sell_order = OrderRequest(
             symbol="AAPL",
             side=OrderSide.SELL,
@@ -117,7 +116,7 @@ class TestPaperBroker:
         await broker.connect()
 
         # Set price fetcher with high price
-        broker._price_fetcher = lambda symbol: 1000000.00
+        broker._price_fetcher = lambda _: 1000000.00
 
         order = OrderRequest(
             symbol="AAPL",
@@ -136,7 +135,7 @@ class TestPaperBroker:
         await broker.connect()
 
         # Set price fetcher to return None
-        broker._price_fetcher = lambda symbol: None
+        broker._price_fetcher = lambda _: None
 
         order = OrderRequest(
             symbol="INVALID",
@@ -162,7 +161,7 @@ class TestPaperBroker:
         await broker.connect()
 
         # Set price fetcher
-        broker._price_fetcher = lambda symbol: 150.00
+        broker._price_fetcher = lambda _: 150.00
 
         order = OrderRequest(
             symbol="AAPL",
