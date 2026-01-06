@@ -259,6 +259,7 @@ class CircuitBreakerStatus(BaseModel):
     strategy_id: str
     is_triggered: bool
     trigger_reason: str | None = None
+    triggered_at: datetime | None = None
     daily_loss: Decimal
     max_daily_loss: Decimal
     consecutive_losses: int

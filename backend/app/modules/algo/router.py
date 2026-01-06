@@ -224,6 +224,7 @@ async def get_circuit_breaker_status(
         strategy_id=strategy_id,
         is_triggered=state.is_triggered,
         trigger_reason=state.trigger_reason,
+        triggered_at=state.triggered_at,
         daily_loss=state.daily_loss,
         consecutive_losses=state.consecutive_losses,
         max_daily_loss=strategy.max_daily_loss,

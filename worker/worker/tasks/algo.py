@@ -127,3 +127,47 @@ def execute_strategy(self, strategy_id: str) -> dict:
     """
     logger.info(f"Executing strategy {strategy_id}")
     return _execute_strategy_by_id_sync(strategy_id)
+
+
+def _sync_circuit_breakers_sync() -> dict:
+    """Synchronous implementation of circuit breaker sync.
+
+    Calls the trading engine's /internal/circuit-breaker/sync-all endpoint.
+    """
+    logger.info("Syncing circuit breaker states to database")
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                f"{TRADING_ENGINE_URL}/internal/circuit-breaker/sync-all",
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Trading engine error: {response.status_code} - {response.text}")
+                return {
+                    "status": "error",
+                    "message": f"Trading engine returned {response.status_code}",
+                }
+
+            result = response.json()
+            logger.info(f"Circuit breaker sync complete: {result.get('synced', 0)} synced")
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout calling trading engine for circuit breaker sync")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error syncing circuit breakers: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.algo.sync_circuit_breakers")
+def sync_circuit_breakers(self) -> dict:
+    """Sync all circuit breaker states from Redis to DB.
+
+    This task is called by Celery beat every 5 minutes to persist
+    circuit breaker state for recovery after restarts.
+    """
+    logger.info("Starting circuit breaker sync")
+    return _sync_circuit_breakers_sync()

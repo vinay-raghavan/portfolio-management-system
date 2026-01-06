@@ -620,3 +620,206 @@ class PreExecutionChecker:
 
         # Increment daily trade counter
         await self.daily_trades.increment(strategy_id)
+
+
+class CircuitBreakerPersistence:
+    """Persistence layer for circuit breaker state.
+
+    Handles loading from DB to Redis on startup and
+    syncing Redis state to DB periodically and on triggers.
+    """
+
+    def __init__(self, redis: Redis):
+        """Initialize with Redis client."""
+        self.redis = redis
+
+    async def load_from_db_to_redis(self, db, strategy_id: str) -> bool:
+        """Load circuit breaker state from DB to Redis.
+
+        Call on startup to restore state after Redis restart.
+
+        Returns:
+            True if state was loaded, False if no DB state exists
+        """
+        from sqlalchemy import select
+
+        from engine.models.algo import CircuitBreakerState as CBStateModel
+
+        result = await db.execute(
+            select(CBStateModel).where(CBStateModel.strategy_id == strategy_id)
+        )
+        db_state = result.scalar_one_or_none()
+
+        if not db_state:
+            return False
+
+        # Check if we need to reset daily values (new day)
+        today = datetime.now(UTC).date()
+        tracking_date = db_state.tracking_date.date() if db_state.tracking_date else None
+
+        if tracking_date and tracking_date < today:
+            # New day - reset daily values but keep overall profit
+            state_dict = {
+                "is_triggered": False,
+                "trigger_reason": None,
+                "triggered_at": None,
+                "daily_loss": "0",
+                "daily_profit": "0",
+                "consecutive_losses": 0,
+                "overall_profit": str(db_state.overall_profit),
+                "profit_cutoff_triggered": False,
+            }
+        else:
+            # Same day - restore full state
+            state_dict = {
+                "is_triggered": db_state.is_triggered,
+                "trigger_reason": db_state.trigger_reason,
+                "triggered_at": db_state.triggered_at.isoformat()
+                if db_state.triggered_at
+                else None,
+                "daily_loss": str(db_state.daily_loss),
+                "daily_profit": str(db_state.daily_profit),
+                "consecutive_losses": db_state.consecutive_losses,
+                "overall_profit": str(db_state.overall_profit),
+                "profit_cutoff_triggered": db_state.profit_cutoff_triggered,
+            }
+
+        # Set in Redis with TTL until midnight
+        key = CIRCUIT_BREAKER_KEY.format(strategy_id=strategy_id)
+        now = datetime.now(UTC)
+        midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        ttl = int((midnight - now).total_seconds())
+
+        await self.redis.setex(key, ttl, json.dumps(state_dict))
+        logger.info(f"Loaded circuit breaker state from DB for strategy {strategy_id}")
+        return True
+
+    async def sync_to_db(self, db, strategy_id: str, user_id: str) -> bool:
+        """Sync current Redis state to DB.
+
+        Call periodically to persist state.
+
+        Returns:
+            True if synced successfully
+        """
+        from uuid import uuid4
+
+        from sqlalchemy import select
+
+        from engine.models.algo import CircuitBreakerState as CBStateModel
+
+        # Get current state from Redis
+        key = CIRCUIT_BREAKER_KEY.format(strategy_id=strategy_id)
+        data = await self.redis.get(key)
+
+        if not data:
+            return False
+
+        state = json.loads(data)
+
+        # Upsert to DB
+        result = await db.execute(
+            select(CBStateModel).where(CBStateModel.strategy_id == strategy_id)
+        )
+        db_state = result.scalar_one_or_none()
+
+        if db_state:
+            # Update existing
+            db_state.is_triggered = state.get("is_triggered", False)
+            db_state.trigger_reason = state.get("trigger_reason")
+            db_state.triggered_at = (
+                datetime.fromisoformat(state["triggered_at"]) if state.get("triggered_at") else None
+            )
+            db_state.daily_loss = Decimal(state.get("daily_loss", "0"))
+            db_state.daily_profit = Decimal(state.get("daily_profit", "0"))
+            db_state.consecutive_losses = state.get("consecutive_losses", 0)
+            db_state.overall_profit = Decimal(state.get("overall_profit", "0"))
+            db_state.profit_cutoff_triggered = state.get("profit_cutoff_triggered", False)
+            db_state.tracking_date = datetime.now(UTC)
+        else:
+            # Create new
+            db_state = CBStateModel(
+                id=str(uuid4()),
+                strategy_id=strategy_id,
+                user_id=user_id,
+                is_triggered=state.get("is_triggered", False),
+                trigger_reason=state.get("trigger_reason"),
+                triggered_at=(
+                    datetime.fromisoformat(state["triggered_at"])
+                    if state.get("triggered_at")
+                    else None
+                ),
+                daily_loss=Decimal(state.get("daily_loss", "0")),
+                daily_profit=Decimal(state.get("daily_profit", "0")),
+                consecutive_losses=state.get("consecutive_losses", 0),
+                overall_profit=Decimal(state.get("overall_profit", "0")),
+                profit_cutoff_triggered=state.get("profit_cutoff_triggered", False),
+                tracking_date=datetime.now(UTC),
+            )
+            db.add(db_state)
+
+        await db.commit()
+        logger.debug(f"Synced circuit breaker state to DB for strategy {strategy_id}")
+        return True
+
+    async def persist_trigger_event(
+        self,
+        db,
+        strategy_id: str,
+        user_id: str,
+        event_type: str,
+        state: CircuitBreakerState,
+    ) -> None:
+        """Persist a circuit breaker trigger/reset event to history.
+
+        Call immediately when circuit breaker is triggered or reset.
+
+        Args:
+            db: Database session
+            strategy_id: Strategy ID
+            user_id: User ID
+            event_type: TRIGGERED, RESET, or DAILY_RESET
+            state: Current circuit breaker state
+        """
+        from uuid import uuid4
+
+        from engine.models.algo import CircuitBreakerHistory
+
+        event = CircuitBreakerHistory(
+            id=str(uuid4()),
+            strategy_id=strategy_id,
+            user_id=user_id,
+            event_type=event_type,
+            trigger_reason=state.trigger_reason,
+            daily_loss=state.daily_loss,
+            daily_profit=state.daily_profit,
+            consecutive_losses=state.consecutive_losses,
+            overall_profit=state.overall_profit,
+        )
+        db.add(event)
+        await db.commit()
+
+        logger.info(f"Persisted circuit breaker event: {event_type} for strategy {strategy_id}")
+
+    async def load_all_active_strategies(self, db) -> list[str]:
+        """Load all active strategy IDs that have circuit breaker state.
+
+        Call on startup to restore all states.
+
+        Returns:
+            List of strategy IDs that were loaded
+        """
+        from sqlalchemy import select
+
+        from engine.models.algo import CircuitBreakerState as CBStateModel
+
+        result = await db.execute(select(CBStateModel.strategy_id))
+        strategy_ids = [row[0] for row in result.all()]
+
+        loaded = []
+        for strategy_id in strategy_ids:
+            if await self.load_from_db_to_redis(db, strategy_id):
+                loaded.append(strategy_id)
+
+        logger.info(f"Loaded circuit breaker states for {len(loaded)} strategies")
+        return loaded

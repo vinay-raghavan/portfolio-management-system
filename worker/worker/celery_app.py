@@ -113,4 +113,9 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.algo.run_scheduled_strategies",
         "schedule": 30.0,  # Every 30 seconds
     },
+    # Sync circuit breaker states to database every 5 minutes
+    "sync-circuit-breakers-every-5-minutes": {
+        "task": "worker.tasks.algo.sync_circuit_breakers",
+        "schedule": 300.0,  # Every 5 minutes
+    },
 }

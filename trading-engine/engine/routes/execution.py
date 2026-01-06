@@ -253,43 +253,66 @@ async def run_scheduled_strategies(
                     cooldown_seconds=strategy.cooldown_seconds or 0,
                 )
 
-            # Check profit cutoff with unrealized P&L
-            if strategy.max_daily_profit or strategy.overall_profit_target:
-                # Get current prices for open positions
-                position_tracker = PositionTracker(db)
-                open_positions = await position_tracker.get_all_open_positions(
-                    strategy.id, strategy.user_id
+            # Always update circuit breaker with execution results
+            # Get current prices for open positions to calculate unrealized P&L
+            position_tracker = PositionTracker(db)
+            open_positions = await position_tracker.get_all_open_positions(
+                strategy.id, strategy.user_id
+            )
+
+            unrealized_pnl = Decimal("0")
+            if open_positions:
+                # Fetch current prices
+                position_symbols = list({p.symbol for p in open_positions})
+                current_prices: dict[str, Decimal] = {}
+                for sym in position_symbols:
+                    try:
+                        quote = await data_provider.get_quote(sym)
+                        if quote and quote.price:
+                            current_prices[sym] = quote.price
+                    except Exception as price_err:
+                        logger.warning(f"Failed to get price for {sym}: {price_err}")
+
+                # Calculate unrealized P&L
+                unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
+                    strategy.id, strategy.user_id, current_prices
                 )
 
-                if open_positions:
-                    # Fetch current prices
-                    position_symbols = list({p.symbol for p in open_positions})
-                    current_prices: dict[str, Decimal] = {}
-                    for sym in position_symbols:
-                        try:
-                            quote = await data_provider.get_quote(sym)
-                            if quote and quote.price:
-                                current_prices[sym] = quote.price
-                        except Exception as price_err:
-                            logger.warning(f"Failed to get price for {sym}: {price_err}")
+            # Extract trade P&L data from execution result
+            # For circuit breaker, we pass the total realized P&L from this execution
+            # and whether the net result was a loss (for consecutive loss tracking)
+            trade_pnl = result.pnl_stats.total_pnl if result.pnl_stats.trades_closed > 0 else None
+            # Net loss if more losing trades than winning OR if total P&L is negative
+            is_loss = result.pnl_stats.total_pnl < 0 if result.pnl_stats.trades_closed > 0 else None
 
-                    # Calculate unrealized P&L
-                    unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
-                        strategy.id, strategy.user_id, current_prices
-                    )
-                else:
-                    unrealized_pnl = Decimal("0")
+            # Update circuit breaker with both realized and unrealized P&L
+            circuit_breaker = CircuitBreaker(redis)
+            cb_state = await circuit_breaker.check_and_update(
+                strategy_id=strategy.id,
+                max_daily_loss=strategy.max_daily_loss,
+                max_consecutive_losses=strategy.max_consecutive_losses,
+                trade_pnl=trade_pnl,
+                is_loss=is_loss,
+                unrealized_pnl=unrealized_pnl,
+                max_daily_profit=strategy.max_daily_profit,
+                overall_profit_target=strategy.overall_profit_target,
+            )
 
-                # Check profit cutoff with circuit breaker
-                circuit_breaker = CircuitBreaker(redis)
-                cb_state = await circuit_breaker.check_and_update(
+            # Handle circuit breaker triggers
+            if cb_state.is_triggered:
+                # Immediately persist to DB on trigger
+                from engine.algo.safety import CircuitBreakerPersistence
+
+                cb_persistence = CircuitBreakerPersistence(redis)
+                await cb_persistence.persist_trigger_event(
+                    db=db,
                     strategy_id=strategy.id,
-                    max_daily_loss=strategy.max_daily_loss,
-                    max_consecutive_losses=strategy.max_consecutive_losses,
-                    unrealized_pnl=unrealized_pnl,
-                    max_daily_profit=strategy.max_daily_profit,
-                    overall_profit_target=strategy.overall_profit_target,
+                    user_id=strategy.user_id,
+                    event_type="TRIGGERED",
+                    state=cb_state,
                 )
+                # Also sync current state to DB
+                await cb_persistence.sync_to_db(db, strategy.id, strategy.user_id)
 
                 if cb_state.profit_cutoff_triggered:
                     logger.info(
@@ -298,7 +321,13 @@ async def run_scheduled_strategies(
                     )
                     # Pause the strategy based on profit_cutoff_action
                     await scheduler.disable_strategy(strategy, StrategyStatus.PAUSED)
-                    # TODO: Handle CLOSE_POSITIONS_AND_PAUSE action
+                else:
+                    logger.warning(
+                        f"⚠️ Circuit breaker triggered for strategy {strategy.id}: "
+                        f"{cb_state.trigger_reason}"
+                    )
+                    # Disable the strategy for safety
+                    await scheduler.disable_strategy(strategy, StrategyStatus.DISABLED)
 
             results.append(
                 {
@@ -506,3 +535,62 @@ async def get_circuit_breaker_status(strategy_id: str, redis: RedisDep, _key: In
     circuit_breaker = CircuitBreaker(redis)
     is_triggered = await circuit_breaker.is_triggered(strategy_id)
     return {"strategy_id": strategy_id, "is_triggered": is_triggered}
+
+
+@router.post("/circuit-breaker/sync-all")
+async def sync_all_circuit_breakers(
+    db: DbSession,
+    redis: RedisDep,
+    _key: InternalKeyDep,
+):
+    """Sync all circuit breaker states from Redis to DB.
+
+    Called periodically by Celery beat to persist state.
+    """
+    from sqlalchemy import select
+
+    from engine.algo.safety import CircuitBreakerPersistence
+    from engine.models.algo import StrategyStatus, UserStrategy
+
+    cb_persistence = CircuitBreakerPersistence(redis)
+
+    # Get all active strategies
+    result = await db.execute(
+        select(UserStrategy).where(
+            UserStrategy.status.in_([StrategyStatus.ACTIVE, StrategyStatus.PAUSED])
+        )
+    )
+    strategies = result.scalars().all()
+
+    synced = 0
+    errors = 0
+
+    for strategy in strategies:
+        try:
+            success = await cb_persistence.sync_to_db(db, strategy.id, strategy.user_id)
+            if success:
+                synced += 1
+        except Exception as e:
+            logger.error(f"Error syncing circuit breaker for {strategy.id}: {e}")
+            errors += 1
+
+    logger.info(f"Circuit breaker sync complete: {synced} synced, {errors} errors")
+    return {"synced": synced, "errors": errors, "total": len(strategies)}
+
+
+@router.post("/circuit-breaker/load-all")
+async def load_all_circuit_breakers(
+    db: DbSession,
+    redis: RedisDep,
+    _key: InternalKeyDep,
+):
+    """Load all circuit breaker states from DB to Redis.
+
+    Called on startup to restore state after Redis restart.
+    """
+    from engine.algo.safety import CircuitBreakerPersistence
+
+    cb_persistence = CircuitBreakerPersistence(redis)
+    loaded = await cb_persistence.load_all_active_strategies(db)
+
+    return {"loaded": len(loaded), "strategy_ids": loaded}
