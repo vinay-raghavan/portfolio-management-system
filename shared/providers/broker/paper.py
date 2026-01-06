@@ -2,12 +2,11 @@
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Callable
 from uuid import uuid4
 
-from .base import Broker
 from ..schemas import (
     Funds,
     OrderRequest,
@@ -17,6 +16,7 @@ from ..schemas import (
     OrderType,
     Position,
 )
+from .base import Broker
 
 logger = logging.getLogger(__name__)
 
@@ -242,9 +242,7 @@ class PaperBroker(Broker):
                 return response
 
         elif order.order_type == OrderType.GTT:
-            return await self._process_gtt_order(
-                user_id, order, order_id, now, market_price, fees
-            )
+            return await self._process_gtt_order(user_id, order, order_id, now, market_price, fees)
 
         else:
             return OrderResponse(
@@ -546,4 +544,3 @@ class PaperBroker(Broker):
         """Get all pending trigger orders (SL/GTT) for a user."""
         self._ensure_user(user_id)
         return list(self._pending_trigger_orders[user_id].values())
-

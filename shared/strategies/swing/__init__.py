@@ -7,4 +7,3 @@ from shared.strategies.swing.price_action_volume_swing import PriceActionVolumeS
 __all__ = [
     "PriceActionVolumeSwingStrategy",
 ]
-

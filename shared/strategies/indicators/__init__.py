@@ -13,4 +13,3 @@ __all__ = [
     "MovingAverageStrategy",
     "BollingerBandsStrategy",
 ]
-

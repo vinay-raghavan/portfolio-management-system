@@ -10,4 +10,3 @@ This package contains shared code used by both the backend and trading-engine se
 """
 
 __version__ = "0.1.0"
-

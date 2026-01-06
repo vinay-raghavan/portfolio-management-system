@@ -1,8 +1,8 @@
 """Factory for creating broker instances."""
 
 import logging
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Callable
 
 from .base import Broker
 
@@ -158,4 +158,3 @@ def _register_default_brokers() -> None:
 
 
 _register_default_brokers()
-

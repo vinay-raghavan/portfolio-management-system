@@ -2,11 +2,25 @@
 Providers module - Broker and Data provider abstractions.
 """
 
+from .data import (
+    DataProvider,
+    DataProviderFactory,
+    NSEDataProvider,
+    RateLimiter,
+    YahooDataProvider,
+    get_data_provider,
+    nse_rate_limiter,
+    set_config_getter,
+    set_default_market,
+    set_default_provider,
+    set_market_getter,
+    yahoo_rate_limiter,
+)
 from .schemas import (
+    OHLCV,
     Funds,
     InstrumentInfo,
     MarketSession,
-    OHLCV,
     OrderRequest,
     OrderResponse,
     OrderSide,
@@ -40,5 +54,17 @@ __all__ = [
     # Symbol utilities
     "Symbol",
     "SymbolMapper",
+    # Data providers
+    "DataProvider",
+    "DataProviderFactory",
+    "get_data_provider",
+    "set_config_getter",
+    "set_default_market",
+    "set_default_provider",
+    "set_market_getter",
+    "NSEDataProvider",
+    "YahooDataProvider",
+    "RateLimiter",
+    "nse_rate_limiter",
+    "yahoo_rate_limiter",
 ]
-

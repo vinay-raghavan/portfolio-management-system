@@ -192,4 +192,3 @@ class Funds(BaseModel):
     def available_margin(self) -> Decimal:
         """Calculate available margin."""
         return self.available_cash + self.collateral - self.used_margin
-
