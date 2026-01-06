@@ -297,4 +297,3 @@ class ORBStrategy(BaseStrategy):
     def reset_daily_entries(self) -> None:
         """Reset daily entry tracking."""
         self._daily_entries.clear()
-

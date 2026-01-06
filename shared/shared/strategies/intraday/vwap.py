@@ -231,4 +231,3 @@ class VWAPReversionStrategy(BaseStrategy):
         )
 
         return [signal]
-

@@ -60,7 +60,7 @@ class BollingerBandsStrategy(BaseStrategy):
         upper_band = bb_indicator.bollinger_hband()
         middle_band = bb_indicator.bollinger_mavg()
         lower_band = bb_indicator.bollinger_lband()
-        bb_width = bb_indicator.bollinger_wband()
+        _bb_width = bb_indicator.bollinger_wband()
         bb_pband = bb_indicator.bollinger_pband()
 
         current_price = self._to_decimal(close.iloc[-1])
@@ -85,83 +85,103 @@ class BollingerBandsStrategy(BaseStrategy):
         price_float = float(current_price)
 
         if price_float <= current_lower:
-            strength = self._calculate_strength(price_float, current_lower, current_upper, is_buy=True)
+            strength = self._calculate_strength(
+                price_float, current_lower, current_upper, is_buy=True
+            )
             confidence = self._calculate_confidence(bb_pband, is_buy=True)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.BUY, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.BUY, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.BUY,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={
-                    "bb_upper": round(current_upper, 2),
-                    "bb_middle": round(current_middle, 2),
-                    "bb_lower": round(current_lower, 2),
-                    "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"Price at lower Bollinger Band ({current_lower:.2f})",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.BUY,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "bb_upper": round(current_upper, 2),
+                        "bb_middle": round(current_middle, 2),
+                        "bb_lower": round(current_lower, 2),
+                        "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"Price at lower Bollinger Band ({current_lower:.2f})",
+                )
+            )
 
         elif price_float >= current_upper:
-            strength = self._calculate_strength(price_float, current_lower, current_upper, is_buy=False)
+            strength = self._calculate_strength(
+                price_float, current_lower, current_upper, is_buy=False
+            )
             confidence = self._calculate_confidence(bb_pband, is_buy=False)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.SELL, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.SELL,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={
-                    "bb_upper": round(current_upper, 2),
-                    "bb_middle": round(current_middle, 2),
-                    "bb_lower": round(current_lower, 2),
-                    "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"Price at upper Bollinger Band ({current_upper:.2f})",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.SELL,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={
+                        "bb_upper": round(current_upper, 2),
+                        "bb_middle": round(current_middle, 2),
+                        "bb_lower": round(current_lower, 2),
+                        "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"Price at upper Bollinger Band ({current_upper:.2f})",
+                )
+            )
 
         else:
-            distance_to_upper = current_upper - price_float
+            _distance_to_upper = current_upper - price_float
             distance_to_lower = price_float - current_lower
             band_width = current_upper - current_lower
             position_in_band = distance_to_lower / band_width if band_width > 0 else 0.5
-            strength = Decimal(str(0.5 + abs(position_in_band - 0.5) * 0.3)).quantize(Decimal("0.0001"))
+            strength = Decimal(str(0.5 + abs(position_in_band - 0.5) * 0.3)).quantize(
+                Decimal("0.0001")
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.HOLD,
-                strength=strength,
-                confidence=Decimal("0.6"),
-                price_at_signal=current_price,
-                entry_price=None,
-                stop_loss=None,
-                take_profit=None,
-                risk_reward_ratio=None,
-                indicators={
-                    "bb_upper": round(current_upper, 2),
-                    "bb_middle": round(current_middle, 2),
-                    "bb_lower": round(current_lower, 2),
-                    "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
-                    "atr": float(atr) if atr else None,
-                },
-                notes=f"Price within Bollinger Bands (position: {position_in_band:.2%})",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.6"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={
+                        "bb_upper": round(current_upper, 2),
+                        "bb_middle": round(current_middle, 2),
+                        "bb_lower": round(current_lower, 2),
+                        "bb_pband": round(current_pband, 4) if not pd.isna(current_pband) else None,
+                        "atr": float(atr) if atr else None,
+                    },
+                    notes=f"Price within Bollinger Bands (position: {position_in_band:.2%})",
+                )
+            )
 
         return signals
 
@@ -205,4 +225,3 @@ class BollingerBandsStrategy(BaseStrategy):
             confidence = 0.5
 
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-
