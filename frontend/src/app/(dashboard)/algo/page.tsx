@@ -525,8 +525,8 @@ export default function AlgoTradingPage() {
                     <TableCell className="text-right">
                       {winRate.toFixed(1)}%
                     </TableCell>
-                    <TableCell className={`text-right ${strategy.total_pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {formatPrice(strategy.total_pnl)}
+                    <TableCell className={`text-right ${(strategyPnL?.total_pnl ?? strategy.total_pnl) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {formatPrice(strategyPnL?.total_pnl ?? strategy.total_pnl)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {strategy.last_run_at
