@@ -51,4 +51,3 @@ class SignalData:
             "indicators": self.indicators,
             "notes": self.notes,
         }
-

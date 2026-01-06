@@ -323,4 +323,3 @@ class PriceActionVolumeSwingStrategy(BaseStrategy):
             )
 
         return signals
-

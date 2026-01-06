@@ -82,62 +82,78 @@ class RSIStrategy(BaseStrategy):
         if current_rsi < self.oversold_threshold:
             strength = self._calculate_strength(current_rsi, is_buy=True)
             confidence = self._calculate_confidence(current_rsi, rsi_values)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.BUY, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.BUY, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.BUY, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.BUY,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
-                notes=f"RSI oversold at {current_rsi:.2f}",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.BUY,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
+                    notes=f"RSI oversold at {current_rsi:.2f}",
+                )
+            )
 
         elif current_rsi > self.overbought_threshold:
             strength = self._calculate_strength(current_rsi, is_buy=False)
             confidence = self._calculate_confidence(current_rsi, rsi_values)
-            stop_loss = self.calculate_stop_loss(current_price, SignalType.SELL, atr, self.atr_multiplier)
-            take_profit = self.calculate_take_profit(current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio)
+            stop_loss = self.calculate_stop_loss(
+                current_price, SignalType.SELL, atr, self.atr_multiplier
+            )
+            take_profit = self.calculate_take_profit(
+                current_price, stop_loss, SignalType.SELL, self.risk_reward_ratio
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.SELL,
-                strength=strength,
-                confidence=confidence,
-                price_at_signal=current_price,
-                entry_price=current_price,
-                stop_loss=stop_loss,
-                take_profit=take_profit,
-                risk_reward_ratio=self.risk_reward_ratio,
-                indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
-                notes=f"RSI overbought at {current_rsi:.2f}",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.SELL,
+                    strength=strength,
+                    confidence=confidence,
+                    price_at_signal=current_price,
+                    entry_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=self.risk_reward_ratio,
+                    indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
+                    notes=f"RSI overbought at {current_rsi:.2f}",
+                )
+            )
 
         else:
             mid_point = (self.oversold_threshold + self.overbought_threshold) / 2
             distance_from_mid = abs(current_rsi - mid_point)
             max_distance = (self.overbought_threshold - self.oversold_threshold) / 2
-            strength = Decimal(str(1.0 - (distance_from_mid / max_distance) * 0.5)).quantize(Decimal("0.0001"))
+            strength = Decimal(str(1.0 - (distance_from_mid / max_distance) * 0.5)).quantize(
+                Decimal("0.0001")
+            )
 
-            signals.append(SignalData(
-                symbol=symbol,
-                signal_type=SignalType.HOLD,
-                strength=strength,
-                confidence=Decimal("0.7"),
-                price_at_signal=current_price,
-                entry_price=None,
-                stop_loss=None,
-                take_profit=None,
-                risk_reward_ratio=None,
-                indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
-                notes=f"RSI neutral at {current_rsi:.2f} (between {self.oversold_threshold}-{self.overbought_threshold})",
-            ))
+            signals.append(
+                SignalData(
+                    symbol=symbol,
+                    signal_type=SignalType.HOLD,
+                    strength=strength,
+                    confidence=Decimal("0.7"),
+                    price_at_signal=current_price,
+                    entry_price=None,
+                    stop_loss=None,
+                    take_profit=None,
+                    risk_reward_ratio=None,
+                    indicators={"rsi": round(current_rsi, 2), "atr": float(atr) if atr else None},
+                    notes=f"RSI neutral at {current_rsi:.2f} (between {self.oversold_threshold}-{self.overbought_threshold})",
+                )
+            )
 
         return signals
 
@@ -146,7 +162,9 @@ class RSIStrategy(BaseStrategy):
         if is_buy:
             strength = 1.0 - (rsi / (self.oversold_threshold * 2))
         else:
-            strength = (rsi - self.overbought_threshold) / (100 - self.overbought_threshold) * 0.5 + 0.5
+            strength = (rsi - self.overbought_threshold) / (
+                100 - self.overbought_threshold
+            ) * 0.5 + 0.5
         return Decimal(str(max(0.0, min(1.0, strength)))).quantize(Decimal("0.0001"))
 
     def _calculate_confidence(self, current_rsi: float, rsi_series: pd.Series) -> Decimal:
@@ -157,10 +175,13 @@ class RSIStrategy(BaseStrategy):
         if len(recent_rsi) < 3:
             return Decimal("0.5")
         rsi_change = recent_rsi.iloc[-1] - recent_rsi.iloc[0]
-        if (current_rsi < self.oversold_threshold and rsi_change < 0 or
-            current_rsi > self.overbought_threshold and rsi_change > 0):
+        if (
+            current_rsi < self.oversold_threshold
+            and rsi_change < 0
+            or current_rsi > self.overbought_threshold
+            and rsi_change > 0
+        ):
             confidence = 0.6 + min(0.3, abs(rsi_change) / 30)
         else:
             confidence = 0.5
         return Decimal(str(confidence)).quantize(Decimal("0.0001"))
-

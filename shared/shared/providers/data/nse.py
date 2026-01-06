@@ -293,7 +293,8 @@ class NSEDataProvider(DataProvider):
                     low=Decimal(str(data.get("low", data.get("dayLow", 0)))) or None,
                     previous_close=Decimal(str(data.get("previousClose", 0))) or None,
                     change=Decimal(str(data.get("change", 0))) or None,
-                    change_percent=Decimal(str(data.get("percChange", data.get("pChange", 0)))) or None,
+                    change_percent=Decimal(str(data.get("percChange", data.get("pChange", 0))))
+                    or None,
                     market_session=self.get_market_session(),
                 )
 

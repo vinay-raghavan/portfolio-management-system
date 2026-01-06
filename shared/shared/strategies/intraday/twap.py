@@ -257,4 +257,3 @@ class TWAPStrategy(BaseStrategy):
             del self._active_plans[symbol]
             return True
         return False
-

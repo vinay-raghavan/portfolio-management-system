@@ -295,4 +295,3 @@ class GapAndGoStrategy(BaseStrategy):
         )
 
         return [signal]
-
