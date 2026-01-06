@@ -8,33 +8,39 @@ dependencies = [
     # Web framework
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
-    
+
     # Database
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
-    
+
     # Redis
     "redis>=5.2.0",
-    
+
     # Data & Analysis
     "pandas>=2.2.0",
     "numpy>=2.1.0",
     "yfinance>=0.2.50",
     "ta>=0.11.0",
-    
+
     # HTTP client
     "httpx>=0.28.0",
-    
+
     # Validation
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
-    
+
     # Monitoring
     "prometheus-client>=0.21.0",
-    
+
     # Async utilities
     "tenacity>=9.0.0",
+
+    # Shared package
+    "portfolio-shared",
 ]
+
+[tool.uv.sources]
+portfolio-shared = { path = "../shared", editable = true }
 
 [project.optional-dependencies]
 dev = [

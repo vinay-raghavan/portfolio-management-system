@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.instruments.service import InstrumentService
 from app.modules.portfolio.funds_service import FundsService
-from app.providers.data.factory import get_data_provider
+from app.providers.data import get_data_provider
 from app.providers.schemas import OrderRequest, OrderSide
 
 logger = logging.getLogger(__name__)

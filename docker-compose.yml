@@ -40,8 +40,8 @@ services:
   # Database Migrations
   migrations:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: portfolio-migrations
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
@@ -56,8 +56,8 @@ services:
   # Backend API
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: portfolio-api
     restart: unless-stopped
     environment:
@@ -90,8 +90,8 @@ services:
   # Trading Engine - Strategy Execution Service
   trading-engine:
     build:
-      context: ./trading-engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: trading-engine/Dockerfile
     container_name: portfolio-trading-engine
     restart: unless-stopped
     environment:

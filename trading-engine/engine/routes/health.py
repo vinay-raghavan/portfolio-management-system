@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from engine.core.health import check_all_health, check_critical_health, is_ready
-from engine.providers.data.factory import check_data_provider_health
+from engine.providers.data import check_data_provider_health
 
 router = APIRouter(tags=["health"])
 

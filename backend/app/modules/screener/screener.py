@@ -10,7 +10,7 @@ import pandas as pd
 from app.modules.screener.base import BaseScreener, ScreenerResult
 
 if TYPE_CHECKING:
-    from app.providers.data.base import BaseDataProvider
+    from app.providers.data import DataProvider as BaseDataProvider
 
 logger = logging.getLogger(__name__)
 

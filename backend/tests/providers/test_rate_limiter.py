@@ -5,8 +5,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-
-from app.providers.data.rate_limiter import RateLimiter
+from shared.providers.data.rate_limiter import RateLimiter
 
 
 class TestRateLimiter:

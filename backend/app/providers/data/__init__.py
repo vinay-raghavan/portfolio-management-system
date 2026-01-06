@@ -1,12 +1,20 @@
-"""Data provider abstraction layer."""
+"""Data provider abstraction layer.
 
-from app.providers.data.base import DataProvider
-from app.providers.data.factory import DataProviderFactory, get_data_provider
-from app.providers.data.yahoo import YahooDataProvider
+This module re-exports from the shared package for backward compatibility.
+"""
+
+from shared.providers.data import (
+    DataProvider,
+    DataProviderFactory,
+    NSEDataProvider,
+    YahooDataProvider,
+    get_data_provider,
+)
 
 __all__ = [
     "DataProvider",
     "YahooDataProvider",
+    "NSEDataProvider",
     "DataProviderFactory",
     "get_data_provider",
 ]

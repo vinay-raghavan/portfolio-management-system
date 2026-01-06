@@ -1,12 +1,10 @@
 """Tests for broker abstraction and implementations."""
 
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.providers.broker.base import Broker
-from app.providers.broker.paper import PaperBroker
+from app.providers.broker import Broker, PaperBroker
 from app.providers.schemas import (
     OrderRequest,
     OrderSide,
@@ -67,10 +65,8 @@ class TestPaperBroker:
         """Test placing a market buy order."""
         await broker.connect()
 
-        # Mock the data provider to return a fixed price
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=150.00)
-        broker._data_provider = mock_provider
+        # Set price fetcher to return a fixed price
+        broker._price_fetcher = lambda _: 150.00
 
         order = OrderRequest(
             symbol="AAPL",
@@ -90,10 +86,8 @@ class TestPaperBroker:
         """Test placing a market sell order."""
         await broker.connect()
 
-        # Mock the data provider
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=150.00)
-        broker._data_provider = mock_provider
+        # Set price fetcher
+        broker._price_fetcher = lambda _: 150.00
 
         # First buy
         buy_order = OrderRequest(
@@ -105,7 +99,7 @@ class TestPaperBroker:
         await broker.place_order("user1", buy_order)
 
         # Then sell
-        mock_provider.get_current_price = AsyncMock(return_value=155.00)
+        broker._price_fetcher = lambda _: 155.00
         sell_order = OrderRequest(
             symbol="AAPL",
             side=OrderSide.SELL,
@@ -121,10 +115,8 @@ class TestPaperBroker:
         """Test order rejection for insufficient funds."""
         await broker.connect()
 
-        # Mock the data provider with high price
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=1000000.00)
-        broker._data_provider = mock_provider
+        # Set price fetcher with high price
+        broker._price_fetcher = lambda _: 1000000.00
 
         order = OrderRequest(
             symbol="AAPL",
@@ -142,10 +134,8 @@ class TestPaperBroker:
         """Test order rejection when price cannot be retrieved."""
         await broker.connect()
 
-        # Mock the data provider to return None
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=None)
-        broker._data_provider = mock_provider
+        # Set price fetcher to return None
+        broker._price_fetcher = lambda _: None
 
         order = OrderRequest(
             symbol="INVALID",
@@ -170,10 +160,8 @@ class TestPaperBroker:
         """Test positions after buying."""
         await broker.connect()
 
-        # Mock the data provider
-        mock_provider = MagicMock()
-        mock_provider.get_current_price = AsyncMock(return_value=150.00)
-        broker._data_provider = mock_provider
+        # Set price fetcher
+        broker._price_fetcher = lambda _: 150.00
 
         order = OrderRequest(
             symbol="AAPL",

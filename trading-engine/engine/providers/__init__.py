@@ -1,27 +1,38 @@
-"""Providers package for broker and data integrations."""
+"""Providers package for broker and data integrations.
 
-from engine.providers.broker.base import Broker
-from engine.providers.broker.factory import BrokerFactory, get_broker
-from engine.providers.broker.paper import PaperBroker
-from engine.providers.data.base import DataProvider
-from engine.providers.data.factory import DataProviderFactory, get_data_provider
-from engine.providers.data.yahoo import YahooDataProvider
-from engine.providers.schemas import (
+This module re-exports providers from the shared package for backward compatibility.
+New code should import directly from shared.providers.
+"""
+
+# Re-export from shared package
+from shared.providers import (
     OHLCV,
+    Broker,
+    BrokerFactory,
+    DataProvider,
+    DataProviderFactory,
+    Exchange,
     Funds,
     InstrumentInfo,
     MarketSession,
+    NSEDataProvider,
     OrderRequest,
     OrderResponse,
     OrderSide,
     OrderStatus,
     OrderType,
+    PaperBroker,
     Position,
     ProductType,
     Quote,
     SearchResult,
+    Segment,
+    Symbol,
+    SymbolMapper,
+    YahooDataProvider,
+    get_broker,
+    get_data_provider,
 )
-from engine.providers.symbols import Exchange, Segment, Symbol, SymbolMapper
 
 __all__ = [
     # Broker
@@ -34,6 +45,7 @@ __all__ = [
     "DataProviderFactory",
     "get_data_provider",
     "YahooDataProvider",
+    "NSEDataProvider",
     # Schemas
     "Funds",
     "InstrumentInfo",

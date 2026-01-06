@@ -89,7 +89,7 @@ class TestExecutionRoutes:
         # Check that expected strategies are present
         strategy_names = [s["name"] for s in data["strategies"]]
         assert "rsi" in strategy_names
-        assert "macd_crossover" in strategy_names
+        assert "macd" in strategy_names
 
     def test_execute_strategy_missing_fields(self, client, internal_headers):
         """Test execute with missing required fields."""

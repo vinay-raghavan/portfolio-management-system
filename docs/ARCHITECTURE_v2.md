@@ -1,63 +1,171 @@
-# Portfolio Management System - Revised Architecture (v2)
+# Portfolio Management System - Architecture (v2)
 
 ## Overview
 
-A simplified, containerized architecture optimized for **personal use**. Uses Docker Compose for orchestration with a modular monolith backend instead of microservices.
+A containerized microservices architecture optimized for **personal algorithmic trading**. Uses Docker Compose for orchestration with a shared package pattern to eliminate code duplication across services.
 
 ---
 
 ## Architecture Comparison
 
-| Aspect | Original (v1) | Revised (v2) |
+| Aspect | Original (v1) | Current (v2) |
 |--------|---------------|--------------|
 | Deployment | Kubernetes | Docker Compose |
-| Services | 11 microservices | 4 containers |
+| Services | 11 microservices | 5 containers + shared package |
 | Databases | PostgreSQL + MongoDB + TimescaleDB | PostgreSQL + TimescaleDB |
 | Message Queue | Apache Kafka | Redis (Pub/Sub + Celery) |
-| API Gateway | Kong | Traefik (simple reverse proxy) |
-| Monthly Cost | ~$745 | ~$20-50 |
-| Complexity | Very High | Low |
-| Time to MVP | 34-44 weeks | 10-14 weeks |
+| Code Sharing | Duplicated code | Shared Python package |
+| Monthly Cost | ~$745 | ~$10-20 |
+| Complexity | Very High | Medium |
 
 ---
 
 ## Container Architecture
 
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        Docker Compose                             │
+├──────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌────────────────┐  ┌──────────┐   │
+│  │ Frontend │  │ Backend  │  │ Trading Engine │  │  Worker  │   │
+│  │ (Next.js)│  │(FastAPI) │  │   (FastAPI)    │  │ (Celery) │   │
+│  │  :3000   │  │  :8010   │  │     :8001      │  │          │   │
+│  └──────────┘  └──────────┘  └────────────────┘  └──────────┘   │
+│                                                                   │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                     Shared Package                          │  │
+│  │        (Mounted into backend, trading-engine, worker)       │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  ┌──────────────────────────┐  ┌──────────────────────────────┐  │
+│  │  PostgreSQL + TimescaleDB│  │           Redis              │  │
+│  │         :5432            │  │           :6379              │  │
+│  └──────────────────────────┘  └──────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
 ### Container 1: Frontend (`web`)
 - **Image**: Node.js 20 Alpine
 - **Framework**: Next.js 14 with App Router
 - **Port**: 3000
-- **Features**: React UI, TradingView Charts, WebSocket client
+- **Features**: React UI, TradingView Charts, Algo trading dashboard
 
-### Container 2: Backend (`api`)
-- **Image**: Python 3.12 Slim
-- **Framework**: FastAPI (modular monolith)
-- **Port**: 8000
-- **Modules**:
-  - `auth` - JWT authentication, session management
-  - `portfolio` - Positions, P&L, holdings
-  - `trading` - Orders, execution, simulation
-  - `analysis` - Technical & fundamental analysis
-  - `data` - Market data ingestion, caching
+### Container 2: Backend API (`api`)
+- **Image**: Python 3.13 Slim + uv
+- **Framework**: FastAPI
+- **Port**: 8010
+- **Responsibilities**:
+  - User authentication (JWT)
+  - Portfolio management (positions, P&L)
+  - Order placement
+  - Algo strategy configuration
+  - Market data API
 
-### Container 3: Worker (`worker`)
-- **Image**: Python 3.12 Slim
+### Container 3: Trading Engine (`trading-engine`)
+- **Image**: Python 3.13 Slim + uv
+- **Framework**: FastAPI
+- **Port**: 8001
+- **Responsibilities**:
+  - Strategy execution
+  - Signal generation
+  - Order management via broker providers
+  - Risk management (kill switch, circuit breakers)
+  - Position tracking
+
+### Container 4: Worker (`worker`)
+- **Image**: Python 3.13 Slim + uv
 - **Framework**: Celery
-- **Tasks**:
-  - Scheduled data ingestion (every 1 min during market hours)
-  - Batch analysis jobs
-  - Portfolio rebalancing checks
+- **Responsibilities**:
+  - Scheduled strategy execution (calls trading-engine)
+  - Background data ingestion
   - Alert/notification processing
 
-### Container 4: Database (`db`)
+### Container 5: Database (`db`)
 - **Image**: timescale/timescaledb:latest-pg15
 - **Port**: 5432
-- **Features**: PostgreSQL 15 + TimescaleDB extension for time-series
+- **Features**: PostgreSQL 15 + TimescaleDB for time-series
 
-### Container 5: Cache (`redis`)
+### Container 6: Cache (`redis`)
 - **Image**: redis:7-alpine
 - **Port**: 6379
-- **Usage**: Caching, Celery broker, Pub/Sub for real-time updates
+- **Usage**: Caching, Celery broker, Kill switch state
+
+---
+
+## Shared Package Architecture
+
+The `shared/` package is a Python library used by backend, trading-engine, and worker to eliminate code duplication.
+
+### Package Structure
+
+```
+shared/
+└── shared/
+    ├── __init__.py
+    ├── providers/              # External service integrations
+    │   ├── broker/             # Broker implementations
+    │   │   ├── base.py         # BaseBroker abstract class
+    │   │   ├── paper.py        # PaperBroker (simulation)
+    │   │   └── factory.py      # get_broker() factory
+    │   ├── data/               # Data providers
+    │   │   ├── base.py         # BaseDataProvider abstract class
+    │   │   ├── yahoo.py        # YahooDataProvider
+    │   │   ├── nse.py          # NSEDataProvider
+    │   │   └── factory.py      # get_data_provider() factory
+    │   ├── schemas.py          # Order, Quote, OHLCV schemas
+    │   └── symbols.py          # Symbol utilities
+    ├── strategies/             # Trading strategies
+    │   ├── base.py             # BaseStrategy abstract class
+    │   ├── registry.py         # StrategyRegistry
+    │   ├── composite.py        # CompositeStrategy
+    │   ├── prebuilt.py         # Pre-built strategy configs
+    │   ├── indicators/         # Indicator-based strategies
+    │   │   ├── rsi.py          # RSIStrategy
+    │   │   ├── macd.py         # MACDStrategy
+    │   │   ├── bollinger.py    # BollingerBandsStrategy
+    │   │   └── moving_average.py
+    │   ├── intraday/           # Intraday strategies
+    │   │   ├── vwap.py         # VWAPReversionStrategy
+    │   │   ├── vwap_momentum.py# VWAPMomentumStrategy
+    │   │   ├── orb.py          # ORBStrategy
+    │   │   ├── gap_go.py       # GapAndGoStrategy
+    │   │   └── twap.py         # TWAPStrategy
+    │   └── swing/              # Swing trading
+    │       └── price_action_volume_swing.py
+    └── models/
+        └── signals.py          # SignalData, SignalType
+```
+
+### Usage in Services
+
+Each service imports from the shared package:
+
+```python
+# In backend/app/providers/__init__.py
+from shared.providers import Exchange, OrderSide, Quote
+from shared.providers.broker import get_broker, PaperBroker
+from shared.providers.data import get_data_provider, YahooDataProvider
+
+# In trading-engine/engine/strategies/__init__.py
+from shared.strategies import RSIStrategy, VWAPReversionStrategy
+from shared.strategies import StrategyRegistry, CompositeStrategy
+```
+
+### Docker Integration
+
+The shared package is mounted into containers:
+
+```yaml
+# docker-compose.yml
+services:
+  api:
+    volumes:
+      - ./shared:/shared:ro
+
+  trading-engine:
+    volumes:
+      - ./shared:/shared:ro
+```
 
 ---
 
@@ -69,105 +177,40 @@ portfolio-management-system/
 │   ├── src/
 │   │   ├── app/                  # App router pages
 │   │   ├── components/           # React components
+│   │   │   ├── algo/             # Algo trading UI
 │   │   │   ├── charts/           # TradingView, Recharts
 │   │   │   ├── portfolio/        # Portfolio widgets
 │   │   │   └── ui/               # shadcn/ui components
-│   │   ├── lib/                  # API client, utilities
-│   │   └── hooks/                # Custom React hooks
-│   ├── Dockerfile
-│   └── package.json
-├── backend/
+│   │   └── lib/                  # API client, utilities
+│   └── Dockerfile
+├── backend/                      # User-facing API
 │   ├── app/
 │   │   ├── main.py               # FastAPI entry point
-│   │   ├── config.py             # Settings & configuration
-│   │   ├── database.py           # Database connection
-│   │   ├── api/
-│   │   │   ├── routes/           # API route handlers
-│   │   │   └── deps.py           # Dependencies (auth, db)
 │   │   ├── modules/
-│   │   │   ├── auth/             # Authentication module
+│   │   │   ├── auth/             # Authentication
 │   │   │   ├── portfolio/        # Portfolio management
-│   │   │   ├── trading/          # Trading engine
-│   │   │   ├── analysis/         # Analysis engine
-│   │   │   └── data/             # Data ingestion
+│   │   │   ├── trading/          # Order placement
+│   │   │   ├── algo/             # Algo config & P&L
+│   │   │   └── data/             # Market data
 │   │   ├── models/               # SQLAlchemy models
-│   │   ├── schemas/              # Pydantic schemas
-│   │   └── services/             # Business logic
-│   ├── tests/
-│   ├── Dockerfile
-│   └── requirements.txt
-├── worker/
-│   ├── tasks/                    # Celery task definitions
-│   ├── celery_app.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── docker-compose.yml            # Main compose file
-├── docker-compose.dev.yml        # Development overrides
-├── .env.example                  # Environment template
-├── Makefile                      # Common commands
+│   │   └── providers/            # Re-exports from shared
+│   └── Dockerfile
+├── trading-engine/               # Strategy execution
+│   ├── engine/
+│   │   ├── algo/                 # Executor, scheduler
+│   │   ├── routes/               # Internal endpoints
+│   │   ├── strategies/           # Re-exports from shared
+│   │   └── providers/            # Re-exports from shared
+│   └── Dockerfile
+├── shared/                       # Shared Python package
+│   └── shared/
+│       ├── providers/            # Broker & data providers
+│       ├── strategies/           # Trading strategies
+│       └── models/               # Common models
+├── worker/                       # Celery tasks
+├── docker-compose.yml
+├── docker-compose.dev.yml
 └── docs/
-```
-
----
-
-## Docker Compose Configuration
-
-```yaml
-version: '3.8'
-
-services:
-  web:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      - api
-
-  api:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/portfolio
-      - REDIS_URL=redis://redis:6379/0
-      - POLYGON_API_KEY=${POLYGON_API_KEY}
-    depends_on:
-      - db
-      - redis
-
-  worker:
-    build: ./worker
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/portfolio
-      - REDIS_URL=redis://redis:6379/0
-      - POLYGON_API_KEY=${POLYGON_API_KEY}
-    depends_on:
-      - db
-      - redis
-
-  db:
-    image: timescale/timescaledb:latest-pg15
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=portfolio
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-volumes:
-  postgres_data:
-  redis_data:
 ```
 
 ---
@@ -179,35 +222,41 @@ volumes:
 | **Frontend** | Next.js 14, React 18, Tailwind CSS | Modern, fast, SSR support |
 | **UI Components** | shadcn/ui | Accessible, customizable |
 | **Charts** | TradingView Lightweight Charts | Professional financial charts |
-| **Backend** | Python FastAPI | Async, fast, great for data processing |
+| **Backend/Engine** | Python 3.13 + FastAPI | Async, fast, great for data processing |
+| **Package Manager** | uv | Fast Python package management |
 | **ORM** | SQLAlchemy 2.0 | Type-safe, async support |
-| **Task Queue** | Celery + Redis | Simple, reliable background jobs |
+| **Task Queue** | Celery + Redis | Scheduled strategy execution |
 | **Database** | PostgreSQL 15 + TimescaleDB | Relational + time-series in one |
-| **Cache** | Redis | Fast caching, pub/sub |
-| **Data** | yfinance + Polygon.io | Free fallback + paid reliable |
+| **Cache** | Redis | Caching, pub/sub, kill switch state |
+| **Data Providers** | Yahoo Finance, NSE | Free market data |
 
 ---
 
 ## API Design
 
-### Endpoints
+### Backend API Endpoints (Port 8010)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/auth/login` | User login |
-| `POST` | `/api/auth/register` | User registration |
-| `GET` | `/api/portfolio` | Get portfolio summary |
-| `GET` | `/api/portfolio/positions` | List all positions |
-| `GET` | `/api/portfolio/history` | P&L history |
-| `GET` | `/api/stocks/{symbol}` | Get stock details |
-| `GET` | `/api/stocks/{symbol}/analysis` | Technical + fundamental analysis |
-| `GET` | `/api/stocks/{symbol}/price` | Current price + history |
-| `POST` | `/api/orders` | Place order (paper trade) |
-| `GET` | `/api/orders` | List orders |
-| `GET` | `/api/watchlist` | Get watchlist |
-| `POST` | `/api/watchlist` | Add to watchlist |
-| `WS` | `/ws/prices` | Real-time price stream |
-| `WS` | `/ws/portfolio` | Portfolio updates |
+| `POST` | `/api/v1/auth/login` | User login |
+| `POST` | `/api/v1/auth/register` | User registration |
+| `GET` | `/api/v1/portfolio/summary` | Get portfolio summary |
+| `GET` | `/api/v1/portfolio/positions` | List positions |
+| `POST` | `/api/v1/trading/orders` | Place order |
+| `GET` | `/api/v1/algo/strategies` | List algo strategies |
+| `POST` | `/api/v1/algo/strategies` | Create strategy |
+| `GET` | `/api/v1/algo/pnl/summary` | Algo P&L summary |
+| `POST` | `/api/v1/algo/emergency-stop` | Emergency kill switch |
+
+### Trading Engine Endpoints (Port 8001, Internal)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/internal/run-scheduled` | Execute due strategies |
+| `POST` | `/internal/execute/{id}` | Execute specific strategy |
+| `POST` | `/internal/kill-switch/{user_id}/activate` | Activate kill switch |
+| `GET` | `/health` | Health check |
+| `GET` | `/ready` | Readiness check |
 
 ---
 
@@ -280,20 +329,6 @@ CREATE TABLE signals (
 
 ---
 
-## Development Phases (Revised)
-
-| Phase | Duration | Deliverables |
-|-------|----------|--------------|
-| **Phase 1** | Weeks 1-3 | Project setup, Docker config, DB schema, basic API |
-| **Phase 2** | Weeks 4-6 | Data ingestion, price storage, basic UI scaffold |
-| **Phase 3** | Weeks 7-9 | Technical analysis, charts, stock detail page |
-| **Phase 4** | Weeks 10-11 | Paper trading, order placement, portfolio tracking |
-| **Phase 5** | Weeks 12-14 | Signals, alerts, polish, testing |
-
-**Total: ~14 weeks to MVP**
-
----
-
 ## Local Development
 
 ```bash
@@ -303,19 +338,23 @@ cd portfolio-management-system
 
 # Copy environment file
 cp .env.example .env
-# Edit .env with your API keys
 
 # Start all containers
-docker compose up -d
+docker-compose up -d
 
 # View logs
-docker compose logs -f
+docker-compose logs -f api trading-engine
 
 # Access the app
 open http://localhost:3000
 
+# Run tests
+cd backend && uv run pytest
+cd trading-engine && uv run pytest
+cd shared && uv run pytest
+
 # Stop containers
-docker compose down
+docker-compose down
 ```
 
 ---
@@ -325,33 +364,16 @@ docker compose down
 | Option | Cost | Pros | Cons |
 |--------|------|------|------|
 | **Local machine** | $0 | Free, fast dev | Not always-on |
-| **Hetzner VPS** | €5-10/mo | Great value, EU | Manual setup |
+| **Hetzner VPS** | €5-10/mo | Great value | Manual setup |
 | **DigitalOcean** | $12-24/mo | Easy, good docs | Slightly pricier |
-| **Railway** | $5-20/mo | Zero config | Limited control |
-| **Fly.io** | $5-15/mo | Global edge | Learning curve |
 
 **Recommended**: Hetzner CX21 (2 vCPU, 4GB RAM) - €5.39/month
 
 ---
 
-## What's NOT Included (Intentionally)
-
-| Excluded | Reason |
-|----------|--------|
-| Kubernetes | Overkill for personal use |
-| Kafka | Redis pub/sub sufficient |
-| MongoDB | PostgreSQL JSONB covers document needs |
-| Microservices | Modular monolith simpler to maintain |
-| ML predictions | Add later if proven valuable |
-| Multi-market | Start with US, add others later |
-
----
-
-## Future Enhancements (Post-MVP)
+## Future Enhancements
 
 1. **Backtesting engine** - Validate strategies on historical data
-2. **Live broker integration** - Alpaca, Interactive Brokers
+2. **Live broker integration** - AngelOne, Zerodha
 3. **Mobile app** - React Native or PWA
-4. **Multi-market support** - India (NSE), UK (LSE)
-5. **Advanced ML** - Anomaly detection, trend prediction
-
+4. **Advanced ML** - Anomaly detection, trend prediction

@@ -17,9 +17,8 @@ from app.modules.trading.validator import (
     ValidationResult,
     create_validation_error_response,
 )
-from app.providers.broker.base import Broker
-from app.providers.broker.factory import BrokerFactory, get_broker
-from app.providers.data.factory import get_data_provider
+from app.providers.broker import Broker, BrokerFactory, get_broker
+from app.providers.data import get_data_provider
 from app.providers.schemas import (
     OrderRequest,
 )
