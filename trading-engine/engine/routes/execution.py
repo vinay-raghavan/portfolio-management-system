@@ -16,9 +16,9 @@ from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
 from engine.core.database import get_db
 from engine.core.locks import (
-    DistributedLock,
     SCHEDULED_RUN_LOCK_KEY,
     STRATEGY_LOCK_KEY,
+    DistributedLock,
 )
 from engine.core.redis import get_redis
 from engine.models.algo import PositionSizingMethod, StrategyStatus
@@ -377,7 +377,9 @@ async def run_scheduled_strategies(
                     )
                     # Net loss if more losing trades than winning OR if total P&L is negative
                     is_loss = (
-                        result.pnl_stats.total_pnl < 0 if result.pnl_stats.trades_closed > 0 else None
+                        result.pnl_stats.total_pnl < 0
+                        if result.pnl_stats.trades_closed > 0
+                        else None
                     )
 
                     # Update circuit breaker with both realized and unrealized P&L

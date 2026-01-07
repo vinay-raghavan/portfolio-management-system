@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from engine.config import settings
 from engine.core.database import get_db
-from engine.core.locks import SCHEDULED_RUN_LOCK_KEY, STRATEGY_LOCK_KEY
 from engine.core.redis import get_redis
 from engine.main import app
 
@@ -66,8 +65,10 @@ async def get_fake_redis():
 
 def get_fake_redis_with_lock_held():
     """Get fake Redis where lock is already held."""
+
     async def _get():
         return FakeRedis(lock_acquired=False)
+
     return _get
 
 
