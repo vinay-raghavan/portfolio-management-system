@@ -15,6 +15,11 @@ from engine.algo.safety import AlgoKillSwitch, CircuitBreaker, PreExecutionCheck
 from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
 from engine.core.database import get_db
+from engine.core.locks import (
+    DistributedLock,
+    SCHEDULED_RUN_LOCK_KEY,
+    STRATEGY_LOCK_KEY,
+)
 from engine.core.redis import get_redis
 from engine.models.algo import PositionSizingMethod, StrategyStatus
 from engine.providers.broker import PaperBroker, get_broker
@@ -185,220 +190,277 @@ async def run_scheduled_strategies(
 
     Called by Celery worker every 30 seconds.
     This endpoint queries the database for due strategies and executes them.
+
+    Uses a distributed lock to prevent multiple workers from running
+    scheduled strategies simultaneously.
     """
-    pre_checker = PreExecutionChecker(redis)
-    scheduler = StrategyScheduler(db)
+    # Try to acquire global scheduled run lock (non-blocking)
+    # This prevents multiple Celery workers from running scheduled strategies
+    # at the same time when tasks queue up during long-running executions
+    global_lock = DistributedLock(
+        redis,
+        SCHEDULED_RUN_LOCK_KEY,
+        timeout=300,  # 5 minute lock timeout for long strategy runs
+    )
 
-    # Get strategies due to run
-    due_strategies = await scheduler.get_due_strategies()
-    logger.info(f"Found {len(due_strategies)} strategies due for execution")
+    if not await global_lock.acquire(blocking=False):
+        logger.info("Another worker is already running scheduled strategies, skipping")
+        return {
+            "status": "skipped",
+            "reason": "Another worker is already processing scheduled strategies",
+            "executed": 0,
+            "total_due": 0,
+            "results": [],
+        }
 
-    results = []
-    executed_count = 0
+    try:
+        pre_checker = PreExecutionChecker(redis)
+        scheduler = StrategyScheduler(db)
 
-    for strategy in due_strategies:
-        try:
-            # Run all pre-execution safety checks
-            check_result = await pre_checker.check_all(
-                user_id=strategy.user_id,
-                strategy_id=strategy.id,
-                cooldown_seconds=strategy.cooldown_seconds or 0,
-                max_daily_trades=strategy.max_daily_trades or 0,
-            )
+        # Get strategies due to run
+        due_strategies = await scheduler.get_due_strategies()
+        logger.info(f"Found {len(due_strategies)} strategies due for execution")
 
-            if not check_result.can_execute:
-                logger.warning(
-                    f"Strategy {strategy.id} blocked by {check_result.check_type}: "
-                    f"{check_result.reason}"
+        results = []
+        executed_count = 0
+
+        for strategy in due_strategies:
+            try:
+                # Try to acquire per-strategy lock (non-blocking)
+                # This prevents race conditions when checking cooldown
+                strategy_lock = DistributedLock(
+                    redis,
+                    STRATEGY_LOCK_KEY.format(strategy_id=strategy.id),
+                    timeout=300,  # 5 minute lock timeout
                 )
+
+                if not await strategy_lock.acquire(blocking=False):
+                    logger.info(f"Strategy {strategy.id} is already being executed, skipping")
+                    results.append(
+                        {
+                            "strategy_id": strategy.id,
+                            "status": "SKIPPED",
+                            "reason": "already_executing",
+                            "message": "Strategy is already being executed by another process",
+                        }
+                    )
+                    continue
+
+                try:
+                    # Run all pre-execution safety checks
+                    check_result = await pre_checker.check_all(
+                        user_id=strategy.user_id,
+                        strategy_id=strategy.id,
+                        cooldown_seconds=strategy.cooldown_seconds or 0,
+                        max_daily_trades=strategy.max_daily_trades or 0,
+                    )
+
+                    if not check_result.can_execute:
+                        logger.warning(
+                            f"Strategy {strategy.id} blocked by {check_result.check_type}: "
+                            f"{check_result.reason}"
+                        )
+                        results.append(
+                            {
+                                "strategy_id": strategy.id,
+                                "status": "SKIPPED",
+                                "reason": check_result.check_type,
+                                "message": check_result.reason,
+                            }
+                        )
+                        continue
+
+                    # Check if market is open for non-CRON strategies
+                    if not scheduler.is_market_hours() and strategy.schedule_type.value not in [
+                        "CRON",
+                        "MARKET_OPEN",
+                        "MARKET_CLOSE",
+                    ]:
+                        logger.debug(f"Market closed, skipping strategy {strategy.id}")
+                        results.append(
+                            {
+                                "strategy_id": strategy.id,
+                                "status": "SKIPPED",
+                                "reason": "market_closed",
+                            }
+                        )
+                        continue
+
+                    # Get symbols from universe or custom list
+                    symbols = []
+                    if strategy.custom_symbols:
+                        symbols = strategy.custom_symbols
+                    elif strategy.universe:
+                        symbols = strategy.universe.symbols or []
+
+                    # Build strategy config
+                    config = StrategyConfig(
+                        id=strategy.id,
+                        user_id=strategy.user_id,
+                        name=strategy.name,
+                        strategy_name=strategy.strategy_name,
+                        strategy_params=strategy.strategy_params or {},
+                        timeframe=strategy.timeframe,
+                        symbols=symbols,
+                        position_sizing_method=strategy.position_sizing_method,
+                        fixed_quantity=strategy.fixed_quantity,
+                        fixed_amount=strategy.fixed_amount or Decimal("10000"),
+                        portfolio_percent=strategy.portfolio_percent,
+                        risk_per_trade_percent=strategy.risk_per_trade_percent,
+                    )
+
+                    # Execute strategy
+                    broker = get_broker()
+                    # Ensure broker is connected (initializes data provider for paper broker)
+                    if not await broker.is_connected():
+                        await broker.connect()
+                    data_provider = get_data_provider()
+                    _configure_broker_price_fetcher(broker, data_provider)
+                    safety_service = SafetyService()
+
+                    executor = StrategyExecutor(
+                        broker=broker,
+                        data_provider=data_provider,
+                        safety_service=safety_service,
+                    )
+                    result = await executor.execute(config)
+
+                    # Update next run time
+                    await scheduler.update_next_run(strategy)
+
+                    # Update strategy statistics with P&L from position tracker
+                    await scheduler.update_strategy_stats(
+                        strategy=strategy,
+                        orders_filled=result.orders_filled,
+                        total_pnl_delta=float(result.pnl_stats.total_pnl),
+                        winning_trades_delta=result.pnl_stats.winning_trades,
+                        losing_trades_delta=result.pnl_stats.losing_trades,
+                    )
+
+                    # Record trade for cooldown and daily trade tracking
+                    if result.orders_placed > 0:
+                        await pre_checker.record_trade(
+                            strategy_id=strategy.id,
+                            cooldown_seconds=strategy.cooldown_seconds or 0,
+                        )
+
+                    # Always update circuit breaker with execution results
+                    # Get current prices for open positions to calculate unrealized P&L
+                    position_tracker = PositionTracker(db)
+                    open_positions = await position_tracker.get_all_open_positions(
+                        strategy.id, strategy.user_id
+                    )
+
+                    unrealized_pnl = Decimal("0")
+                    if open_positions:
+                        # Fetch current prices
+                        position_symbols = list({p.symbol for p in open_positions})
+                        current_prices: dict[str, Decimal] = {}
+                        for sym in position_symbols:
+                            try:
+                                quote = await data_provider.get_quote(sym)
+                                if quote and quote.price:
+                                    current_prices[sym] = quote.price
+                            except Exception as price_err:
+                                logger.warning(f"Failed to get price for {sym}: {price_err}")
+
+                        # Calculate unrealized P&L
+                        unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
+                            strategy.id, strategy.user_id, current_prices
+                        )
+
+                    # Extract trade P&L data from execution result
+                    # For circuit breaker, we pass the total realized P&L from this execution
+                    # and whether the net result was a loss (for consecutive loss tracking)
+                    trade_pnl = (
+                        result.pnl_stats.total_pnl if result.pnl_stats.trades_closed > 0 else None
+                    )
+                    # Net loss if more losing trades than winning OR if total P&L is negative
+                    is_loss = (
+                        result.pnl_stats.total_pnl < 0 if result.pnl_stats.trades_closed > 0 else None
+                    )
+
+                    # Update circuit breaker with both realized and unrealized P&L
+                    circuit_breaker = CircuitBreaker(redis)
+                    cb_state = await circuit_breaker.check_and_update(
+                        strategy_id=strategy.id,
+                        max_daily_loss=strategy.max_daily_loss,
+                        max_consecutive_losses=strategy.max_consecutive_losses,
+                        trade_pnl=trade_pnl,
+                        is_loss=is_loss,
+                        unrealized_pnl=unrealized_pnl,
+                        max_daily_profit=strategy.max_daily_profit,
+                        overall_profit_target=strategy.overall_profit_target,
+                    )
+
+                    # Handle circuit breaker triggers
+                    if cb_state.is_triggered:
+                        # Immediately persist to DB on trigger
+                        from engine.algo.safety import CircuitBreakerPersistence
+
+                        cb_persistence = CircuitBreakerPersistence(redis)
+                        await cb_persistence.persist_trigger_event(
+                            db=db,
+                            strategy_id=strategy.id,
+                            user_id=strategy.user_id,
+                            event_type="TRIGGERED",
+                            state=cb_state,
+                        )
+                        # Also sync current state to DB
+                        await cb_persistence.sync_to_db(db, strategy.id, strategy.user_id)
+
+                        if cb_state.profit_cutoff_triggered:
+                            logger.info(
+                                f"🎯 Profit cutoff triggered for strategy {strategy.id}: "
+                                f"{cb_state.trigger_reason}"
+                            )
+                            # Pause the strategy based on profit_cutoff_action
+                            await scheduler.disable_strategy(strategy, StrategyStatus.PAUSED)
+                        else:
+                            logger.warning(
+                                f"⚠️ Circuit breaker triggered for strategy {strategy.id}: "
+                                f"{cb_state.trigger_reason}"
+                            )
+                            # Disable the strategy for safety
+                            await scheduler.disable_strategy(strategy, StrategyStatus.DISABLED)
+
+                    results.append(
+                        {
+                            "strategy_id": strategy.id,
+                            "status": result.status.value,
+                            "execution_id": result.execution_id,
+                            "signals_generated": result.signals_generated,
+                            "orders_placed": result.orders_placed,
+                        }
+                    )
+                    executed_count += 1
+
+                finally:
+                    # Always release the per-strategy lock
+                    await strategy_lock.release()
+
+            except Exception as e:
+                logger.exception(f"Error executing strategy {strategy.id}: {e}")
                 results.append(
                     {
                         "strategy_id": strategy.id,
-                        "status": "SKIPPED",
-                        "reason": check_result.check_type,
-                        "message": check_result.reason,
+                        "status": "ERROR",
+                        "error": str(e),
                     }
                 )
-                continue
 
-            # Check if market is open for non-CRON strategies
-            if not scheduler.is_market_hours() and strategy.schedule_type.value not in [
-                "CRON",
-                "MARKET_OPEN",
-                "MARKET_CLOSE",
-            ]:
-                logger.debug(f"Market closed, skipping strategy {strategy.id}")
-                results.append(
-                    {
-                        "strategy_id": strategy.id,
-                        "status": "SKIPPED",
-                        "reason": "market_closed",
-                    }
-                )
-                continue
+        await db.commit()
 
-            # Get symbols from universe or custom list
-            symbols = []
-            if strategy.custom_symbols:
-                symbols = strategy.custom_symbols
-            elif strategy.universe:
-                symbols = strategy.universe.symbols or []
+        return {
+            "status": "success",
+            "executed": executed_count,
+            "total_due": len(due_strategies),
+            "results": results,
+        }
 
-            # Build strategy config
-            config = StrategyConfig(
-                id=strategy.id,
-                user_id=strategy.user_id,
-                name=strategy.name,
-                strategy_name=strategy.strategy_name,
-                strategy_params=strategy.strategy_params or {},
-                timeframe=strategy.timeframe,
-                symbols=symbols,
-                position_sizing_method=strategy.position_sizing_method,
-                fixed_quantity=strategy.fixed_quantity,
-                fixed_amount=strategy.fixed_amount or Decimal("10000"),
-                portfolio_percent=strategy.portfolio_percent,
-                risk_per_trade_percent=strategy.risk_per_trade_percent,
-            )
-
-            # Execute strategy
-            broker = get_broker()
-            # Ensure broker is connected (initializes data provider for paper broker)
-            if not await broker.is_connected():
-                await broker.connect()
-            data_provider = get_data_provider()
-            _configure_broker_price_fetcher(broker, data_provider)
-            safety_service = SafetyService()
-
-            executor = StrategyExecutor(
-                broker=broker,
-                data_provider=data_provider,
-                safety_service=safety_service,
-            )
-            result = await executor.execute(config)
-
-            # Update next run time
-            await scheduler.update_next_run(strategy)
-
-            # Update strategy statistics with P&L from position tracker
-            await scheduler.update_strategy_stats(
-                strategy=strategy,
-                orders_filled=result.orders_filled,
-                total_pnl_delta=float(result.pnl_stats.total_pnl),
-                winning_trades_delta=result.pnl_stats.winning_trades,
-                losing_trades_delta=result.pnl_stats.losing_trades,
-            )
-
-            # Record trade for cooldown and daily trade tracking
-            if result.orders_placed > 0:
-                await pre_checker.record_trade(
-                    strategy_id=strategy.id,
-                    cooldown_seconds=strategy.cooldown_seconds or 0,
-                )
-
-            # Always update circuit breaker with execution results
-            # Get current prices for open positions to calculate unrealized P&L
-            position_tracker = PositionTracker(db)
-            open_positions = await position_tracker.get_all_open_positions(
-                strategy.id, strategy.user_id
-            )
-
-            unrealized_pnl = Decimal("0")
-            if open_positions:
-                # Fetch current prices
-                position_symbols = list({p.symbol for p in open_positions})
-                current_prices: dict[str, Decimal] = {}
-                for sym in position_symbols:
-                    try:
-                        quote = await data_provider.get_quote(sym)
-                        if quote and quote.price:
-                            current_prices[sym] = quote.price
-                    except Exception as price_err:
-                        logger.warning(f"Failed to get price for {sym}: {price_err}")
-
-                # Calculate unrealized P&L
-                unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
-                    strategy.id, strategy.user_id, current_prices
-                )
-
-            # Extract trade P&L data from execution result
-            # For circuit breaker, we pass the total realized P&L from this execution
-            # and whether the net result was a loss (for consecutive loss tracking)
-            trade_pnl = result.pnl_stats.total_pnl if result.pnl_stats.trades_closed > 0 else None
-            # Net loss if more losing trades than winning OR if total P&L is negative
-            is_loss = result.pnl_stats.total_pnl < 0 if result.pnl_stats.trades_closed > 0 else None
-
-            # Update circuit breaker with both realized and unrealized P&L
-            circuit_breaker = CircuitBreaker(redis)
-            cb_state = await circuit_breaker.check_and_update(
-                strategy_id=strategy.id,
-                max_daily_loss=strategy.max_daily_loss,
-                max_consecutive_losses=strategy.max_consecutive_losses,
-                trade_pnl=trade_pnl,
-                is_loss=is_loss,
-                unrealized_pnl=unrealized_pnl,
-                max_daily_profit=strategy.max_daily_profit,
-                overall_profit_target=strategy.overall_profit_target,
-            )
-
-            # Handle circuit breaker triggers
-            if cb_state.is_triggered:
-                # Immediately persist to DB on trigger
-                from engine.algo.safety import CircuitBreakerPersistence
-
-                cb_persistence = CircuitBreakerPersistence(redis)
-                await cb_persistence.persist_trigger_event(
-                    db=db,
-                    strategy_id=strategy.id,
-                    user_id=strategy.user_id,
-                    event_type="TRIGGERED",
-                    state=cb_state,
-                )
-                # Also sync current state to DB
-                await cb_persistence.sync_to_db(db, strategy.id, strategy.user_id)
-
-                if cb_state.profit_cutoff_triggered:
-                    logger.info(
-                        f"🎯 Profit cutoff triggered for strategy {strategy.id}: "
-                        f"{cb_state.trigger_reason}"
-                    )
-                    # Pause the strategy based on profit_cutoff_action
-                    await scheduler.disable_strategy(strategy, StrategyStatus.PAUSED)
-                else:
-                    logger.warning(
-                        f"⚠️ Circuit breaker triggered for strategy {strategy.id}: "
-                        f"{cb_state.trigger_reason}"
-                    )
-                    # Disable the strategy for safety
-                    await scheduler.disable_strategy(strategy, StrategyStatus.DISABLED)
-
-            results.append(
-                {
-                    "strategy_id": strategy.id,
-                    "status": result.status.value,
-                    "execution_id": result.execution_id,
-                    "signals_generated": result.signals_generated,
-                    "orders_placed": result.orders_placed,
-                }
-            )
-            executed_count += 1
-
-        except Exception as e:
-            logger.exception(f"Error executing strategy {strategy.id}: {e}")
-            results.append(
-                {
-                    "strategy_id": strategy.id,
-                    "status": "ERROR",
-                    "error": str(e),
-                }
-            )
-
-    await db.commit()
-
-    return {
-        "executed": executed_count,
-        "total_due": len(due_strategies),
-        "results": results,
-    }
+    finally:
+        # Always release the global lock
+        await global_lock.release()
 
 
 @router.post("/execute/{strategy_id}")
