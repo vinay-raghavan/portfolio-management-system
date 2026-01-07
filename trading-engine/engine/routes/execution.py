@@ -17,11 +17,51 @@ from engine.config import settings
 from engine.core.database import get_db
 from engine.core.redis import get_redis
 from engine.models.algo import PositionSizingMethod, StrategyStatus
-from engine.providers.broker import get_broker
-from engine.providers.data import get_data_provider
+from engine.providers.broker import PaperBroker, get_broker
+from engine.providers.data import DataProvider, get_data_provider
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_broker_price_fetcher(broker, data_provider: DataProvider) -> None:
+    """Configure the broker with a price fetcher using the data provider.
+
+    This ensures the paper broker can get real market prices for order execution.
+    """
+    if isinstance(broker, PaperBroker) and broker._price_fetcher is None:
+        import asyncio
+
+        def sync_price_fetcher(symbol: str) -> float | None:
+            """Synchronous price fetcher that wraps the async data provider."""
+            try:
+                # Try to get the running loop
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+
+                if loop and loop.is_running():
+                    # We're in an async context - use a new thread to run the coroutine
+                    import concurrent.futures
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, data_provider.get_quote(symbol))
+                        quote = future.result(timeout=10)
+                else:
+                    # No running loop - safe to use asyncio.run
+                    quote = asyncio.run(data_provider.get_quote(symbol))
+
+                if quote and quote.price:
+                    return float(quote.price)
+                return None
+            except Exception as e:
+                logger.warning(f"Failed to fetch price for {symbol}: {e}")
+                return None
+
+        broker.set_price_fetcher(sync_price_fetcher)
+        logger.info("Configured paper broker with data provider price fetcher")
+
 
 router = APIRouter(prefix="/internal", tags=["execution"])
 
@@ -104,6 +144,7 @@ async def execute_strategy_full(
         # Get broker and data provider
         broker = get_broker()
         data_provider = get_data_provider()
+        _configure_broker_price_fetcher(broker, data_provider)
         safety_service = SafetyService()
 
         # Execute strategy
@@ -225,6 +266,7 @@ async def run_scheduled_strategies(
             if not await broker.is_connected():
                 await broker.connect()
             data_provider = get_data_provider()
+            _configure_broker_price_fetcher(broker, data_provider)
             safety_service = SafetyService()
 
             executor = StrategyExecutor(
@@ -428,14 +470,11 @@ async def execute_strategy_by_id(
 
         # Execute strategy
         broker = get_broker()
-        # Ensure broker is connected (initializes data provider for paper broker)
-        is_connected = await broker.is_connected()
-        print(f"DEBUG: Broker connected: {is_connected}")
-        if not is_connected:
-            print("DEBUG: Connecting broker...")
+        # Ensure broker is connected
+        if not await broker.is_connected():
             await broker.connect()
-            print(f"DEBUG: Broker connected after connect(): {await broker.is_connected()}")
         data_provider = get_data_provider()
+        _configure_broker_price_fetcher(broker, data_provider)
         safety_service = SafetyService()
 
         executor = StrategyExecutor(
