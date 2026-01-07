@@ -29,13 +29,13 @@ from app.modules.algo.schemas import (
     UniverseUpdate,
     UnrealizedPnLResponse,
 )
-from app.modules.portfolio.schemas import ProfitBookingRules
 from app.modules.algo.service import AlgoService
 from app.modules.algo.universe_service import (
     DYNAMIC_UNIVERSES,
     PREDEFINED_UNIVERSES,
     UniverseService,
 )
+from app.modules.portfolio.schemas import ProfitBookingRules
 from app.providers.data import NSEDataProvider
 
 logger = logging.getLogger(__name__)

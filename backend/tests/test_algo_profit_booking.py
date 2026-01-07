@@ -1,7 +1,7 @@
 """Tests for algo profit booking endpoints."""
 import pytest
 
-from app.modules.portfolio.schemas import ProfitBookingRules, ProfitBookingRule
+from app.modules.portfolio.schemas import ProfitBookingRule, ProfitBookingRules
 
 
 @pytest.mark.asyncio

@@ -523,7 +523,7 @@ class PortfolioService:
         position = result.scalar_one_or_none()
 
         if not position:
-            logger.error(f"Position not found in database!")
+            logger.error("Position not found in database!")
             return None
 
         # Convert to dict for JSON storage, converting Decimals to floats
