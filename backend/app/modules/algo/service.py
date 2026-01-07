@@ -28,6 +28,7 @@ from app.modules.algo.schemas import (
     UnrealizedPnLPosition,
     UnrealizedPnLResponse,
 )
+from app.modules.portfolio.schemas import ProfitBookingRules
 
 logger = logging.getLogger(__name__)
 
@@ -527,3 +528,42 @@ class AlgoService:
             total_current_value=total_current_value,
             positions_count=len(positions),
         )
+
+    # ============ Profit Booking Management ============
+
+    async def get_profit_booking_rules(
+        self, user_id: str, position_id: str
+    ) -> ProfitBookingRules | None:
+        """Get profit booking rules for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position or not position.profit_booking_rules:
+            return None
+
+        return ProfitBookingRules.model_validate(position.profit_booking_rules)
+
+    async def update_profit_booking_rules(
+        self, user_id: str, position_id: str, rules: ProfitBookingRules
+    ) -> ProfitBookingRules | None:
+        """Update profit booking rules for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        # Convert to dict for JSON storage, converting Decimals to floats
+        position.profit_booking_rules = rules.model_dump(mode="json")
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        return ProfitBookingRules.model_validate(position.profit_booking_rules)

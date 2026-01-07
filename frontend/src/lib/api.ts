@@ -8,6 +8,7 @@ import type {
   PortfolioDetailResponse,
   PortfolioCreate,
   PortfolioUpdate,
+  ProfitBookingRules,
   TradeHistoryResponse,
   DailyPnLHistory,
   Order,
@@ -95,6 +96,12 @@ export const portfolioApi = {
     api.patch<PortfolioInfo>(`/portfolio/portfolios/${portfolioId}`, data),
   deletePortfolio: (portfolioId: string) =>
     api.delete(`/portfolio/portfolios/${portfolioId}`),
+
+  // Profit booking
+  getProfitBookingRules: (positionId: string) =>
+    api.get<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`),
+  updateProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
+    api.patch<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`, rules),
 };
 
 // Trading API
@@ -405,6 +412,12 @@ export const algoApi = {
   // Positions
   getPositions: (strategyId?: string, status?: string) =>
     api.get<AlgoPosition[]>('/algo/positions', { params: { strategy_id: strategyId, status } }),
+
+  // Profit booking for algo positions
+  getAlgoProfitBookingRules: (positionId: string) =>
+    api.get<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`),
+  updateAlgoProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
+    api.patch<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`, rules),
 
   // P&L Endpoints
   getPnLSummary: () =>

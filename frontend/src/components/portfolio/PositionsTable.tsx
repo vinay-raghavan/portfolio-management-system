@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUpDown, TrendingUp, TrendingDown, MoreHorizontal } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, TrendingDown, MoreHorizontal, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatPercent, cn } from '@/lib/utils';
 import { useTradingStore, useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
+import { ProfitBookingDialog } from './ProfitBookingDialog';
 import type { Position } from '@/types';
 
 type SortField = 'symbol' | 'quantity' | 'market_value' | 'unrealized_pnl' | 'unrealized_pnl_pct';
@@ -21,6 +22,7 @@ interface PositionsTableProps {
 export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortField, setSortField] = useState<SortField>('market_value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [profitBookingPosition, setProfitBookingPosition] = useState<Position | null>(null);
   const router = useRouter();
   const { quickBuy, quickSell } = useTradingStore();
   const { setSelectedSymbol } = useUIStore();
@@ -169,6 +171,9 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
                       </td>
                       <td className="text-right py-3 px-3">
                         <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => setProfitBookingPosition(position)}>
+                            <Target className="h-3 w-3" />
+                          </Button>
                           <Button size="sm" variant="outline" onClick={() => quickBuy(position.symbol)}>
                             Buy
                           </Button>
@@ -185,6 +190,11 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
           </div>
         )}
       </CardContent>
+      <ProfitBookingDialog
+        position={profitBookingPosition}
+        open={!!profitBookingPosition}
+        onOpenChange={(open) => !open && setProfitBookingPosition(null)}
+      />
     </Card>
   );
 }

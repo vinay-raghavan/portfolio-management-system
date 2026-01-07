@@ -35,6 +35,7 @@ from app.modules.algo.universe_service import (
     PREDEFINED_UNIVERSES,
     UniverseService,
 )
+from app.modules.portfolio.schemas import ProfitBookingRules
 from app.providers.data import NSEDataProvider
 
 logger = logging.getLogger(__name__)
@@ -753,3 +754,37 @@ async def get_unrealized_pnl(
             logger.warning(f"Failed to get price for {symbol}: {e}")
 
     return await service.get_unrealized_pnl(current_user.id, current_prices)
+
+
+# ============== Profit Booking Endpoints ==============
+
+
+@router.get("/positions/{position_id}/profit-booking", response_model=ProfitBookingRules | None)
+async def get_algo_profit_booking_rules(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+) -> ProfitBookingRules | None:
+    """Get profit booking rules for an algo position."""
+    service = AlgoService(db)
+    rules = await service.get_profit_booking_rules(current_user.id, position_id)
+    return rules
+
+
+@router.patch("/positions/{position_id}/profit-booking", response_model=ProfitBookingRules)
+async def update_algo_profit_booking_rules(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+    rules: ProfitBookingRules,
+) -> ProfitBookingRules:
+    """Set or update profit booking rules for an algo position."""
+    service = AlgoService(db)
+    updated_rules = await service.update_profit_booking_rules(current_user.id, position_id, rules)
+    if updated_rules is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found",
+        )
+    await db.commit()
+    return updated_rules

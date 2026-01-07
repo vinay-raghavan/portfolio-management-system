@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -24,6 +26,7 @@ import {
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
+import { AlgoProfitBookingDialog } from './AlgoProfitBookingDialog';
 import type { StrategyPnL, AlgoDailyPnL, UnrealizedPnLPosition } from '@/types';
 
 interface PnLDashboardProps {
@@ -32,6 +35,7 @@ interface PnLDashboardProps {
 
 export function PnLDashboard({ className }: PnLDashboardProps) {
   const { format: formatPrice } = useCurrency();
+  const [profitBookingPosition, setProfitBookingPosition] = useState<UnrealizedPnLPosition | null>(null);
 
   // Fetch P&L summary
   const { data: summary, isLoading: summaryLoading } = useQuery({
@@ -348,6 +352,7 @@ function UnrealizedPositionsTable({
                 <TableHead className="text-right">Current Price</TableHead>
                 <TableHead className="text-right">Unrealized P&L</TableHead>
                 <TableHead className="text-right">P&L %</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -368,12 +373,22 @@ function UnrealizedPositionsTable({
                   <TableCell className={cn('text-right', Number(p.unrealized_pnl_percent ?? 0) >= 0 ? 'text-green-600' : 'text-red-600')}>
                     {Number(p.unrealized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(p.unrealized_pnl_percent ?? 0).toFixed(2)}%
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => setProfitBookingPosition(p)}>
+                      <Target className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </CardContent>
+      <AlgoProfitBookingDialog
+        position={profitBookingPosition}
+        open={!!profitBookingPosition}
+        onOpenChange={(open) => !open && setProfitBookingPosition(null)}
+      />
     </Card>
   );
 }

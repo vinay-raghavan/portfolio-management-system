@@ -10,6 +10,7 @@ from app.modules.portfolio.schemas import (
     PortfolioListResponse,
     PortfolioResponse,
     PortfolioUpdate,
+    ProfitBookingRules,
     TradeHistoryResponse,
     TradeResponse,
 )
@@ -149,3 +150,46 @@ async def get_trade_history(
         page=page,
         page_size=page_size,
     )
+
+
+# ============== Profit Booking Endpoints ==============
+
+
+@router.get("/positions/{position_id}/profit-booking", response_model=ProfitBookingRules | None)
+async def get_profit_booking_rules(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+) -> ProfitBookingRules | None:
+    """Get profit booking rules for a position."""
+    service = PortfolioService(db)
+    rules = await service.get_profit_booking_rules(current_user.id, position_id)
+    return rules
+
+
+@router.patch("/positions/{position_id}/profit-booking", response_model=ProfitBookingRules)
+async def update_profit_booking_rules(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+    rules: ProfitBookingRules,
+) -> ProfitBookingRules:
+    """Set or update profit booking rules for a position."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Updating profit booking rules - user_id: {current_user.id}, position_id: {position_id}"
+    )
+    logger.info(f"Rules: {rules}")
+
+    service = PortfolioService(db)
+    updated_rules = await service.update_profit_booking_rules(current_user.id, position_id, rules)
+    if updated_rules is None:
+        logger.error(f"Position not found - user_id: {current_user.id}, position_id: {position_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found",
+        )
+    await db.commit()
+    return updated_rules
