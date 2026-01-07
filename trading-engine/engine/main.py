@@ -25,7 +25,24 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("Starting Trading Engine...")
+
+    # Load circuit breaker states from DB to Redis on startup
+    try:
+        from engine.algo.safety import CircuitBreakerPersistence
+        from engine.core.database import get_db_context
+        from engine.core.redis import get_redis_pool
+
+        redis = await get_redis_pool()
+        cb_persistence = CircuitBreakerPersistence(redis)
+
+        async with get_db_context() as db:
+            loaded = await cb_persistence.load_all_active_strategies(db)
+            logger.info(f"Loaded {len(loaded)} circuit breaker states from DB")
+    except Exception as e:
+        logger.warning(f"Failed to load circuit breaker states on startup: {e}")
+
     yield
+
     logger.info("Shutting down Trading Engine...")
     await close_redis_pool()
 

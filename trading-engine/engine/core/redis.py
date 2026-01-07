@@ -48,3 +48,12 @@ async def check_redis_health() -> bool:
 async def close_redis_pool() -> None:
     """Close the Redis connection pool."""
     await redis_pool.disconnect()
+
+
+async def get_redis_pool() -> redis.Redis:
+    """Get a Redis client from the pool.
+
+    Use this for non-dependency injection contexts like startup.
+    Caller is responsible for closing the client.
+    """
+    return redis.Redis(connection_pool=redis_pool)

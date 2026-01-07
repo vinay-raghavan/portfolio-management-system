@@ -1,8 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Clock, Target, BarChart3 } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -12,10 +14,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
-import type { AlgoStrategy, StrategyPnL } from '@/types';
+import type { AlgoStrategy, StrategyPnL, AlgoPosition } from '@/types';
 
 interface StrategyDetailsProps {
   strategy: AlgoStrategy;
@@ -23,6 +42,12 @@ interface StrategyDetailsProps {
 
 export function StrategyDetails({ strategy }: StrategyDetailsProps) {
   const { format: formatPrice } = useCurrency();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // State for dialogs
+  const [closePositionDialog, setClosePositionDialog] = useState<AlgoPosition | null>(null);
+  const [squareOffDialog, setSquareOffDialog] = useState(false);
 
   // Fetch universe details if strategy has a universe
   const { data: universe } = useQuery({
@@ -39,7 +64,7 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
   });
 
   // Fetch positions for this strategy
-  const { data: positions } = useQuery({
+  const { data: positions, refetch: refetchPositions } = useQuery({
     queryKey: ['algo-positions', strategy.id],
     queryFn: () => algoApi.getPositions(strategy.id).then((res) => res.data),
     refetchInterval: 30000,
@@ -52,6 +77,51 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
     refetchInterval: 30000,
   });
 
+  // Close position mutation
+  const closePositionMutation = useMutation({
+    mutationFn: ({ symbol }: { symbol: string }) =>
+      algoApi.closePosition(strategy.id, symbol),
+    onSuccess: (response) => {
+      toast({
+        title: 'Position Closed',
+        description: response.data.message,
+      });
+      refetchPositions();
+      queryClient.invalidateQueries({ queryKey: ['algo-pnl-by-strategy'] });
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      setClosePositionDialog(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to Close Position',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Square off strategy mutation
+  const squareOffMutation = useMutation({
+    mutationFn: () => algoApi.squareOffStrategy(strategy.id),
+    onSuccess: (response) => {
+      toast({
+        title: 'Strategy Squared Off',
+        description: `Closed ${response.data.positions_closed} positions. Total P&L: ${formatPrice(response.data.total_realized_pnl)}`,
+      });
+      refetchPositions();
+      queryClient.invalidateQueries({ queryKey: ['algo-pnl-by-strategy'] });
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      setSquareOffDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to Square Off',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   // Find this strategy's P&L data
   const strategyPnL: StrategyPnL | undefined = pnlByStrategy?.strategies.find(
     (s) => s.strategy_id === strategy.id
@@ -62,8 +132,8 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
     ? ((strategy.winning_trades / strategy.total_trades) * 100).toFixed(1)
     : '0.0';
 
-  // Separate open and closed positions
-  const openPositions = positions?.filter((p) => p.status === 'OPEN') ?? [];
+  // Separate open/partial and closed positions
+  const openPositions = positions?.filter((p) => p.status === 'OPEN' || p.status === 'PARTIAL') ?? [];
   const closedPositions = positions?.filter((p) => p.status === 'CLOSED').slice(0, 5) ?? [];
 
   return (
@@ -169,7 +239,7 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
             <span className="text-muted-foreground">Win Rate:</span>{' '}
             <span className="font-medium">
               {strategyPnL?.win_rate !== undefined
-                ? ((strategyPnL.win_rate ?? 0) * 100).toFixed(1)
+                ? Number(strategyPnL.win_rate ?? 0).toFixed(1)
                 : winRate}%
             </span>
           </div>
@@ -216,10 +286,34 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
 
       {/* Positions and Executions Tabs */}
       <Tabs defaultValue="positions" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[300px]">
-          <TabsTrigger value="positions">Positions ({positions?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="executions">Recent Runs ({executions?.length ?? 0})</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between mb-2">
+          <TabsList className="grid w-full grid-cols-2 max-w-[300px]">
+            <TabsTrigger value="positions">Positions ({positions?.length ?? 0})</TabsTrigger>
+            <TabsTrigger value="executions">Recent Runs ({executions?.length ?? 0})</TabsTrigger>
+          </TabsList>
+          {openPositions.length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 border-destructive bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => setSquareOffDialog(true)}
+                    disabled={squareOffMutation.isPending}
+                  >
+                    {squareOffMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <OctagonX className="h-4 w-4 fill-current" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Exit All Positions</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
 
         <TabsContent value="positions" className="mt-2">
           {positions && positions.length > 0 ? (
@@ -233,7 +327,10 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead className="text-right">Entry</TableHead>
                     <TableHead className="text-right">Exit</TableHead>
-                    <TableHead className="text-right">P&L</TableHead>
+                    <TableHead className="text-right">LTP</TableHead>
+                    <TableHead className="text-right">Unrealized P&L</TableHead>
+                    <TableHead className="text-right">Realized P&L</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -246,13 +343,42 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={pos.status === 'OPEN' ? 'outline' : 'secondary'} className="text-xs">
+                        <Badge
+                          variant={pos.status === 'OPEN' ? 'outline' : pos.status === 'PARTIAL' ? 'outline' : 'secondary'}
+                          className={cn('text-xs', pos.status === 'PARTIAL' && 'border-yellow-500 text-yellow-600')}
+                        >
                           {pos.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">{pos.remaining_quantity}/{pos.entry_quantity}</TableCell>
                       <TableCell className="text-right">{formatPrice(pos.entry_price)}</TableCell>
-                      <TableCell className="text-right">{pos.exit_price ? formatPrice(pos.exit_price) : '-'}</TableCell>
+                      <TableCell className="text-right">
+                        {pos.exit_price ? formatPrice(pos.exit_price) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(pos.status === 'OPEN' || pos.status === 'PARTIAL') && pos.current_price != null
+                          ? formatPrice(pos.current_price)
+                          : '-'}
+                      </TableCell>
+                      <TableCell className={cn(
+                        'text-right font-medium',
+                        (pos.status === 'OPEN' || pos.status === 'PARTIAL')
+                          ? (pos.unrealized_pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'
+                          : 'text-muted-foreground'
+                      )}>
+                        {(pos.status === 'OPEN' || pos.status === 'PARTIAL') && pos.unrealized_pnl != null ? (
+                          <>
+                            {formatPrice(pos.unrealized_pnl)}
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({Number(pos.unrealized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(pos.unrealized_pnl_percent ?? 0).toFixed(2)}%)
+                            </span>
+                          </>
+                        ) : (pos.status === 'OPEN' || pos.status === 'PARTIAL') ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <span className="text-muted-foreground">Closed</span>
+                        )}
+                      </TableCell>
                       <TableCell className={cn(
                         'text-right font-medium',
                         (pos.realized_pnl ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'
@@ -261,6 +387,26 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                         <span className="text-xs text-muted-foreground ml-1">
                           ({Number(pos.realized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(pos.realized_pnl_percent ?? 0).toFixed(2)}%)
                         </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(pos.status === 'OPEN' || pos.status === 'PARTIAL') && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-7 w-7 border-destructive bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                  onClick={() => setClosePositionDialog(pos)}
+                                  disabled={closePositionMutation.isPending}
+                                >
+                                  <CircleArrowOutUpRight className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Close Position</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -332,6 +478,84 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
           <span>Last Run: {new Date(strategy.last_run_at).toLocaleString()}</span>
         )}
       </div>
+
+      {/* Close Position Confirmation Dialog */}
+      <AlertDialog open={!!closePositionDialog} onOpenChange={(open) => !open && setClosePositionDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close Position</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to close your {closePositionDialog?.symbol} position?
+              <br /><br />
+              <strong>Position Details:</strong>
+              <ul className="mt-2 space-y-1">
+                <li>Side: {closePositionDialog?.side}</li>
+                <li>Quantity: {closePositionDialog?.remaining_quantity}</li>
+                <li>Entry Price: {closePositionDialog ? formatPrice(closePositionDialog.entry_price) : '-'}</li>
+              </ul>
+              <br />
+              The position will be closed at the current market price.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closePositionMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => closePositionDialog && closePositionMutation.mutate({ symbol: closePositionDialog.symbol })}
+              disabled={closePositionMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {closePositionMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Closing...
+                </>
+              ) : (
+                'Close Position'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Square Off Strategy Confirmation Dialog */}
+      <AlertDialog open={squareOffDialog} onOpenChange={setSquareOffDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Exit All Positions</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to close all open positions for strategy &quot;{strategy.name}&quot;?
+              <br /><br />
+              <strong>This will close {openPositions.length} position(s):</strong>
+              <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {openPositions.map((pos) => (
+                  <li key={pos.id}>
+                    {pos.symbol}: {pos.side} {pos.remaining_quantity} @ {formatPrice(pos.entry_price)}
+                  </li>
+                ))}
+              </ul>
+              <br />
+              All positions will be closed at current market prices.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={squareOffMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => squareOffMutation.mutate()}
+              disabled={squareOffMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {squareOffMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Closing All...
+                </>
+              ) : (
+                'Exit All Positions'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

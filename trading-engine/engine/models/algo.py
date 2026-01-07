@@ -485,3 +485,108 @@ class AlgoOrder(Base):
 
     def __repr__(self) -> str:
         return f"<AlgoOrder {self.side} {self.quantity} {self.symbol}>"
+
+
+class CircuitBreakerState(Base):
+    """Persisted circuit breaker state for a strategy.
+
+    Stores the current state of the circuit breaker for recovery after restarts.
+    The primary source of truth during operation is Redis for low latency.
+    This table is synced periodically and on triggers for persistence.
+    """
+
+    __tablename__ = "circuit_breaker_states"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    strategy_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_strategies.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Circuit breaker status
+    is_triggered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    trigger_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Daily tracking (resets at midnight)
+    daily_loss: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_profit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Overall profit tracking
+    overall_profit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    profit_cutoff_triggered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Tracking date for daily reset detection
+    tracking_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Sync timestamps
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"<CircuitBreakerState strategy={self.strategy_id} triggered={self.is_triggered}>"
+
+
+class CircuitBreakerHistory(Base):
+    """Historical record of circuit breaker events."""
+
+    __tablename__ = "circuit_breaker_history"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    strategy_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_strategies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Event details
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    trigger_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # State at time of event
+    daily_loss: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_profit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    overall_profit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_cb_history_strategy_event", "strategy_id", "event_at"),)
+
+    def __repr__(self) -> str:
+        return f"<CircuitBreakerHistory {self.event_type} strategy={self.strategy_id}>"

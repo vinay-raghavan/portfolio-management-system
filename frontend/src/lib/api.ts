@@ -334,6 +334,8 @@ import type {
   AlgoStrategyCreate,
   AlgoStrategyUpdate,
   CircuitBreakerStatus,
+  ClosePositionRequest,
+  ClosePositionResponse,
   StrategyExecution,
   Universe,
   UniverseCreate,
@@ -344,6 +346,8 @@ import type {
   PnLHistoryResponse,
   UnrealizedPnLResponse,
   AlgoPosition,
+  SquareOffStrategyRequest,
+  SquareOffStrategyResponse,
 } from '@/types';
 
 export const algoApi = {
@@ -418,6 +422,12 @@ export const algoApi = {
     api.get<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`),
   updateAlgoProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
     api.patch<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`, rules),
+
+  // Position Exit Endpoints
+  closePosition: (strategyId: string, symbol: string, data?: ClosePositionRequest) =>
+    api.post<ClosePositionResponse>(`/algo/strategies/${strategyId}/positions/${symbol}/close`, data || {}),
+  squareOffStrategy: (strategyId: string, data?: SquareOffStrategyRequest) =>
+    api.post<SquareOffStrategyResponse>(`/algo/strategies/${strategyId}/square-off`, data || {}),
 
   // P&L Endpoints
   getPnLSummary: () =>

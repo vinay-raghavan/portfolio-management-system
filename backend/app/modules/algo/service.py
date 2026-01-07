@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
     AlgoPosition,
+    PositionSide,
     PositionStatus,
     StrategyExecution,
     StrategyStatus,
@@ -17,11 +18,13 @@ from app.modules.algo.models import (
 )
 from app.modules.algo.scheduler import StrategyScheduler
 from app.modules.algo.schemas import (
+    ClosePositionResponse,
     DailyPnL,
     PnLByStrategyResponse,
     PnLHistoryResponse,
     PnLSummary,
     PositionResponse,
+    SquareOffStrategyResponse,
     StrategyCreate,
     StrategyPnL,
     StrategyUpdate,
@@ -189,9 +192,20 @@ class AlgoService:
     # ============== P&L Methods ==============
 
     async def get_positions(
-        self, user_id: str, strategy_id: str | None = None, status: str | None = None
+        self,
+        user_id: str,
+        strategy_id: str | None = None,
+        status: str | None = None,
+        current_prices: dict[str, Decimal] | None = None,
     ) -> list[PositionResponse]:
-        """Get positions for a user, optionally filtered by strategy and status."""
+        """Get positions for a user, optionally filtered by strategy and status.
+
+        Args:
+            user_id: User ID
+            strategy_id: Optional strategy ID filter
+            status: Optional status filter (OPEN, CLOSED, PARTIAL)
+            current_prices: Optional dict of symbol -> current price for unrealized P&L
+        """
         query = select(AlgoPosition).where(AlgoPosition.user_id == user_id)
 
         if strategy_id:
@@ -208,31 +222,55 @@ class AlgoService:
         result = await self.db.execute(query)
         positions = result.scalars().all()
 
-        return [
-            PositionResponse(
-                id=p.id,
-                strategy_id=p.strategy_id,
-                user_id=p.user_id,
-                symbol=p.symbol,
-                side=p.side.value,
-                status=p.status.value,
-                entry_quantity=p.entry_quantity,
-                entry_price=p.entry_price,
-                entry_at=p.entry_at,
-                exit_quantity=p.exit_quantity,
-                exit_price=p.exit_price,
-                exit_at=p.exit_at,
-                remaining_quantity=p.remaining_quantity,
-                realized_pnl=p.realized_pnl,
-                realized_pnl_percent=p.realized_pnl_percent,
-                is_winner=p.is_winner,
-                stop_loss=p.stop_loss,
-                take_profit=p.take_profit,
-                created_at=p.created_at,
-                updated_at=p.updated_at,
+        responses = []
+        for p in positions:
+            # Calculate unrealized P&L for open positions
+            current_price = None
+            unrealized_pnl = None
+            unrealized_pnl_percent = None
+
+            # Calculate unrealized P&L for positions with remaining quantity (OPEN or PARTIAL)
+            if p.status in (PositionStatus.OPEN, PositionStatus.PARTIAL) and current_prices:
+                current_price = current_prices.get(p.symbol)
+                if current_price is not None and p.remaining_quantity > 0:
+                    if p.side == PositionSide.LONG:
+                        unrealized_pnl = (current_price - p.entry_price) * p.remaining_quantity
+                    else:  # SHORT
+                        unrealized_pnl = (p.entry_price - current_price) * p.remaining_quantity
+
+                    entry_value = p.entry_price * p.remaining_quantity
+                    if entry_value > 0:
+                        unrealized_pnl_percent = (unrealized_pnl / entry_value) * 100
+
+            responses.append(
+                PositionResponse(
+                    id=p.id,
+                    strategy_id=p.strategy_id,
+                    user_id=p.user_id,
+                    symbol=p.symbol,
+                    side=p.side.value,
+                    status=p.status.value,
+                    entry_quantity=p.entry_quantity,
+                    entry_price=p.entry_price,
+                    entry_at=p.entry_at,
+                    exit_quantity=p.exit_quantity,
+                    exit_price=p.exit_price,
+                    exit_at=p.exit_at,
+                    remaining_quantity=p.remaining_quantity,
+                    realized_pnl=p.realized_pnl,
+                    realized_pnl_percent=p.realized_pnl_percent,
+                    current_price=current_price,
+                    unrealized_pnl=unrealized_pnl,
+                    unrealized_pnl_percent=unrealized_pnl_percent,
+                    is_winner=p.is_winner,
+                    stop_loss=p.stop_loss,
+                    take_profit=p.take_profit,
+                    created_at=p.created_at,
+                    updated_at=p.updated_at,
+                )
             )
-            for p in positions
-        ]
+
+        return responses
 
     async def get_pnl_summary(
         self, user_id: str, current_prices: dict[str, Decimal] | None = None
@@ -255,7 +293,10 @@ class AlgoService:
 
         # Calculate metrics
         closed_positions = [p for p in positions if p.status == PositionStatus.CLOSED]
-        open_positions = [p for p in positions if p.status == PositionStatus.OPEN]
+        # Include both OPEN and PARTIAL positions for unrealized P&L calculations
+        open_positions = [
+            p for p in positions if p.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
+        ]
 
         total_realized_pnl = sum(p.realized_pnl for p in closed_positions)
         winning_trades = [p for p in closed_positions if p.is_winner is True]
@@ -338,7 +379,12 @@ class AlgoService:
         for strategy in strategies:
             strat_positions = positions_by_strategy.get(strategy.id, [])
             closed = [p for p in strat_positions if p.status == PositionStatus.CLOSED]
-            open_pos = [p for p in strat_positions if p.status == PositionStatus.OPEN]
+            # Include both OPEN and PARTIAL positions for unrealized P&L calculations
+            open_pos = [
+                p
+                for p in strat_positions
+                if p.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
+            ]
 
             realized_pnl = sum(p.realized_pnl for p in closed)
             winning = [p for p in closed if p.is_winner is True]
@@ -473,10 +519,11 @@ class AlgoService:
             current_prices: Dict mapping symbol to current price
         """
         # Get all open positions
+        # Include both OPEN and PARTIAL positions for unrealized P&L
         result = await self.db.execute(
             select(AlgoPosition).where(
                 AlgoPosition.user_id == user_id,
-                AlgoPosition.status == PositionStatus.OPEN,
+                AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
             )
         )
         positions = list(result.scalars().all())
@@ -567,3 +614,167 @@ class AlgoService:
         await self.db.refresh(position)
 
         return ProfitBookingRules.model_validate(position.profit_booking_rules)
+
+    # ============== Exit Position Methods ==============
+
+    async def get_open_position(
+        self, user_id: str, strategy_id: str, symbol: str
+    ) -> AlgoPosition | None:
+        """Get an open position for a specific symbol in a strategy."""
+        # Include both OPEN and PARTIAL positions (both have remaining quantity)
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.user_id == user_id,
+                AlgoPosition.strategy_id == strategy_id,
+                AlgoPosition.symbol == symbol.upper(),
+                AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def close_position(
+        self,
+        user_id: str,
+        strategy_id: str,
+        symbol: str,
+        exit_price: Decimal,
+        quantity: int | None = None,
+    ) -> ClosePositionResponse | None:
+        """Close a position (fully or partially) and calculate P&L.
+
+        Args:
+            user_id: User ID
+            strategy_id: Strategy ID
+            symbol: Symbol to close
+            exit_price: Exit price
+            quantity: Quantity to close (None = full close)
+
+        Returns:
+            ClosePositionResponse or None if position not found
+        """
+        position = await self.get_open_position(user_id, strategy_id, symbol)
+        if not position:
+            return None
+
+        # Default to full close
+        close_qty = quantity if quantity else position.remaining_quantity
+        close_qty = min(close_qty, position.remaining_quantity)
+
+        # Calculate P&L
+        if position.side == PositionSide.LONG:
+            pnl = (exit_price - position.entry_price) * close_qty
+        else:  # SHORT
+            pnl = (position.entry_price - exit_price) * close_qty
+
+        pnl_percent = (pnl / (position.entry_price * close_qty)) * 100
+        is_winner = pnl > 0
+
+        # Update position
+        position.remaining_quantity -= close_qty
+        position.exit_price = exit_price
+        position.realized_pnl = (position.realized_pnl or Decimal("0")) + pnl
+        position.realized_pnl_percent = pnl_percent
+        position.is_winner = is_winner
+
+        from datetime import UTC, datetime
+
+        position.exit_at = datetime.now(UTC)
+
+        if position.remaining_quantity <= 0:
+            position.status = PositionStatus.CLOSED
+            position.exit_quantity = position.entry_quantity
+            final_status = "CLOSED"
+        else:
+            position.status = PositionStatus.PARTIAL
+            position.exit_quantity = (position.exit_quantity or 0) + close_qty
+            final_status = "PARTIAL"
+
+        await self.db.flush()
+
+        logger.info(f"Closed position {symbol}: qty={close_qty}, pnl={pnl}, is_winner={is_winner}")
+
+        return ClosePositionResponse(
+            position_id=position.id,
+            symbol=symbol.upper(),
+            side=position.side.value,
+            closed_quantity=close_qty,
+            remaining_quantity=position.remaining_quantity,
+            entry_price=position.entry_price,
+            exit_price=exit_price,
+            realized_pnl=pnl,
+            realized_pnl_percent=pnl_percent,
+            is_winner=is_winner,
+            status=final_status,
+            message=f"Successfully closed {close_qty} units of {symbol}",
+        )
+
+    async def square_off_strategy(
+        self,
+        user_id: str,
+        strategy_id: str,
+        exit_prices: dict[str, Decimal] | None = None,
+    ) -> SquareOffStrategyResponse | None:
+        """Square off all open positions for a strategy.
+
+        Args:
+            user_id: User ID
+            strategy_id: Strategy ID
+            exit_prices: Dict of symbol -> exit price (optional)
+
+        Returns:
+            SquareOffStrategyResponse or None if strategy not found
+        """
+        if exit_prices is None:
+            exit_prices = {}
+        strategy = await self.get_strategy(user_id, strategy_id)
+        if not strategy:
+            return None
+
+        # Get all open positions for this strategy
+        # Include both OPEN and PARTIAL positions for square off
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.user_id == user_id,
+                AlgoPosition.strategy_id == strategy_id,
+                AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+            )
+        )
+        open_positions = list(result.scalars().all())
+
+        if not open_positions:
+            return SquareOffStrategyResponse(
+                strategy_id=strategy_id,
+                strategy_name=strategy.name,
+                positions_closed=0,
+                total_realized_pnl=Decimal("0"),
+                closed_positions=[],
+                message="No open positions to close",
+            )
+
+        closed_responses: list[ClosePositionResponse] = []
+        total_pnl = Decimal("0")
+
+        for position in open_positions:
+            exit_price = exit_prices.get(position.symbol, position.entry_price)
+            response = await self.close_position(
+                user_id=user_id,
+                strategy_id=strategy_id,
+                symbol=position.symbol,
+                exit_price=exit_price,
+            )
+            if response:
+                closed_responses.append(response)
+                total_pnl += response.realized_pnl
+
+        logger.info(
+            f"Squared off strategy {strategy.name}: {len(closed_responses)} positions, total P&L={total_pnl}"
+        )
+
+        return SquareOffStrategyResponse(
+            strategy_id=strategy_id,
+            strategy_name=strategy.name,
+            positions_closed=len(closed_responses),
+            total_realized_pnl=total_pnl,
+            closed_positions=closed_responses,
+            message=f"Successfully closed {len(closed_responses)} positions",
+        )

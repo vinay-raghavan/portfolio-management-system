@@ -53,7 +53,7 @@ import {
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
-import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus } from '@/components/algo';
+import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard } from '@/components/algo';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -103,6 +103,13 @@ export default function AlgoTradingPage() {
   const { data: pnlSummary } = useQuery({
     queryKey: ['algo-pnl-summary'],
     queryFn: () => algoApi.getPnLSummary().then((res) => res.data),
+    refetchInterval: 30000,
+  });
+
+  // Fetch P&L by strategy for accurate trade counts
+  const { data: pnlByStrategy } = useQuery({
+    queryKey: ['algo-pnl-by-strategy'],
+    queryFn: () => algoApi.getPnLByStrategy().then((res) => res.data),
     refetchInterval: 30000,
   });
 
@@ -402,7 +409,7 @@ export default function AlgoTradingPage() {
           <CardContent>
             <div className="text-2xl font-bold">
               {pnlSummary?.win_rate !== undefined
-                ? ((pnlSummary.win_rate ?? 0) * 100).toFixed(1)
+                ? Number(pnlSummary.win_rate ?? 0).toFixed(1)
                 : (winRate ?? 0).toFixed(1)}%
             </div>
             <div className="flex gap-3 text-xs text-muted-foreground mt-1">
@@ -412,6 +419,9 @@ export default function AlgoTradingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* P&L Dashboard with Unrealized Positions and Profit Booking */}
+      <PnLDashboard />
 
       {/* Strategies Table */}
       <Card>
@@ -439,6 +449,7 @@ export default function AlgoTradingPage() {
               <p className="text-sm">Create your first algo trading strategy to get started</p>
             </div>
           ) : (
+            <TooltipProvider>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -464,6 +475,12 @@ export default function AlgoTradingPage() {
                     strategy.strategy_type.includes('confirmation') ||
                     strategy.strategy_type.includes('momentum');
                   const isExpanded = expandedRows.has(strategy.id);
+
+                  // Get P&L data for this strategy (based on closed positions)
+                  const strategyPnL = pnlByStrategy?.strategies.find((s) => s.strategy_id === strategy.id);
+                  const totalTrades = strategyPnL?.total_trades ?? 0;
+                  const winningTrades = strategyPnL?.winning_trades ?? 0;
+                  const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
                   return (
                   <>
@@ -508,14 +525,12 @@ export default function AlgoTradingPage() {
                         {strategy.schedule_type}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{strategy.total_trades}</TableCell>
+                    <TableCell className="text-right">{totalTrades}</TableCell>
                     <TableCell className="text-right">
-                      {strategy.total_trades > 0
-                        ? ((strategy.winning_trades / strategy.total_trades) * 100).toFixed(1)
-                        : 0}%
+                      {winRate.toFixed(1)}%
                     </TableCell>
-                    <TableCell className={`text-right ${strategy.total_pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {formatPrice(strategy.total_pnl)}
+                    <TableCell className={`text-right ${(strategyPnL?.total_pnl ?? strategy.total_pnl) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {formatPrice(strategyPnL?.total_pnl ?? strategy.total_pnl)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {strategy.last_run_at
@@ -530,49 +545,73 @@ export default function AlgoTradingPage() {
                       />
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => triggerMutation.mutate(strategy.id)}
-                          disabled={strategy.status !== 'ACTIVE' || triggerMutation.isPending}
-                          title="Run Now"
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setSelectedStrategy(strategy); setHistoryOpen(true); }}
-                          title="View History"
-                        >
-                          <Clock className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setSelectedStrategy(strategy); setSafetyOpen(true); }}
-                          title="Safety Controls"
-                        >
-                          <Shield className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditClick(strategy)}
-                          title="Edit Strategy"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(strategy)}
-                          title="Delete Strategy"
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => triggerMutation.mutate(strategy.id)}
+                              disabled={strategy.status !== 'ACTIVE' || triggerMutation.isPending}
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Run Now</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => { setSelectedStrategy(strategy); setHistoryOpen(true); }}
+                            >
+                              <Clock className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>History</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => { setSelectedStrategy(strategy); setSafetyOpen(true); }}
+                            >
+                              <Shield className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Safety</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleEditClick(strategy)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Edit</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteClick(strategy)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Delete</TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -588,6 +627,7 @@ export default function AlgoTradingPage() {
                 })}
               </TableBody>
             </Table>
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>

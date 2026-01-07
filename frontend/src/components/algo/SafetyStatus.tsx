@@ -41,13 +41,34 @@ export function SafetyStatus({ open, onOpenChange, strategy }: SafetyStatusProps
     },
   });
 
-  const dailyLossPercent = circuitBreaker
-    ? (circuitBreaker.daily_loss / circuitBreaker.max_daily_loss) * 100
+  // Helper to safely convert to number
+  const toNum = (val: unknown): number => {
+    const num = Number(val);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const dailyLossPercent = circuitBreaker && toNum(circuitBreaker.max_daily_loss) > 0
+    ? (toNum(circuitBreaker.daily_loss) / toNum(circuitBreaker.max_daily_loss)) * 100
     : 0;
 
-  const consecutiveLossPercent = circuitBreaker
-    ? (circuitBreaker.consecutive_losses / circuitBreaker.max_consecutive_losses) * 100
+  const consecutiveLossPercent = circuitBreaker && toNum(circuitBreaker.max_consecutive_losses) > 0
+    ? (toNum(circuitBreaker.consecutive_losses) / toNum(circuitBreaker.max_consecutive_losses)) * 100
     : 0;
+
+  const drawdownPercent = circuitBreaker && toNum(circuitBreaker.max_drawdown_percent) > 0
+    ? (toNum(circuitBreaker.current_drawdown_percent) / toNum(circuitBreaker.max_drawdown_percent)) * 100
+    : 0;
+
+  const dailyProfitPercent = circuitBreaker && circuitBreaker.max_daily_profit && toNum(circuitBreaker.max_daily_profit) > 0
+    ? (toNum(circuitBreaker.daily_profit) / toNum(circuitBreaker.max_daily_profit)) * 100
+    : 0;
+
+  const overallProfitPercent = circuitBreaker && circuitBreaker.overall_profit_target && toNum(circuitBreaker.overall_profit_target) > 0
+    ? (toNum(circuitBreaker.overall_profit) / toNum(circuitBreaker.overall_profit_target)) * 100
+    : 0;
+
+  const currentDrawdownPct = toNum(circuitBreaker?.current_drawdown_percent);
+  const maxDrawdownPct = toNum(circuitBreaker?.max_drawdown_percent);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -126,6 +147,61 @@ export function SafetyStatus({ open, onOpenChange, strategy }: SafetyStatusProps
                     className={consecutiveLossPercent >= 80 ? '[&>div]:bg-destructive' : ''}
                   />
                 </div>
+
+                {/* Drawdown Progress */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Drawdown</span>
+                    <span className={drawdownPercent >= 80 ? 'text-destructive' : ''}>
+                      {currentDrawdownPct.toFixed(1)}% / {maxDrawdownPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <Progress
+                    value={Math.min(drawdownPercent, 100)}
+                    className={drawdownPercent >= 80 ? '[&>div]:bg-destructive' : ''}
+                  />
+                </div>
+
+                {/* Daily Profit Progress (if profit cutoff is configured) */}
+                {circuitBreaker?.max_daily_profit != null && circuitBreaker.max_daily_profit > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Daily Profit</span>
+                      <span className={circuitBreaker.profit_cutoff_triggered ? 'text-amber-500' : 'text-green-500'}>
+                        {formatPrice(circuitBreaker?.daily_profit ?? 0)} / {formatPrice(circuitBreaker.max_daily_profit)}
+                      </span>
+                    </div>
+                    <Progress
+                      value={Math.min(dailyProfitPercent, 100)}
+                      className={circuitBreaker.profit_cutoff_triggered ? '[&>div]:bg-amber-500' : '[&>div]:bg-green-500'}
+                    />
+                  </div>
+                )}
+
+                {/* Overall Profit Progress (if profit target is configured) */}
+                {circuitBreaker?.overall_profit_target != null && circuitBreaker.overall_profit_target > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Overall Profit</span>
+                      <span className={circuitBreaker.profit_cutoff_triggered ? 'text-amber-500' : 'text-green-500'}>
+                        {formatPrice(circuitBreaker?.overall_profit ?? 0)} / {formatPrice(circuitBreaker.overall_profit_target)}
+                      </span>
+                    </div>
+                    <Progress
+                      value={Math.min(overallProfitPercent, 100)}
+                      className={circuitBreaker.profit_cutoff_triggered ? '[&>div]:bg-amber-500' : '[&>div]:bg-green-500'}
+                    />
+                  </div>
+                )}
+
+                {/* Profit Cutoff Status */}
+                {circuitBreaker?.profit_cutoff_triggered && (
+                  <div className="bg-amber-500/10 border border-amber-500 rounded p-3">
+                    <p className="text-sm font-medium text-amber-600">
+                      Profit cutoff triggered - Strategy paused to lock in gains
+                    </p>
+                  </div>
+                )}
 
                 {/* Reset Button */}
                 {circuitBreaker?.is_triggered && (

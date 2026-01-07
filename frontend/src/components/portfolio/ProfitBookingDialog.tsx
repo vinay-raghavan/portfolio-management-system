@@ -43,13 +43,22 @@ export function ProfitBookingDialog({ position, open, onOpenChange }: ProfitBook
   });
 
   useEffect(() => {
-    if (existingRules) {
-      setEnabled(existingRules.enabled);
-      setRules(existingRules.rules && existingRules.rules.length > 0 ? existingRules.rules : [
-        { target_pct: 5, quantity_pct: 25 },
-        { target_pct: 10, quantity_pct: 25 },
-        { target_pct: 15, quantity_pct: 50 },
-      ]);
+    if (existingRules?.data) {
+      setEnabled(existingRules.data.enabled ?? true);
+      const existingRulesList = existingRules.data.rules;
+      if (Array.isArray(existingRulesList) && existingRulesList.length > 0) {
+        // Ensure all values are proper numbers
+        setRules(existingRulesList.map(rule => ({
+          target_pct: Number(rule.target_pct) || 0,
+          quantity_pct: Number(rule.quantity_pct) || 0,
+        })));
+      } else {
+        setRules([
+          { target_pct: 5, quantity_pct: 25 },
+          { target_pct: 10, quantity_pct: 25 },
+          { target_pct: 15, quantity_pct: 50 },
+        ]);
+      }
     }
   }, [existingRules]);
 
@@ -120,13 +129,14 @@ export function ProfitBookingDialog({ position, open, onOpenChange }: ProfitBook
     updateMutation.mutate({
       enabled,
       rules: rules.sort((a, b) => Number(a.target_pct) - Number(b.target_pct)),
-      executed: existingRules?.executed || [],
+      executed: existingRules?.data?.executed || [],
     });
   };
 
   if (!position) return null;
 
-  const currentPnlPct = Number(position.unrealized_pnl_pct ?? 0);
+  const rawPnlPct = Number(position.unrealized_pnl_pct ?? 0);
+  const currentPnlPct = Number.isFinite(rawPnlPct) ? rawPnlPct : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

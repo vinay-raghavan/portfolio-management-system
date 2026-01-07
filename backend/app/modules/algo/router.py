@@ -14,6 +14,8 @@ from app.modules.algo.notifications import AlgoNotificationService
 from app.modules.algo.safety import AlgoKillSwitch, CircuitBreaker
 from app.modules.algo.schemas import (
     CircuitBreakerStatus,
+    ClosePositionRequest,
+    ClosePositionResponse,
     ExecutionHistoryResponse,
     KillSwitchResponse,
     KillSwitchToggle,
@@ -21,6 +23,8 @@ from app.modules.algo.schemas import (
     PnLHistoryResponse,
     PnLSummary,
     PositionResponse,
+    SquareOffStrategyRequest,
+    SquareOffStrategyResponse,
     StrategyCreate,
     StrategyResponse,
     StrategyUpdate,
@@ -220,6 +224,7 @@ async def get_circuit_breaker_status(
         strategy_id=strategy_id,
         is_triggered=state.is_triggered,
         trigger_reason=state.trigger_reason,
+        triggered_at=state.triggered_at,
         daily_loss=state.daily_loss,
         consecutive_losses=state.consecutive_losses,
         max_daily_loss=strategy.max_daily_loss,
@@ -251,6 +256,175 @@ async def reset_circuit_breaker(
     await circuit_breaker.reset(strategy_id)
 
     return {"status": "reset", "strategy_id": strategy_id}
+
+
+# ============== Position Exit Endpoints ==============
+
+
+@router.post(
+    "/strategies/{strategy_id}/positions/{symbol}/close",
+    response_model=ClosePositionResponse,
+)
+async def close_position(
+    db: DbSession,
+    current_user: CurrentUser,
+    strategy_id: str,
+    symbol: str,
+    data: ClosePositionRequest | None = None,
+) -> ClosePositionResponse:
+    """Close a specific position within a strategy.
+
+    Closes all or part of an open position for a specific symbol.
+    If no exit price is provided, fetches current market price.
+    If no quantity is provided, closes the entire position.
+    """
+    from app.providers.data import YahooDataProvider
+
+    service = AlgoService(db)
+
+    # Verify strategy exists and belongs to user
+    strategy = await service.get_strategy(current_user.id, strategy_id)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Check if position exists
+    position = await service.get_open_position(current_user.id, strategy_id, symbol)
+    if not position:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No open position found for {symbol} in this strategy",
+        )
+
+    # Get exit price
+    exit_price = data.exit_price if data and data.exit_price else None
+    quantity = data.quantity if data else None
+
+    if not exit_price:
+        # Fetch current market price
+        data_provider = YahooDataProvider()
+        try:
+            quote = await data_provider.get_quote(symbol)
+            if quote and quote.price:
+                exit_price = Decimal(str(quote.price))
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Could not fetch current price for {symbol}. Please provide exit_price.",
+                )
+        except Exception as e:
+            logger.error(f"Error fetching price for {symbol}: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not fetch current price for {symbol}. Please provide exit_price.",
+            )
+
+    result = await service.close_position(
+        user_id=current_user.id,
+        strategy_id=strategy_id,
+        symbol=symbol,
+        exit_price=exit_price,
+        quantity=quantity,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to close position",
+        )
+
+    await db.commit()
+    logger.info(
+        f"User {current_user.id} closed position {symbol} in strategy {strategy_id}: "
+        f"qty={result.closed_quantity}, pnl={result.realized_pnl}"
+    )
+
+    return result
+
+
+@router.post(
+    "/strategies/{strategy_id}/square-off",
+    response_model=SquareOffStrategyResponse,
+)
+async def square_off_strategy(
+    db: DbSession,
+    current_user: CurrentUser,
+    strategy_id: str,
+    data: SquareOffStrategyRequest | None = None,
+) -> SquareOffStrategyResponse:
+    """Square off all open positions for a specific strategy.
+
+    Closes all open positions for the specified strategy.
+    Optionally provide exit prices for each symbol; missing symbols will use market price.
+    This does NOT affect other strategies or disable the strategy.
+    """
+    from app.providers.data import YahooDataProvider
+
+    service = AlgoService(db)
+
+    # Verify strategy exists and belongs to user
+    strategy = await service.get_strategy(current_user.id, strategy_id)
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Get all open/partial positions to fetch prices
+    all_positions = await service.get_positions(current_user.id, strategy_id)
+    positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
+
+    if not positions:
+        return SquareOffStrategyResponse(
+            strategy_id=strategy_id,
+            strategy_name=strategy.name,
+            positions_closed=0,
+            total_realized_pnl=Decimal("0"),
+            closed_positions=[],
+            message="No open positions to close",
+        )
+
+    # Build exit prices dict
+    exit_prices: dict[str, Decimal] = {}
+    if data and data.exit_prices:
+        exit_prices = data.exit_prices
+
+    # Fetch current prices for positions without provided exit price
+    symbols_needing_price = [p.symbol for p in positions if p.symbol not in exit_prices]
+    if symbols_needing_price:
+        data_provider = YahooDataProvider()
+        for symbol in symbols_needing_price:
+            try:
+                quote = await data_provider.get_quote(symbol)
+                if quote and quote.price:
+                    exit_prices[symbol] = Decimal(str(quote.price))
+                else:
+                    # Fall back to entry price if we can't get current price
+                    pos = next((p for p in positions if p.symbol == symbol), None)
+                    if pos:
+                        exit_prices[symbol] = pos.entry_price
+            except Exception as e:
+                logger.warning(f"Could not fetch price for {symbol}: {e}")
+                # Fall back to entry price
+                pos = next((p for p in positions if p.symbol == symbol), None)
+                if pos:
+                    exit_prices[symbol] = pos.entry_price
+
+    result = await service.square_off_strategy(
+        user_id=current_user.id,
+        strategy_id=strategy_id,
+        exit_prices=exit_prices,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to square off strategy",
+        )
+
+    await db.commit()
+    logger.info(
+        f"User {current_user.id} squared off strategy {strategy_id}: "
+        f"{result.positions_closed} positions, total P&L={result.total_realized_pnl}"
+    )
+
+    return result
 
 
 # ============== Kill Switch Endpoints ==============
@@ -618,9 +792,41 @@ async def list_positions(
     """List all algo positions for the current user.
 
     Optionally filter by strategy ID and/or position status.
+    Returns unrealized P&L for open positions.
     """
+    from app.providers.data import YahooDataProvider
+
     service = AlgoService(db)
-    return await service.get_positions(current_user.id, strategy_id, status)
+
+    # First get positions without prices to know which symbols we need
+    positions_raw = await service.get_positions(current_user.id, strategy_id, status)
+
+    # Filter for open/partial positions that need current prices
+    open_symbols = list(
+        {
+            p.symbol
+            for p in positions_raw
+            if p.status in ("OPEN", "PARTIAL") and p.remaining_quantity > 0
+        }
+    )
+
+    # Fetch current prices for open positions
+    current_prices: dict[str, Decimal] = {}
+    if open_symbols:
+        data_provider = YahooDataProvider()
+        for symbol in open_symbols:
+            try:
+                quote = await data_provider.get_quote(symbol)
+                if quote and quote.price:
+                    current_prices[symbol] = quote.price
+            except Exception as e:
+                logger.warning(f"Failed to get price for {symbol}: {e}")
+
+    # Re-fetch with current prices to calculate unrealized P&L
+    if current_prices:
+        return await service.get_positions(current_user.id, strategy_id, status, current_prices)
+
+    return positions_raw
 
 
 @router.get("/pnl/summary", response_model=PnLSummary)
@@ -639,8 +845,10 @@ async def get_pnl_summary(
 
     service = AlgoService(db)
 
-    # First get open positions to know which symbols we need prices for
-    positions = await service.get_positions(current_user.id, status="OPEN")
+    # First get open/partial positions to know which symbols we need prices for
+    # We pass None for status and filter manually to get both OPEN and PARTIAL
+    all_positions = await service.get_positions(current_user.id)
+    positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
 
     # Fetch current prices for open positions to calculate unrealized P&L
     current_prices: dict[str, Decimal] = {}
@@ -674,10 +882,11 @@ async def get_pnl_by_strategy(
 
     service = AlgoService(db)
 
-    # First get open positions to know which symbols we need prices for
-    positions = await service.get_positions(current_user.id, status="OPEN")
+    # First get open/partial positions to know which symbols we need prices for
+    all_positions = await service.get_positions(current_user.id)
+    positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
 
-    # Fetch current prices for open positions to calculate unrealized P&L
+    # Fetch current prices for open/partial positions to calculate unrealized P&L
     current_prices: dict[str, Decimal] = {}
     if positions:
         symbols = list({p.symbol for p in positions})
@@ -729,7 +938,9 @@ async def get_unrealized_pnl(
     service = AlgoService(db)
 
     # First get the positions to know which symbols we need prices for
-    positions = await service.get_positions(current_user.id, status="OPEN")
+    # Get both OPEN and PARTIAL positions
+    all_positions = await service.get_positions(current_user.id)
+    positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
 
     if not positions:
         return UnrealizedPnLResponse(
