@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -27,6 +26,7 @@ import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { AlgoProfitBookingDialog } from './AlgoProfitBookingDialog';
+import { PositionActionsMenu, toUnifiedAlgoPosition } from '@/components/shared';
 import type { StrategyPnL, AlgoDailyPnL, UnrealizedPnLPosition } from '@/types';
 
 interface PnLDashboardProps {
@@ -374,9 +374,11 @@ function UnrealizedPositionsTable({
                     {Number(p.unrealized_pnl_percent ?? 0) >= 0 ? '+' : ''}{Number(p.unrealized_pnl_percent ?? 0).toFixed(2)}%
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" onClick={() => setProfitBookingPosition(p)}>
-                      <Target className="h-3 w-3" />
-                    </Button>
+                    <PositionActionsMenu
+                      position={toUnifiedAlgoPosition(p)}
+                      context="algo"
+                      onProfitBookingClick={() => setProfitBookingPosition(p)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

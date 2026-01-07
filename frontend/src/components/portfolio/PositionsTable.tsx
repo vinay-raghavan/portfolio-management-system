@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUpDown, TrendingUp, TrendingDown, MoreHorizontal, Target } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { formatPercent, cn } from '@/lib/utils';
 import { useTradingStore, useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
 import { ProfitBookingDialog } from './ProfitBookingDialog';
+import { PositionActionsMenu, toUnifiedPosition } from '@/components/shared';
 import type { Position } from '@/types';
 
 type SortField = 'symbol' | 'quantity' | 'market_value' | 'unrealized_pnl' | 'unrealized_pnl_pct';
@@ -24,7 +24,7 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [profitBookingPosition, setProfitBookingPosition] = useState<Position | null>(null);
   const router = useRouter();
-  const { quickBuy, quickSell } = useTradingStore();
+  const { quickBuy } = useTradingStore();
   const { setSelectedSymbol } = useUIStore();
   const { format: formatCurrency } = useCurrency();
 
@@ -170,16 +170,13 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
                         {formatPercent(pnlPct)}
                       </td>
                       <td className="text-right py-3 px-3">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="outline" onClick={() => setProfitBookingPosition(position)}>
-                            <Target className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => quickBuy(position.symbol)}>
-                            Buy
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => quickSell(position.symbol, position.quantity)}>
-                            Sell
-                          </Button>
+                        <div className="flex justify-end">
+                          <PositionActionsMenu
+                            position={toUnifiedPosition(position)}
+                            context="portfolio"
+                            onProfitBookingClick={() => setProfitBookingPosition(position)}
+                            onAddClick={() => quickBuy(position.symbol)}
+                          />
                         </div>
                       </td>
                     </tr>

@@ -551,11 +551,11 @@ export default function AlgoTradingPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-8 w-8"
                               onClick={() => triggerMutation.mutate(strategy.id)}
                               disabled={strategy.status !== 'ACTIVE' || triggerMutation.isPending}
                             >
-                              <Play className="h-3.5 w-3.5" />
+                              <Play className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Run Now</TooltipContent>
@@ -565,10 +565,10 @@ export default function AlgoTradingPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-8 w-8"
                               onClick={() => { setSelectedStrategy(strategy); setHistoryOpen(true); }}
                             >
-                              <Clock className="h-3.5 w-3.5" />
+                              <Clock className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>History</TooltipContent>
@@ -578,10 +578,10 @@ export default function AlgoTradingPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-8 w-8"
                               onClick={() => { setSelectedStrategy(strategy); setSafetyOpen(true); }}
                             >
-                              <Shield className="h-3.5 w-3.5" />
+                              <Shield className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Safety</TooltipContent>
@@ -591,10 +591,10 @@ export default function AlgoTradingPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-8 w-8"
                               onClick={() => handleEditClick(strategy)}
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Edit</TooltipContent>
@@ -604,10 +604,10 @@ export default function AlgoTradingPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
                               onClick={() => handleDeleteClick(strategy)}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Delete</TooltipContent>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Clock, Target, BarChart3, X, Power, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -25,6 +25,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
@@ -286,19 +292,26 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
             <TabsTrigger value="executions">Recent Runs ({executions?.length ?? 0})</TabsTrigger>
           </TabsList>
           {openPositions.length > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setSquareOffDialog(true)}
-              disabled={squareOffMutation.isPending}
-            >
-              {squareOffMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Power className="h-4 w-4 mr-1" />
-              )}
-              Exit All Positions
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 border-destructive bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => setSquareOffDialog(true)}
+                    disabled={squareOffMutation.isPending}
+                  >
+                    {squareOffMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <OctagonX className="h-4 w-4 fill-current" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Exit All Positions</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
 
@@ -377,16 +390,22 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                       </TableCell>
                       <TableCell className="text-right">
                         {(pos.status === 'OPEN' || pos.status === 'PARTIAL') && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setClosePositionDialog(pos)}
-                            disabled={closePositionMutation.isPending}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Close
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-7 w-7 border-destructive bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                  onClick={() => setClosePositionDialog(pos)}
+                                  disabled={closePositionMutation.isPending}
+                                >
+                                  <CircleArrowOutUpRight className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Close Position</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </TableCell>
                     </TableRow>
