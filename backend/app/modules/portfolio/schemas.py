@@ -56,6 +56,25 @@ class PortfolioListResponse(BaseModel):
     total_count: int
 
 
+class ProfitBookingRule(BaseModel):
+    """Schema for a single profit booking rule."""
+
+    target_pct: Decimal = Field(..., description="Target profit percentage to trigger booking")
+    quantity_pct: Decimal = Field(..., description="Percentage of position to book at this level")
+
+
+class ProfitBookingRules(BaseModel):
+    """Schema for profit booking rules configuration."""
+
+    enabled: bool = Field(default=True, description="Whether profit booking is enabled")
+    rules: list[ProfitBookingRule] = Field(
+        default_factory=list, description="List of profit booking rules"
+    )
+    executed: list[Decimal] = Field(
+        default_factory=list, description="List of executed target percentages"
+    )
+
+
 class PositionResponse(BaseModel):
     """Schema for position response."""
 
@@ -70,6 +89,7 @@ class PositionResponse(BaseModel):
     market_value: Decimal | None = None
     unrealized_pnl: Decimal | None = None
     unrealized_pnl_pct: Decimal | None = None
+    profit_booking_rules: ProfitBookingRules | None = None
 
     model_config = {"from_attributes": True}
 

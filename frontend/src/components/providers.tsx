@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { useUIStore } from '@/store';
+import { Toaster } from '@/components/ui/toaster';
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { theme } = useUIStore();
@@ -57,7 +58,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>{children}</ThemeProvider>
+      <ThemeProvider>
+        {children}
+        <Toaster />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

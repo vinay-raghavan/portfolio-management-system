@@ -58,6 +58,17 @@ export interface PortfolioListResponse {
   total_count: number;
 }
 
+export interface ProfitBookingRule {
+  target_pct: number;
+  quantity_pct: number;
+}
+
+export interface ProfitBookingRules {
+  enabled: boolean;
+  rules: ProfitBookingRule[];
+  executed: number[];
+}
+
 export interface Position {
   id: string;
   portfolio_id?: string | null;
@@ -71,6 +82,7 @@ export interface Position {
   unrealized_pnl: number | null;
   unrealized_pnl_pct: number | null;
   sector?: string;
+  profit_booking_rules?: ProfitBookingRules | null;
 }
 
 export interface PortfolioSummary {
@@ -768,6 +780,7 @@ export interface AlgoPosition {
   is_winner: boolean | null;
   stop_loss: number | null;
   take_profit: number | null;
+  profit_booking_rules?: ProfitBookingRules | null;
   created_at: string;
   updated_at: string;
 }

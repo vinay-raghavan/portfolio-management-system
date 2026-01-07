@@ -16,6 +16,7 @@ from app.modules.portfolio.schemas import (
     PortfolioSummary,
     PortfolioUpdate,
     PositionResponse,
+    ProfitBookingRules,
 )
 
 
@@ -481,3 +482,52 @@ class PortfolioService:
             await self.db.refresh(position)
 
         return position, realized_pnl
+
+    # ============ Profit Booking Management ============
+
+    async def get_profit_booking_rules(
+        self, user_id: str, position_id: str
+    ) -> ProfitBookingRules | None:
+        """Get profit booking rules for a position."""
+        result = await self.db.execute(
+            select(Position).where(Position.id == position_id, Position.user_id == user_id)
+        )
+        position = result.scalar_one_or_none()
+
+        if not position or not position.profit_booking_rules:
+            return None
+
+        return ProfitBookingRules.model_validate(position.profit_booking_rules)
+
+    async def update_profit_booking_rules(
+        self, user_id: str, position_id: str, rules: ProfitBookingRules
+    ) -> ProfitBookingRules | None:
+        """Update profit booking rules for a position."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"Looking for position - user_id: {user_id}, position_id: {position_id}")
+
+        # First, let's see all positions for this user
+        all_positions = await self.db.execute(select(Position).where(Position.user_id == user_id))
+        all_pos_list = all_positions.scalars().all()
+        logger.info(f"User has {len(all_pos_list)} positions:")
+        for p in all_pos_list:
+            logger.info(f"  - Position ID: {p.id}, Symbol: {p.symbol}")
+
+        result = await self.db.execute(
+            select(Position).where(Position.id == position_id, Position.user_id == user_id)
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            logger.error("Position not found in database!")
+            return None
+
+        # Convert to dict for JSON storage, converting Decimals to floats
+        position.profit_booking_rules = rules.model_dump(mode="json")
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        return ProfitBookingRules.model_validate(position.profit_booking_rules)

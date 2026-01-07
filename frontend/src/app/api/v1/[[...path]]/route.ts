@@ -8,6 +8,10 @@ async function proxyRequest(request: NextRequest, path: string[]): Promise<NextR
   const targetPath = path ? path.join('/') : '';
   const targetUrl = `${API_URL}/api/v1/${targetPath}${url.search}`;
 
+  console.log(`[PROXY] ${request.method} ${request.url}`);
+  console.log(`[PROXY] Target URL: ${targetUrl}`);
+  console.log(`[PROXY] Path array:`, path);
+
   const headers = new Headers();
   
   // Forward relevant headers
@@ -31,6 +35,8 @@ async function proxyRequest(request: NextRequest, path: string[]): Promise<NextR
       headers,
       body,
     });
+
+    console.log(`[PROXY] Response status: ${response.status}`);
 
     const responseHeaders = new Headers();
     response.headers.forEach((value, key) => {

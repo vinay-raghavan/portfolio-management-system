@@ -177,7 +177,13 @@ export function CandlestickChart({
 
     // Remove old indicator series
     indicatorSeriesRef.current.forEach((series) => {
-      chartRef.current?.removeSeries(series);
+      try {
+        if (series && chartRef.current) {
+          chartRef.current.removeSeries(series);
+        }
+      } catch {
+        // Series might already be removed
+      }
     });
     indicatorSeriesRef.current = [];
 
@@ -203,7 +209,9 @@ export function CandlestickChart({
     // Remove old drawing series
     drawingSeriesRef.current.forEach((series) => {
       try {
-        chartRef.current?.removeSeries(series);
+        if (series && chartRef.current) {
+          chartRef.current.removeSeries(series);
+        }
       } catch {
         // Series might already be removed
       }
