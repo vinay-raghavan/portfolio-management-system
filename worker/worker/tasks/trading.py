@@ -57,18 +57,18 @@ def is_market_just_opened(window_minutes: int = 5) -> bool:
 
 @celery_app.task(bind=True, name="worker.tasks.trading.check_sl_tp_orders")
 def check_sl_tp_orders(self) -> dict:
-    """Check and execute stop loss/take profit orders.
+    """Check and execute stop loss/take profit orders and profit booking rules.
 
     This task runs every minute during market hours to:
-    1. Get all positions with SL/TP set
+    1. Get all positions with SL/TP set or profit booking rules
     2. Fetch current prices
-    3. Trigger execution if SL/TP is hit
+    3. Trigger execution if SL/TP is hit or profit booking targets are reached
     """
     if not is_market_hours():
         logger.debug("Market closed, skipping SL/TP check")
-        return {"status": "market_closed", "checked": 0, "triggered": 0}
+        return {"status": "market_closed", "checked": 0, "triggered": 0, "profit_booked": 0}
 
-    logger.info("Checking SL/TP orders")
+    logger.info("Checking SL/TP orders and profit booking rules")
 
     # Use internal API URL
     api_url = "http://api:8000/api/v1"
@@ -85,14 +85,18 @@ def check_sl_tp_orders(self) -> dict:
             positions = response.json()
             checked = 0
             triggered = 0
+            profit_booked = 0
 
             for pos in positions:
                 checked += 1
                 symbol = pos["symbol"]
                 quantity = Decimal(str(pos["quantity"]))
+                avg_cost = Decimal(str(pos["avg_cost"]))
                 stop_loss = Decimal(str(pos["stop_loss"])) if pos.get("stop_loss") else None
                 take_profit = Decimal(str(pos["take_profit"])) if pos.get("take_profit") else None
                 user_id = pos["user_id"]
+                position_id = pos["id"]
+                profit_booking_rules = pos.get("profit_booking_rules")
 
                 # Get current price
                 price_response = client.get(f"{api_url}/data/quote/{symbol}")
@@ -103,7 +107,7 @@ def check_sl_tp_orders(self) -> dict:
                 if current_price <= 0:
                     continue
 
-                # Check SL condition
+                # Check SL condition (highest priority)
                 if stop_loss and current_price <= stop_loss:
                     logger.info(f"SL triggered for {symbol} @ {current_price} (SL: {stop_loss})")
                     # Execute sell order
@@ -117,14 +121,15 @@ def check_sl_tp_orders(self) -> dict:
                     sell_response = client.post(
                         f"{api_url}/trading/orders",
                         json=order_data,
-                        headers={"X-User-ID": user_id},  # Would need proper auth in production
+                        headers={"X-User-ID": user_id},
                     )
                     if sell_response.status_code == 200:
                         triggered += 1
                         logger.info(f"SL order executed for {symbol}")
+                    continue
 
                 # Check TP condition
-                elif take_profit and current_price >= take_profit:
+                if take_profit and current_price >= take_profit:
                     logger.info(f"TP triggered for {symbol} @ {current_price} (TP: {take_profit})")
                     # Execute sell order
                     order_data = {
@@ -140,9 +145,79 @@ def check_sl_tp_orders(self) -> dict:
                     if sell_response.status_code == 200:
                         triggered += 1
                         logger.info(f"TP order executed for {symbol}")
+                    continue
 
-            logger.info(f"SL/TP check complete. Checked: {checked}, Triggered: {triggered}")
-            return {"status": "success", "checked": checked, "triggered": triggered}
+                # Check profit booking rules
+                if profit_booking_rules and profit_booking_rules.get("enabled"):
+                    rules = profit_booking_rules.get("rules", [])
+                    executed = profit_booking_rules.get("executed", [])
+
+                    # Calculate current profit percentage
+                    profit_pct = ((current_price - avg_cost) / avg_cost) * 100
+
+                    for rule in rules:
+                        target_pct = Decimal(str(rule["target_pct"]))
+                        quantity_pct = Decimal(str(rule["quantity_pct"]))
+
+                        # Skip if already executed
+                        if float(target_pct) in executed:
+                            continue
+
+                        # Check if target is reached
+                        if profit_pct >= target_pct:
+                            # Calculate quantity to sell
+                            sell_qty = int((quantity * quantity_pct) / 100)
+                            if sell_qty <= 0:
+                                continue
+
+                            logger.info(
+                                f"Profit booking triggered for {symbol}: {profit_pct:.2f}% profit, "
+                                f"selling {quantity_pct}% ({sell_qty} shares)"
+                            )
+
+                            # Execute partial sell order
+                            order_data = {
+                                "symbol": symbol,
+                                "side": "SELL",
+                                "order_type": "MARKET",
+                                "quantity": sell_qty,
+                                "notes": f"Profit booking at {profit_pct:.2f}% ({target_pct}% target)",
+                            }
+                            sell_response = client.post(
+                                f"{api_url}/trading/orders",
+                                json=order_data,
+                                headers={"X-User-ID": user_id},
+                            )
+
+                            if sell_response.status_code == 200:
+                                profit_booked += 1
+                                # Mark this rule as executed
+                                executed.append(float(target_pct))
+                                # Update position with executed rule
+                                update_data = {
+                                    "profit_booking_rules": {
+                                        "enabled": True,
+                                        "rules": rules,
+                                        "executed": executed,
+                                    }
+                                }
+                                client.patch(
+                                    f"{api_url}/portfolio/positions/{position_id}",
+                                    json=update_data,
+                                    headers={"X-User-ID": user_id},
+                                )
+                                logger.info(f"Profit booking executed for {symbol}")
+
+            logger.info(
+                f"SL/TP/Profit booking check complete. Checked: {checked}, "
+                f"SL/TP Triggered: {triggered}, Profit Booked: {profit_booked}"
+            )
+            return {
+                "status": "success",
+                "checked": checked,
+                "triggered": triggered,
+                "profit_booked": profit_booked,
+            }
 
     except Exception as e:
         logger.error(f"Error checking SL/TP orders: {e}")

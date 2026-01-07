@@ -90,6 +90,9 @@ class Position(Base):
     stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
 
+    # Profit booking rules (percentage-based)
+    profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Sector classification for concentration tracking
     sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
