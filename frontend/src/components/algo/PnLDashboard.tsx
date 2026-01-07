@@ -35,7 +35,6 @@ interface PnLDashboardProps {
 
 export function PnLDashboard({ className }: PnLDashboardProps) {
   const { format: formatPrice } = useCurrency();
-  const [profitBookingPosition, setProfitBookingPosition] = useState<UnrealizedPnLPosition | null>(null);
 
   // Fetch P&L summary
   const { data: summary, isLoading: summaryLoading } = useQuery({
@@ -323,6 +322,7 @@ function UnrealizedPositionsTable({
   formatPrice: (v: number) => string;
   totalUnrealized: number;
 }) {
+  const [profitBookingPosition, setProfitBookingPosition] = useState<UnrealizedPnLPosition | null>(null);
   return (
     <Card>
       <CardHeader>

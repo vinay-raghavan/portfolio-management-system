@@ -41,25 +41,34 @@ export function SafetyStatus({ open, onOpenChange, strategy }: SafetyStatusProps
     },
   });
 
-  const dailyLossPercent = circuitBreaker && circuitBreaker.max_daily_loss > 0
-    ? (circuitBreaker.daily_loss / circuitBreaker.max_daily_loss) * 100
+  // Helper to safely convert to number
+  const toNum = (val: unknown): number => {
+    const num = Number(val);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const dailyLossPercent = circuitBreaker && toNum(circuitBreaker.max_daily_loss) > 0
+    ? (toNum(circuitBreaker.daily_loss) / toNum(circuitBreaker.max_daily_loss)) * 100
     : 0;
 
-  const consecutiveLossPercent = circuitBreaker && circuitBreaker.max_consecutive_losses > 0
-    ? (circuitBreaker.consecutive_losses / circuitBreaker.max_consecutive_losses) * 100
+  const consecutiveLossPercent = circuitBreaker && toNum(circuitBreaker.max_consecutive_losses) > 0
+    ? (toNum(circuitBreaker.consecutive_losses) / toNum(circuitBreaker.max_consecutive_losses)) * 100
     : 0;
 
-  const drawdownPercent = circuitBreaker && circuitBreaker.max_drawdown_percent > 0
-    ? (circuitBreaker.current_drawdown_percent / circuitBreaker.max_drawdown_percent) * 100
+  const drawdownPercent = circuitBreaker && toNum(circuitBreaker.max_drawdown_percent) > 0
+    ? (toNum(circuitBreaker.current_drawdown_percent) / toNum(circuitBreaker.max_drawdown_percent)) * 100
     : 0;
 
-  const dailyProfitPercent = circuitBreaker && circuitBreaker.max_daily_profit && circuitBreaker.max_daily_profit > 0
-    ? (circuitBreaker.daily_profit / circuitBreaker.max_daily_profit) * 100
+  const dailyProfitPercent = circuitBreaker && circuitBreaker.max_daily_profit && toNum(circuitBreaker.max_daily_profit) > 0
+    ? (toNum(circuitBreaker.daily_profit) / toNum(circuitBreaker.max_daily_profit)) * 100
     : 0;
 
-  const overallProfitPercent = circuitBreaker && circuitBreaker.overall_profit_target && circuitBreaker.overall_profit_target > 0
-    ? (circuitBreaker.overall_profit / circuitBreaker.overall_profit_target) * 100
+  const overallProfitPercent = circuitBreaker && circuitBreaker.overall_profit_target && toNum(circuitBreaker.overall_profit_target) > 0
+    ? (toNum(circuitBreaker.overall_profit) / toNum(circuitBreaker.overall_profit_target)) * 100
     : 0;
+
+  const currentDrawdownPct = toNum(circuitBreaker?.current_drawdown_percent);
+  const maxDrawdownPct = toNum(circuitBreaker?.max_drawdown_percent);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -144,7 +153,7 @@ export function SafetyStatus({ open, onOpenChange, strategy }: SafetyStatusProps
                   <div className="flex justify-between text-sm">
                     <span>Drawdown</span>
                     <span className={drawdownPercent >= 80 ? 'text-destructive' : ''}>
-                      {circuitBreaker?.current_drawdown_percent?.toFixed(1) ?? 0}% / {circuitBreaker?.max_drawdown_percent?.toFixed(1) ?? 0}%
+                      {currentDrawdownPct.toFixed(1)}% / {maxDrawdownPct.toFixed(1)}%
                     </span>
                   </div>
                   <Progress

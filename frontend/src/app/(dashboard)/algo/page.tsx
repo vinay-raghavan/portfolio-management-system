@@ -53,7 +53,7 @@ import {
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
-import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus } from '@/components/algo';
+import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard } from '@/components/algo';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -419,6 +419,9 @@ export default function AlgoTradingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* P&L Dashboard with Unrealized Positions and Profit Booking */}
+      <PnLDashboard />
 
       {/* Strategies Table */}
       <Card>
