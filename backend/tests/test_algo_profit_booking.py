@@ -1,4 +1,5 @@
 """Tests for algo profit booking endpoints."""
+
 import pytest
 
 from app.modules.portfolio.schemas import ProfitBookingRule, ProfitBookingRules
@@ -30,4 +31,3 @@ async def test_profit_booking_schema():
     validated = ProfitBookingRules.model_validate(data)
     assert validated.enabled is True
     assert len(validated.rules) == 2
-

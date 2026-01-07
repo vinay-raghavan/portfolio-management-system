@@ -67,8 +67,12 @@ class ProfitBookingRules(BaseModel):
     """Schema for profit booking rules configuration."""
 
     enabled: bool = Field(default=True, description="Whether profit booking is enabled")
-    rules: list[ProfitBookingRule] = Field(default_factory=list, description="List of profit booking rules")
-    executed: list[Decimal] = Field(default_factory=list, description="List of executed target percentages")
+    rules: list[ProfitBookingRule] = Field(
+        default_factory=list, description="List of profit booking rules"
+    )
+    executed: list[Decimal] = Field(
+        default_factory=list, description="List of executed target percentages"
+    )
 
 
 class PositionResponse(BaseModel):

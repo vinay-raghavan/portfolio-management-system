@@ -504,14 +504,13 @@ class PortfolioService:
     ) -> ProfitBookingRules | None:
         """Update profit booking rules for a position."""
         import logging
+
         logger = logging.getLogger(__name__)
 
         logger.info(f"Looking for position - user_id: {user_id}, position_id: {position_id}")
 
         # First, let's see all positions for this user
-        all_positions = await self.db.execute(
-            select(Position).where(Position.user_id == user_id)
-        )
+        all_positions = await self.db.execute(select(Position).where(Position.user_id == user_id))
         all_pos_list = all_positions.scalars().all()
         logger.info(f"User has {len(all_pos_list)} positions:")
         for p in all_pos_list:
@@ -527,7 +526,7 @@ class PortfolioService:
             return None
 
         # Convert to dict for JSON storage, converting Decimals to floats
-        position.profit_booking_rules = rules.model_dump(mode='json')
+        position.profit_booking_rules = rules.model_dump(mode="json")
         await self.db.flush()
         await self.db.refresh(position)
 

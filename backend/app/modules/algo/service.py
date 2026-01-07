@@ -562,7 +562,7 @@ class AlgoService:
             return None
 
         # Convert to dict for JSON storage, converting Decimals to floats
-        position.profit_booking_rules = rules.model_dump(mode='json')
+        position.profit_booking_rules = rules.model_dump(mode="json")
         await self.db.flush()
         await self.db.refresh(position)
 

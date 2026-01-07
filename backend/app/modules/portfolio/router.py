@@ -176,8 +176,11 @@ async def update_profit_booking_rules(
 ) -> ProfitBookingRules:
     """Set or update profit booking rules for a position."""
     import logging
+
     logger = logging.getLogger(__name__)
-    logger.info(f"Updating profit booking rules - user_id: {current_user.id}, position_id: {position_id}")
+    logger.info(
+        f"Updating profit booking rules - user_id: {current_user.id}, position_id: {position_id}"
+    )
     logger.info(f"Rules: {rules}")
 
     service = PortfolioService(db)
