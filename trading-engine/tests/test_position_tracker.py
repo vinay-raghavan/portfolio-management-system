@@ -303,6 +303,7 @@ class TestPositionTrackerUnit:
         position.id = "pos-sl"
         position.symbol = "RELIANCE"
         position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
         position.remaining_quantity = 100
         position.entry_quantity = 100
         position.entry_price = Decimal("1000.00")
@@ -310,6 +311,7 @@ class TestPositionTrackerUnit:
         position.take_profit = Decimal("1100.00")
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        position.profit_booking_rules = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -337,6 +339,7 @@ class TestPositionTrackerUnit:
         position.id = "pos-tp"
         position.symbol = "INFY"
         position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
         position.remaining_quantity = 50
         position.entry_quantity = 50
         position.entry_price = Decimal("1500.00")
@@ -344,6 +347,7 @@ class TestPositionTrackerUnit:
         position.take_profit = Decimal("1600.00")  # Take profit level
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        position.profit_booking_rules = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -371,6 +375,7 @@ class TestPositionTrackerUnit:
         position.id = "pos-short-sl"
         position.symbol = "TCS"
         position.side = PositionSide.SHORT
+        position.status = PositionStatus.OPEN
         position.remaining_quantity = 20
         position.entry_quantity = 20
         position.entry_price = Decimal("3500.00")
@@ -378,6 +383,7 @@ class TestPositionTrackerUnit:
         position.take_profit = Decimal("3300.00")
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        position.profit_booking_rules = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -406,6 +412,7 @@ class TestPositionTrackerUnit:
         position.id = "pos-in-range"
         position.symbol = "HDFC"
         position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
         position.remaining_quantity = 30
         position.entry_quantity = 30
         position.entry_price = Decimal("2000.00")
@@ -413,6 +420,7 @@ class TestPositionTrackerUnit:
         position.take_profit = Decimal("2200.00")
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        position.profit_booking_rules = None
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [position]
@@ -426,6 +434,143 @@ class TestPositionTrackerUnit:
             current_prices=current_prices,
         )
 
+        assert len(closed_positions) == 0
+        assert stats.trades_closed == 0
+
+
+class TestProfitBookingRules:
+    """Tests for profit booking rules functionality."""
+
+    @pytest.fixture
+    def tracker(self, mock_db):
+        """Create a PositionTracker with mock db."""
+        return PositionTracker(mock_db)
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock async database session."""
+        return AsyncMock()
+
+    async def test_profit_booking_triggers_partial_exit(self, tracker, mock_db):
+        """Test profit booking rule triggers partial exit at target."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-pb-1"
+        position.symbol = "RELIANCE"
+        position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
+        position.remaining_quantity = 100
+        position.entry_quantity = 100
+        position.entry_price = Decimal("1000.00")
+        position.stop_loss = None
+        position.take_profit = None
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+        # Set profit booking rules: 25% at 1% profit
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        # Mock get_all_open_positions and get_open_position
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_result_one = MagicMock()
+        mock_result_one.scalar_one_or_none.return_value = position
+        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+
+        # 1.5% profit (above 1% target)
+        current_prices = {"RELIANCE": Decimal("1015.00")}
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        # Should have triggered partial exit
+        assert len(closed_positions) == 1
+        assert stats.trades_closed == 1
+        assert stats.winning_trades == 1
+        # 25% of 100 = 25 shares, profit = (1015-1000) * 25 = 375
+        assert closed_positions[0].quantity == 25
+
+    async def test_profit_booking_skips_executed_rules(self, tracker, mock_db):
+        """Test that already executed rules are skipped."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-pb-2"
+        position.symbol = "INFY"
+        position.side = PositionSide.LONG
+        position.status = PositionStatus.PARTIAL
+        position.remaining_quantity = 75  # 25 already sold
+        position.entry_quantity = 100
+        position.entry_price = Decimal("1500.00")
+        position.stop_loss = None
+        position.take_profit = None
+        position.realized_pnl = Decimal("375")
+        position.exit_quantity = 25
+        # 1% rule already executed
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [
+                {"target_pct": 1, "quantity_pct": 25},
+                {"target_pct": 5, "quantity_pct": 50},
+            ],
+            "executed": [1.0],  # 1% already executed
+        }
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [position]
+        mock_db.execute.return_value = mock_result
+
+        # 2% profit (still below 5% target)
+        current_prices = {"INFY": Decimal("1530.00")}
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        # Should not trigger any exit (1% already done, 5% not reached)
+        assert len(closed_positions) == 0
+        assert stats.trades_closed == 0
+
+    async def test_profit_booking_disabled_rules_ignored(self, tracker, mock_db):
+        """Test that disabled profit booking rules are ignored."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-pb-3"
+        position.symbol = "TCS"
+        position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
+        position.remaining_quantity = 50
+        position.entry_quantity = 50
+        position.entry_price = Decimal("3000.00")
+        position.stop_loss = None
+        position.take_profit = None
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+        # Disabled profit booking
+        position.profit_booking_rules = {
+            "enabled": False,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [position]
+        mock_db.execute.return_value = mock_result
+
+        # 5% profit
+        current_prices = {"TCS": Decimal("3150.00")}
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        # Should not trigger any exit (rules disabled)
         assert len(closed_positions) == 0
         assert stats.trades_closed == 0
 
