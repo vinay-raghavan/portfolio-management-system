@@ -61,7 +61,7 @@ async def _check_exit_conditions_for_strategy(
     current_prices: dict[str, Decimal] = {}
     for sym in position_symbols:
         try:
-            quote = data_provider.get_quote(sym)
+            quote = await data_provider.get_quote(sym)
             if quote and quote.last_price:
                 current_prices[sym] = Decimal(str(quote.last_price))
         except Exception as e:
