@@ -351,8 +351,28 @@ class StrategyUpdate(BaseModel):
     is_paper_trading: bool | None = None
 
 
+class RecentExecutionSummary(BaseModel):
+    """Summary of a recent strategy execution with order details."""
+
+    id: str
+    status: ExecutionStatus
+    started_at: datetime
+    completed_at: datetime | None
+    duration_ms: int | None
+    signals_generated: int
+    orders_placed: int
+    orders_filled: int
+    error_message: str | None
+    realized_pnl: Decimal = Decimal("0")
+    total_order_value: Decimal = Decimal("0")
+    # Order details - includes symbol, price, quantity, side, filled info
+    orders: list["AlgoOrderDetailResponse"] = []
+
+    model_config = {"from_attributes": True}
+
+
 class StrategyResponse(BaseModel):
-    """Strategy response for router."""
+    """Strategy response for router with recent execution details."""
 
     id: str
     user_id: str
@@ -382,6 +402,8 @@ class StrategyResponse(BaseModel):
     total_pnl: Decimal
     created_at: datetime
     updated_at: datetime
+    # Recent execution runs with order details
+    recent_executions: list[RecentExecutionSummary] = []
 
     model_config = {"from_attributes": True}
 
@@ -390,6 +412,33 @@ class StrategyResponse(BaseModel):
         """Custom validation to map model fields to response fields."""
         if hasattr(obj, "strategy_name"):
             # It's a UserStrategy model, map fields
+            # Build recent executions with order details
+            recent_executions = []
+            if hasattr(obj, "executions") and obj.executions:
+                for exec_obj in obj.executions[:5]:  # Limit to 5 most recent
+                    orders = []
+                    if hasattr(exec_obj, "algo_orders") and exec_obj.algo_orders:
+                        orders = [
+                            AlgoOrderDetailResponse.model_validate(order)
+                            for order in exec_obj.algo_orders
+                        ]
+                    recent_executions.append(
+                        RecentExecutionSummary(
+                            id=exec_obj.id,
+                            status=exec_obj.status,
+                            started_at=exec_obj.started_at,
+                            completed_at=exec_obj.completed_at,
+                            duration_ms=exec_obj.duration_ms,
+                            signals_generated=exec_obj.signals_generated,
+                            orders_placed=exec_obj.orders_placed,
+                            orders_filled=exec_obj.orders_filled,
+                            error_message=exec_obj.error_message,
+                            realized_pnl=exec_obj.realized_pnl,
+                            total_order_value=exec_obj.total_order_value,
+                            orders=orders,
+                        )
+                    )
+
             data = {
                 "id": obj.id,
                 "user_id": obj.user_id,
@@ -419,6 +468,7 @@ class StrategyResponse(BaseModel):
                 "total_pnl": obj.total_pnl,
                 "created_at": obj.created_at,
                 "updated_at": obj.updated_at,
+                "recent_executions": recent_executions,
             }
             return cls(**data)
         return super().model_validate(obj, **kwargs)

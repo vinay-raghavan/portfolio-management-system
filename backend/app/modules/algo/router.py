@@ -59,9 +59,11 @@ async def list_strategies(
     current_user: CurrentUser,
     status_filter: StrategyStatus | None = None,
 ) -> list[StrategyResponse]:
-    """List all strategies for the current user."""
+    """List all strategies for the current user with recent execution details."""
     service = AlgoService(db)
-    strategies = await service.get_user_strategies(current_user.id, status_filter)
+    strategies = await service.get_user_strategies(
+        current_user.id, status_filter, load_recent_executions=True
+    )
     return [StrategyResponse.model_validate(s) for s in strategies]
 
 
@@ -84,9 +86,11 @@ async def get_strategy(
     current_user: CurrentUser,
     strategy_id: str,
 ) -> StrategyResponse:
-    """Get a specific strategy."""
+    """Get a specific strategy with recent execution details."""
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy = await service.get_strategy(
+        current_user.id, strategy_id, load_recent_executions=True
+    )
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     return StrategyResponse.model_validate(strategy)

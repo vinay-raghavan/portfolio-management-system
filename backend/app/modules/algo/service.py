@@ -75,9 +75,20 @@ class AlgoService:
         return strategy
 
     async def get_strategy(
-        self, user_id: str, strategy_id: str, load_universe: bool = False
+        self,
+        user_id: str,
+        strategy_id: str,
+        load_universe: bool = False,
+        load_recent_executions: bool = False,
     ) -> UserStrategy | None:
-        """Get a strategy by ID for a user."""
+        """Get a strategy by ID for a user.
+
+        Args:
+            user_id: User ID
+            strategy_id: Strategy ID
+            load_universe: Whether to eager-load universe
+            load_recent_executions: Whether to eager-load recent executions with orders
+        """
         from sqlalchemy.orm import selectinload
 
         query = select(UserStrategy).where(
@@ -86,16 +97,39 @@ class AlgoService:
         )
         if load_universe:
             query = query.options(selectinload(UserStrategy.universe))
+        if load_recent_executions:
+            query = query.options(
+                selectinload(UserStrategy.executions).selectinload(
+                    StrategyExecution.algo_orders
+                )
+            )
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_user_strategies(
-        self, user_id: str, status_filter: StrategyStatus | None = None
+        self,
+        user_id: str,
+        status_filter: StrategyStatus | None = None,
+        load_recent_executions: bool = False,
     ) -> list[UserStrategy]:
-        """Get all strategies for a user."""
+        """Get all strategies for a user.
+
+        Args:
+            user_id: User ID
+            status_filter: Optional filter by strategy status
+            load_recent_executions: Whether to eager-load recent executions with orders
+        """
+        from sqlalchemy.orm import selectinload
+
         query = select(UserStrategy).where(UserStrategy.user_id == user_id)
         if status_filter:
             query = query.where(UserStrategy.status == status_filter)
+        if load_recent_executions:
+            query = query.options(
+                selectinload(UserStrategy.executions).selectinload(
+                    StrategyExecution.algo_orders
+                )
+            )
         result = await self.db.execute(query.order_by(UserStrategy.created_at.desc()))
         return list(result.scalars().all())
 
