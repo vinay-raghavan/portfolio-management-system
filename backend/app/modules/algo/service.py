@@ -293,12 +293,16 @@ class AlgoService:
 
         # Calculate metrics
         closed_positions = [p for p in positions if p.status == PositionStatus.CLOSED]
+        partial_positions = [p for p in positions if p.status == PositionStatus.PARTIAL]
         # Include both OPEN and PARTIAL positions for unrealized P&L calculations
         open_positions = [
             p for p in positions if p.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
         ]
 
-        total_realized_pnl = sum(p.realized_pnl for p in closed_positions)
+        # Total realized P&L includes CLOSED positions + realized portion of PARTIAL positions
+        total_realized_pnl = sum(p.realized_pnl for p in closed_positions) + sum(
+            p.realized_pnl for p in partial_positions
+        )
         winning_trades = [p for p in closed_positions if p.is_winner is True]
         losing_trades = [p for p in closed_positions if p.is_winner is False]
 
@@ -379,6 +383,7 @@ class AlgoService:
         for strategy in strategies:
             strat_positions = positions_by_strategy.get(strategy.id, [])
             closed = [p for p in strat_positions if p.status == PositionStatus.CLOSED]
+            partial = [p for p in strat_positions if p.status == PositionStatus.PARTIAL]
             # Include both OPEN and PARTIAL positions for unrealized P&L calculations
             open_pos = [
                 p
@@ -386,7 +391,10 @@ class AlgoService:
                 if p.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
             ]
 
-            realized_pnl = sum(p.realized_pnl for p in closed)
+            # Realized P&L includes CLOSED positions + realized portion of PARTIAL positions
+            realized_pnl = sum(p.realized_pnl for p in closed) + sum(
+                p.realized_pnl for p in partial
+            )
             winning = [p for p in closed if p.is_winner is True]
             losing = [p for p in closed if p.is_winner is False]
 
