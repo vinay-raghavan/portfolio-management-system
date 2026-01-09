@@ -532,8 +532,7 @@ class ExecutionHistoryResponse(BaseModel):
         if hasattr(obj, "algo_orders"):
             # It's a StrategyExecution model, map fields including orders
             orders = [
-                AlgoOrderDetailResponse.model_validate(order)
-                for order in (obj.algo_orders or [])
+                AlgoOrderDetailResponse.model_validate(order) for order in (obj.algo_orders or [])
             ]
             data = {
                 "id": obj.id,

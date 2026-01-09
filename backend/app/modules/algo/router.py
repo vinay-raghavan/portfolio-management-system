@@ -88,9 +88,7 @@ async def get_strategy(
 ) -> StrategyResponse:
     """Get a specific strategy with recent execution details."""
     service = AlgoService(db)
-    strategy = await service.get_strategy(
-        current_user.id, strategy_id, load_recent_executions=True
-    )
+    strategy = await service.get_strategy(current_user.id, strategy_id, load_recent_executions=True)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     return StrategyResponse.model_validate(strategy)

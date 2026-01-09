@@ -99,9 +99,7 @@ class AlgoService:
             query = query.options(selectinload(UserStrategy.universe))
         if load_recent_executions:
             query = query.options(
-                selectinload(UserStrategy.executions).selectinload(
-                    StrategyExecution.algo_orders
-                )
+                selectinload(UserStrategy.executions).selectinload(StrategyExecution.algo_orders)
             )
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
@@ -126,9 +124,7 @@ class AlgoService:
             query = query.where(UserStrategy.status == status_filter)
         if load_recent_executions:
             query = query.options(
-                selectinload(UserStrategy.executions).selectinload(
-                    StrategyExecution.algo_orders
-                )
+                selectinload(UserStrategy.executions).selectinload(StrategyExecution.algo_orders)
             )
         result = await self.db.execute(query.order_by(UserStrategy.created_at.desc()))
         return list(result.scalars().all())
