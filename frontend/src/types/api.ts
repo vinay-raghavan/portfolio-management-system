@@ -602,6 +602,27 @@ export interface AlgoStrategyUpdate {
   is_paper_trading?: boolean;
 }
 
+export interface AlgoOrderDetail {
+  id: string;
+  execution_id: string;
+  order_id: string | null;
+  strategy_id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  order_type: string;
+  price: number | null;
+  order_status: string;
+  filled_quantity: number;
+  filled_price: number | null;
+  order_value: number;
+  filled_at: string | null;
+  signal_type: string | null;
+  signal_strength: number | null;
+  sizing_method: string | null;
+  created_at: string;
+}
+
 export interface StrategyExecution {
   id: string;
   strategy_id: string;
@@ -621,6 +642,8 @@ export interface StrategyExecution {
   total_order_value: number;
   positions_opened: number;
   positions_closed: number;
+  // Order details - includes symbol, price, quantity, side, filled info
+  orders: AlgoOrderDetail[];
 }
 
 export interface AlgoOrder {

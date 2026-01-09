@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -31,13 +31,120 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+
 import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
-import type { AlgoStrategy, StrategyPnL, AlgoPosition } from '@/types';
+import type { AlgoStrategy, StrategyPnL, AlgoPosition, StrategyExecution } from '@/types';
 
 interface StrategyDetailsProps {
   strategy: AlgoStrategy;
+}
+
+// Compact execution row with expandable order details
+function ExecutionRowCompact({ exec, formatPrice }: { exec: StrategyExecution; formatPrice: (value: number) => string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const hasOrders = exec.orders && exec.orders.length > 0;
+
+  return (
+    <>
+      <TableRow
+        className={cn('cursor-pointer hover:bg-muted/50', hasOrders && 'cursor-pointer')}
+        onClick={() => hasOrders && setIsOpen(!isOpen)}
+      >
+        <TableCell className="w-8">
+          {hasOrders ? (
+            isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+          ) : (
+            <span className="w-4" />
+          )}
+        </TableCell>
+        <TableCell className="text-sm">
+          <Clock className="h-3 w-3 inline mr-1" />
+          {new Date(exec.started_at).toLocaleString()}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={
+              exec.status === 'COMPLETED' ? 'default' :
+              exec.status === 'FAILED' ? 'destructive' :
+              'secondary'
+            }
+            className="text-xs"
+          >
+            {exec.status}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-right">{exec.symbols_analyzed}</TableCell>
+        <TableCell className="text-right">{exec.signals_generated}</TableCell>
+        <TableCell className="text-right">
+          {exec.orders_placed}
+          {exec.orders_filled > 0 && (
+            <span className="text-green-500 ml-1">({exec.orders_filled})</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right">
+          {exec.realized_pnl !== 0 && (
+            <span className={exec.realized_pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
+              {formatPrice(exec.realized_pnl)}
+            </span>
+          )}
+        </TableCell>
+        <TableCell className="text-right text-muted-foreground">
+          {exec.completed_at && exec.started_at
+            ? `${(Math.max(0, (new Date(exec.completed_at).getTime() - new Date(exec.started_at).getTime())) / 1000).toFixed(1)}s`
+            : '-'}
+        </TableCell>
+      </TableRow>
+      {hasOrders && isOpen && (
+        <TableRow className="bg-muted/30 hover:bg-muted/30">
+          <TableCell colSpan={8} className="p-0">
+            <div className="p-3 pl-10">
+              <div className="text-xs font-medium mb-2">Order Details</div>
+              <div className="grid gap-2">
+                {exec.orders.map((order) => (
+                  <div key={order.id} className="flex items-center gap-3 text-xs border rounded p-2 bg-background">
+                    <Badge variant={order.side === 'BUY' ? 'default' : 'destructive'} className="text-xs">
+                      {order.side === 'BUY' ? (
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                      )}
+                      {order.side}
+                    </Badge>
+                    <span className="font-medium">{order.symbol}</span>
+                    <span className="text-muted-foreground">{order.order_type}</span>
+                    <span>Qty: {order.quantity}</span>
+                    {order.price && <span>@ {formatPrice(order.price)}</span>}
+                    <Badge
+                      variant={
+                        order.order_status === 'FILLED' ? 'default' :
+                        order.order_status === 'REJECTED' ? 'destructive' :
+                        'secondary'
+                      }
+                      className="text-xs"
+                    >
+                      {order.order_status}
+                    </Badge>
+                    {order.filled_quantity > 0 && (
+                      <span className="text-green-500">
+                        Filled: {order.filled_quantity} @ {order.filled_price ? formatPrice(order.filled_price) : '-'}
+                      </span>
+                    )}
+                    {order.signal_type && (
+                      <Badge variant="outline" className="text-xs ml-auto">
+                        {order.signal_type}
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
 }
 
 export function StrategyDetails({ strategy }: StrategyDetailsProps) {
@@ -424,42 +531,19 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8"></TableHead>
                     <TableHead>Started</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Symbols</TableHead>
                     <TableHead className="text-right">Signals</TableHead>
                     <TableHead className="text-right">Orders</TableHead>
+                    <TableHead className="text-right">P&L</TableHead>
                     <TableHead className="text-right">Duration</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {executions.map((exec) => (
-                    <TableRow key={exec.id}>
-                      <TableCell className="text-sm">
-                        <Clock className="h-3 w-3 inline mr-1" />
-                        {new Date(exec.started_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            exec.status === 'COMPLETED' ? 'default' :
-                            exec.status === 'FAILED' ? 'destructive' :
-                            'secondary'
-                          }
-                          className="text-xs"
-                        >
-                          {exec.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">{exec.symbols_analyzed}</TableCell>
-                      <TableCell className="text-right">{exec.signals_generated}</TableCell>
-                      <TableCell className="text-right">{exec.orders_placed}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {exec.completed_at && exec.started_at
-                          ? `${(Math.max(0, (new Date(exec.completed_at).getTime() - new Date(exec.started_at).getTime())) / 1000).toFixed(1)}s`
-                          : '-'}
-                      </TableCell>
-                    </TableRow>
+                    <ExecutionRowCompact key={exec.id} exec={exec} formatPrice={formatPrice} />
                   ))}
                 </TableBody>
               </Table>
