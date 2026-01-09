@@ -54,31 +54,71 @@ class PositionTracker:
         strategy_id: str,
         user_id: str,
         symbol: str,
+        include_partial: bool = True,
     ) -> AlgoPosition | None:
-        """Get open position for a symbol in a strategy."""
-        result = await self.db.execute(
-            select(AlgoPosition).where(
-                AlgoPosition.strategy_id == strategy_id,
-                AlgoPosition.user_id == user_id,
-                AlgoPosition.symbol == symbol,
-                AlgoPosition.status == PositionStatus.OPEN,
+        """Get open position for a symbol in a strategy.
+
+        Args:
+            strategy_id: Strategy ID
+            user_id: User ID
+            symbol: Stock symbol
+            include_partial: If True, also match PARTIAL positions (default True)
+
+        Returns:
+            The position if found, None otherwise
+        """
+        if include_partial:
+            result = await self.db.execute(
+                select(AlgoPosition).where(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.user_id == user_id,
+                    AlgoPosition.symbol == symbol,
+                    AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+                )
             )
-        )
+        else:
+            result = await self.db.execute(
+                select(AlgoPosition).where(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.user_id == user_id,
+                    AlgoPosition.symbol == symbol,
+                    AlgoPosition.status == PositionStatus.OPEN,
+                )
+            )
         return result.scalar_one_or_none()
 
     async def get_all_open_positions(
         self,
         strategy_id: str,
         user_id: str,
+        include_partial: bool = False,
     ) -> list[AlgoPosition]:
-        """Get all open positions for a strategy."""
-        result = await self.db.execute(
-            select(AlgoPosition).where(
-                AlgoPosition.strategy_id == strategy_id,
-                AlgoPosition.user_id == user_id,
-                AlgoPosition.status == PositionStatus.OPEN,
+        """Get all open positions for a strategy.
+
+        Args:
+            strategy_id: Strategy ID
+            user_id: User ID
+            include_partial: If True, include PARTIAL positions as well as OPEN
+
+        Returns:
+            List of open (and optionally partial) positions
+        """
+        if include_partial:
+            result = await self.db.execute(
+                select(AlgoPosition).where(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.user_id == user_id,
+                    AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+                )
             )
-        )
+        else:
+            result = await self.db.execute(
+                select(AlgoPosition).where(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.user_id == user_id,
+                    AlgoPosition.status == PositionStatus.OPEN,
+                )
+            )
         return list(result.scalars().all())
 
     async def calculate_unrealized_pnl(
@@ -329,7 +369,7 @@ class PositionTracker:
         user_id: str,
         current_prices: dict[str, Decimal],
     ) -> tuple[list[PositionResult], PnLStats]:
-        """Check open positions for stop-loss or take-profit triggers.
+        """Check open positions for stop-loss, take-profit, or profit booking triggers.
 
         Args:
             strategy_id: Strategy ID
@@ -339,7 +379,10 @@ class PositionTracker:
         Returns:
             Tuple of (closed positions, aggregated PnL stats)
         """
-        open_positions = await self.get_all_open_positions(strategy_id, user_id)
+        # Include partial positions for profit booking checks
+        open_positions = await self.get_all_open_positions(
+            strategy_id, user_id, include_partial=True
+        )
         closed_results: list[PositionResult] = []
         stats = PnLStats()
 
@@ -351,8 +394,8 @@ class PositionTracker:
             should_close = False
             close_reason = ""
 
-            # Check stop-loss
-            if position.stop_loss:
+            # Check stop-loss (only for fully open positions)
+            if position.status == PositionStatus.OPEN and position.stop_loss:
                 if position.side == PositionSide.LONG and current_price <= position.stop_loss:
                     should_close = True
                     close_reason = "stop-loss"
@@ -360,8 +403,8 @@ class PositionTracker:
                     should_close = True
                     close_reason = "stop-loss"
 
-            # Check take-profit
-            if not should_close and position.take_profit:
+            # Check take-profit (only for fully open positions)
+            if not should_close and position.status == PositionStatus.OPEN and position.take_profit:
                 if position.side == PositionSide.LONG and current_price >= position.take_profit:
                     should_close = True
                     close_reason = "take-profit"
@@ -391,8 +434,109 @@ class PositionTracker:
                     else:
                         stats.losing_trades += 1
                         stats.consecutive_losses += 1
+                continue  # Skip profit booking check if position was closed
+
+            # Check profit booking rules (for both OPEN and PARTIAL positions)
+            profit_booking_result = await self._check_profit_booking_rules(
+                position, current_price, strategy_id, user_id
+            )
+            if profit_booking_result:
+                closed_results.append(profit_booking_result)
+                stats.trades_closed += 1
+                stats.total_pnl += profit_booking_result.realized_pnl
+                if profit_booking_result.is_winner:
+                    stats.winning_trades += 1
 
         return closed_results, stats
+
+    async def _check_profit_booking_rules(
+        self,
+        position: AlgoPosition,
+        current_price: Decimal,
+        strategy_id: str,
+        user_id: str,
+    ) -> PositionResult | None:
+        """Check and execute profit booking rules for a position.
+
+        Args:
+            position: The position to check
+            current_price: Current market price
+            strategy_id: Strategy ID
+            user_id: User ID
+
+        Returns:
+            PositionResult if a partial exit was executed, None otherwise
+        """
+        # Check if profit booking rules exist and are enabled
+        if not position.profit_booking_rules:
+            return None
+
+        rules_data = position.profit_booking_rules
+        if not rules_data.get("enabled", False):
+            return None
+
+        rules = rules_data.get("rules", [])
+        executed = rules_data.get("executed", [])
+
+        if not rules:
+            return None
+
+        # Calculate current profit percentage based on position side
+        if position.side == PositionSide.LONG:
+            profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+        else:  # SHORT
+            profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+
+        # Sort rules by target_pct to process in order
+        sorted_rules = sorted(rules, key=lambda r: float(r.get("target_pct", 0)))
+
+        for rule in sorted_rules:
+            target_pct = Decimal(str(rule.get("target_pct", 0)))
+            quantity_pct = Decimal(str(rule.get("quantity_pct", 0)))
+
+            # Skip if already executed
+            if float(target_pct) in executed:
+                continue
+
+            # Check if target is reached
+            if profit_pct >= target_pct:
+                # Calculate quantity to sell (based on remaining quantity)
+                sell_qty = int((position.remaining_quantity * quantity_pct) / 100)
+                if sell_qty <= 0:
+                    continue
+
+                logger.info(
+                    f"📈 Profit booking triggered for {position.symbol}: "
+                    f"{profit_pct:.2f}% profit >= {target_pct}% target, "
+                    f"selling {quantity_pct}% ({sell_qty} shares)"
+                )
+
+                # Execute partial close
+                result = await self.close_position(
+                    strategy_id,
+                    user_id,
+                    position.symbol,
+                    sell_qty,
+                    current_price,
+                )
+
+                if result:
+                    # Mark this rule as executed
+                    executed.append(float(target_pct))
+                    position.profit_booking_rules = {
+                        "enabled": True,
+                        "rules": rules,
+                        "executed": executed,
+                    }
+                    await self.db.flush()
+
+                    logger.info(
+                        f"✅ Profit booking executed for {position.symbol}: "
+                        f"sold {sell_qty} @ {current_price}, P&L: {result.realized_pnl}"
+                    )
+                    return result
+
+        return None
 
     async def calculate_strategy_pnl_stats(
         self,

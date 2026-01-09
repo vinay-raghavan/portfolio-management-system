@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
-from engine.algo.position_tracker import PositionTracker
+from engine.algo.position_tracker import PnLStats, PositionResult, PositionTracker
 from engine.algo.safety import AlgoKillSwitch, CircuitBreaker, PreExecutionChecker, SafetyService
 from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
@@ -21,12 +21,69 @@ from engine.core.locks import (
     DistributedLock,
 )
 from engine.core.redis import get_redis
-from engine.models.algo import PositionSizingMethod, StrategyStatus
+from engine.models.algo import PositionSizingMethod, StrategyStatus, UserStrategy
 from engine.providers.broker import PaperBroker, get_broker
 from engine.providers.data import DataProvider, get_data_provider
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_exit_conditions_for_strategy(
+    db: AsyncSession,
+    strategy: UserStrategy,
+    data_provider: DataProvider,
+) -> tuple[list[PositionResult], PnLStats]:
+    """Check exit conditions (SL/TP/profit booking) for a strategy's open positions.
+
+    This should be called even when strategy execution is blocked by max_trades,
+    cooldown, etc. to ensure profit booking rules and exit conditions are still
+    evaluated.
+
+    Args:
+        db: Database session
+        strategy: The strategy to check
+        data_provider: Data provider to fetch current prices
+
+    Returns:
+        Tuple of (closed positions, aggregated PnL stats)
+    """
+    position_tracker = PositionTracker(db)
+    open_positions = await position_tracker.get_all_open_positions(
+        strategy.id, strategy.user_id, include_partial=True
+    )
+
+    if not open_positions:
+        return [], PnLStats()
+
+    # Fetch current prices for open positions
+    position_symbols = list({p.symbol for p in open_positions})
+    current_prices: dict[str, Decimal] = {}
+    for sym in position_symbols:
+        try:
+            quote = await data_provider.get_quote(sym)
+            if quote and quote.price:
+                current_prices[sym] = Decimal(str(quote.price))
+        except Exception as e:
+            logger.warning(f"Failed to get price for {sym}: {e}")
+
+    if not current_prices:
+        return [], PnLStats()
+
+    # Check exit conditions
+    closed_positions, pnl_stats = await position_tracker.check_stop_loss_take_profit(
+        strategy_id=strategy.id,
+        user_id=strategy.user_id,
+        current_prices=current_prices,
+    )
+
+    if closed_positions:
+        logger.info(
+            f"Exit conditions triggered for strategy {strategy.id}: "
+            f"{len(closed_positions)} positions closed, PnL: {pnl_stats.total_pnl}"
+        )
+
+    return closed_positions, pnl_stats
 
 
 def _configure_broker_price_fetcher(broker, data_provider: DataProvider) -> None:
@@ -247,6 +304,26 @@ async def run_scheduled_strategies(
                     continue
 
                 try:
+                    # Always check exit conditions (SL/TP/profit booking) first,
+                    # even if strategy execution is blocked. This ensures profit
+                    # booking rules are evaluated regardless of max_trades limits.
+                    data_provider = get_data_provider()
+                    closed_positions, exit_pnl = await _check_exit_conditions_for_strategy(
+                        db=db,
+                        strategy=strategy,
+                        data_provider=data_provider,
+                    )
+
+                    # Update strategy stats if any positions were closed
+                    if closed_positions:
+                        await scheduler.update_strategy_stats(
+                            strategy=strategy,
+                            orders_filled=len(closed_positions),
+                            total_pnl_delta=float(exit_pnl.total_pnl),
+                            winning_trades_delta=exit_pnl.winning_trades,
+                            losing_trades_delta=exit_pnl.losing_trades,
+                        )
+
                     # Run all pre-execution safety checks
                     check_result = await pre_checker.check_all(
                         user_id=strategy.user_id,
@@ -266,6 +343,8 @@ async def run_scheduled_strategies(
                                 "status": "SKIPPED",
                                 "reason": check_result.check_type,
                                 "message": check_result.reason,
+                                "exit_conditions_checked": True,
+                                "positions_closed": len(closed_positions),
                             }
                         )
                         continue
