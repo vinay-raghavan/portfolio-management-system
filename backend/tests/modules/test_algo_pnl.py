@@ -218,6 +218,122 @@ class TestAlgoPnLService:
         assert macd_strat.realized_pnl == Decimal("-10000.00")
         assert macd_strat.closed_positions == 1
 
+    @pytest.mark.asyncio
+    async def test_get_pnl_summary_includes_partial_positions_realized_pnl(self, mock_db):
+        """Test that get_pnl_summary includes realized P&L from PARTIAL positions."""
+        now = datetime.now(UTC)
+
+        # Create a PARTIAL position with realized P&L from closed portion
+        partial_pos = MagicMock(spec=AlgoPosition)
+        partial_pos.id = "pos-partial"
+        partial_pos.strategy_id = "strat-1"
+        partial_pos.user_id = "user-1"
+        partial_pos.symbol = "HDFC"
+        partial_pos.side = PositionSide.LONG
+        partial_pos.status = PositionStatus.PARTIAL
+        partial_pos.entry_quantity = 100
+        partial_pos.entry_price = Decimal("1000.00")
+        partial_pos.entry_at = now
+        partial_pos.exit_quantity = 50
+        partial_pos.exit_price = Decimal("1100.00")
+        partial_pos.exit_at = now
+        partial_pos.remaining_quantity = 50
+        partial_pos.realized_pnl = Decimal("5000.00")  # (1100 - 1000) * 50
+        partial_pos.realized_pnl_percent = Decimal("10.00")
+        partial_pos.is_winner = None
+        partial_pos.stop_loss = None
+        partial_pos.take_profit = None
+        partial_pos.created_at = now
+        partial_pos.updated_at = now
+
+        # Create a CLOSED position
+        closed_pos = MagicMock(spec=AlgoPosition)
+        closed_pos.id = "pos-closed"
+        closed_pos.strategy_id = "strat-1"
+        closed_pos.user_id = "user-1"
+        closed_pos.symbol = "RELIANCE"
+        closed_pos.side = PositionSide.LONG
+        closed_pos.status = PositionStatus.CLOSED
+        closed_pos.entry_quantity = 100
+        closed_pos.entry_price = Decimal("1500.00")
+        closed_pos.entry_at = now
+        closed_pos.exit_quantity = 100
+        closed_pos.exit_price = Decimal("1600.00")
+        closed_pos.exit_at = now
+        closed_pos.remaining_quantity = 0
+        closed_pos.realized_pnl = Decimal("10000.00")
+        closed_pos.realized_pnl_percent = Decimal("6.67")
+        closed_pos.is_winner = True
+        closed_pos.stop_loss = None
+        closed_pos.take_profit = None
+        closed_pos.created_at = now
+        closed_pos.updated_at = now
+
+        positions = [partial_pos, closed_pos]
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = positions
+        mock_db.execute.return_value = mock_result
+
+        service = AlgoService(mock_db)
+        summary = await service.get_pnl_summary("user-1")
+
+        # Total realized P&L should include both CLOSED and PARTIAL positions
+        # 10000 (closed) + 5000 (partial) = 15000
+        assert summary.total_realized_pnl == Decimal("15000.00")
+        assert summary.open_positions == 1  # PARTIAL counts as open
+
+    @pytest.mark.asyncio
+    async def test_get_pnl_by_strategy_includes_partial_positions_realized_pnl(
+        self, mock_db, sample_strategies
+    ):
+        """Test that get_pnl_by_strategy includes realized P&L from PARTIAL positions."""
+        # Create a PARTIAL position with realized P&L
+        partial_pos = MagicMock(spec=AlgoPosition)
+        partial_pos.id = "pos-partial"
+        partial_pos.strategy_id = "strat-1"
+        partial_pos.user_id = "user-1"
+        partial_pos.symbol = "HDFC"
+        partial_pos.side = PositionSide.LONG
+        partial_pos.status = PositionStatus.PARTIAL
+        partial_pos.entry_quantity = 100
+        partial_pos.entry_price = Decimal("1000.00")
+        partial_pos.remaining_quantity = 50
+        partial_pos.realized_pnl = Decimal("5000.00")
+
+        # Create a CLOSED position
+        closed_pos = MagicMock(spec=AlgoPosition)
+        closed_pos.id = "pos-closed"
+        closed_pos.strategy_id = "strat-1"
+        closed_pos.user_id = "user-1"
+        closed_pos.symbol = "RELIANCE"
+        closed_pos.side = PositionSide.LONG
+        closed_pos.status = PositionStatus.CLOSED
+        closed_pos.entry_quantity = 100
+        closed_pos.entry_price = Decimal("1500.00")
+        closed_pos.remaining_quantity = 0
+        closed_pos.realized_pnl = Decimal("10000.00")
+        closed_pos.is_winner = True
+
+        positions = [partial_pos, closed_pos]
+
+        # Mock strategies query
+        strat_result = MagicMock()
+        strat_result.scalars.return_value.all.return_value = sample_strategies
+
+        # Mock positions query
+        pos_result = MagicMock()
+        pos_result.scalars.return_value.all.return_value = positions
+
+        mock_db.execute.side_effect = [strat_result, pos_result]
+
+        service = AlgoService(mock_db)
+        result = await service.get_pnl_by_strategy("user-1")
+
+        # Find strat-1 and verify realized P&L includes both CLOSED and PARTIAL
+        strat1 = next(s for s in result.strategies if s.strategy_id == "strat-1")
+        assert strat1.realized_pnl == Decimal("15000.00")  # 10000 + 5000
+
 
 class TestAlgoPnLAPI:
     """Tests for P&L API endpoints."""
