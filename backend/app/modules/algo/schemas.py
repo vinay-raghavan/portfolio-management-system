@@ -424,32 +424,6 @@ class StrategyResponse(BaseModel):
         return super().model_validate(obj, **kwargs)
 
 
-class ExecutionHistoryResponse(BaseModel):
-    """Execution history response."""
-
-    id: str
-    strategy_id: str
-    status: ExecutionStatus
-    started_at: datetime
-    completed_at: datetime | None
-    duration_ms: int | None
-    symbols_analyzed: int
-    signals_generated: int
-    orders_placed: int
-    orders_filled: int
-    orders_rejected: int
-    error_message: str | None
-    # P&L tracking
-    realized_pnl: Decimal = Decimal("0")
-    unrealized_pnl: Decimal = Decimal("0")
-    total_order_value: Decimal = Decimal("0")
-    positions_opened: int = 0
-    positions_closed: int = 0
-
-    class Config:
-        from_attributes = True
-
-
 class AlgoOrderDetailResponse(BaseModel):
     """Response for algo order details with execution info."""
 
@@ -474,6 +448,65 @@ class AlgoOrderDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ExecutionHistoryResponse(BaseModel):
+    """Execution history response with order details."""
+
+    id: str
+    strategy_id: str
+    status: ExecutionStatus
+    started_at: datetime
+    completed_at: datetime | None
+    duration_ms: int | None
+    symbols_analyzed: int
+    signals_generated: int
+    orders_placed: int
+    orders_filled: int
+    orders_rejected: int
+    error_message: str | None
+    # P&L tracking
+    realized_pnl: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
+    total_order_value: Decimal = Decimal("0")
+    positions_opened: int = 0
+    positions_closed: int = 0
+    # Order details - includes symbol, price, quantity, side, filled info
+    orders: list[AlgoOrderDetailResponse] = []
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Custom validation to include algo_orders from the model."""
+        if hasattr(obj, "algo_orders"):
+            # It's a StrategyExecution model, map fields including orders
+            orders = [
+                AlgoOrderDetailResponse.model_validate(order)
+                for order in (obj.algo_orders or [])
+            ]
+            data = {
+                "id": obj.id,
+                "strategy_id": obj.strategy_id,
+                "status": obj.status,
+                "started_at": obj.started_at,
+                "completed_at": obj.completed_at,
+                "duration_ms": obj.duration_ms,
+                "symbols_analyzed": obj.symbols_analyzed,
+                "signals_generated": obj.signals_generated,
+                "orders_placed": obj.orders_placed,
+                "orders_filled": obj.orders_filled,
+                "orders_rejected": obj.orders_rejected,
+                "error_message": obj.error_message,
+                "realized_pnl": obj.realized_pnl,
+                "unrealized_pnl": obj.unrealized_pnl,
+                "total_order_value": obj.total_order_value,
+                "positions_opened": obj.positions_opened,
+                "positions_closed": obj.positions_closed,
+                "orders": orders,
+            }
+            return cls(**data)
+        return super().model_validate(obj, **kwargs)
 
 
 class KillSwitchResponse(BaseModel):

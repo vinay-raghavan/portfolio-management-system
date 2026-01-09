@@ -165,7 +165,13 @@ class AlgoService:
     async def get_execution_history(
         self, user_id: str, strategy_id: str, limit: int = 50
     ) -> list[StrategyExecution]:
-        """Get execution history for a strategy."""
+        """Get execution history for a strategy with order details.
+
+        Returns execution records with eager-loaded algo_orders containing
+        symbol, price, quantity, side, filled_price, filled_quantity, etc.
+        """
+        from sqlalchemy.orm import selectinload
+
         # Verify ownership
         strategy = await self.get_strategy(user_id, strategy_id)
         if not strategy:
@@ -173,6 +179,7 @@ class AlgoService:
 
         result = await self.db.execute(
             select(StrategyExecution)
+            .options(selectinload(StrategyExecution.algo_orders))
             .where(StrategyExecution.strategy_id == strategy_id)
             .order_by(StrategyExecution.started_at.desc())
             .limit(limit)
