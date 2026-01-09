@@ -521,6 +521,10 @@ class PositionTracker:
                 )
 
                 if result:
+                    # Refresh the position object to get the latest state
+                    # (close_position fetches its own copy and modifies it)
+                    await self.db.refresh(position)
+
                     # Mark this rule as executed
                     executed.append(float(target_pct))
                     position.profit_booking_rules = {
