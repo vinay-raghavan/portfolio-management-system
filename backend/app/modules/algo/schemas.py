@@ -410,14 +410,30 @@ class StrategyResponse(BaseModel):
     @classmethod
     def model_validate(cls, obj, **kwargs):
         """Custom validation to map model fields to response fields."""
+        from sqlalchemy import inspect as sa_inspect
+
         if hasattr(obj, "strategy_name"):
             # It's a UserStrategy model, map fields
             # Build recent executions with order details
             recent_executions = []
-            if hasattr(obj, "executions") and obj.executions:
+            # Check if executions relationship was eagerly loaded (avoid lazy loading)
+            try:
+                insp = sa_inspect(obj)
+                executions_loaded = "executions" in insp.dict
+            except Exception:
+                executions_loaded = False
+
+            if executions_loaded and obj.executions:
                 for exec_obj in obj.executions[:5]:  # Limit to 5 most recent
                     orders = []
-                    if hasattr(exec_obj, "algo_orders") and exec_obj.algo_orders:
+                    # Check if algo_orders was loaded
+                    try:
+                        exec_insp = sa_inspect(exec_obj)
+                        orders_loaded = "algo_orders" in exec_insp.dict
+                    except Exception:
+                        orders_loaded = False
+
+                    if orders_loaded and exec_obj.algo_orders:
                         orders = [
                             AlgoOrderDetailResponse.model_validate(order)
                             for order in exec_obj.algo_orders
