@@ -27,6 +27,26 @@ class DataProvider(ABC):
         """
         pass
 
+    async def get_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """Get real-time quotes for multiple symbols in a single batch request.
+
+        This is more efficient than calling get_quote() multiple times.
+        Subclasses should override this with optimized batch implementations.
+
+        Args:
+            symbols: List of stock symbols
+
+        Returns:
+            Dictionary mapping symbol to Quote object (missing symbols are omitted)
+        """
+        # Default implementation: sequential calls (subclasses should override)
+        results: dict[str, Quote] = {}
+        for symbol in symbols:
+            quote = await self.get_quote(symbol)
+            if quote:
+                results[symbol] = quote
+        return results
+
     @abstractmethod
     async def get_historical(
         self,

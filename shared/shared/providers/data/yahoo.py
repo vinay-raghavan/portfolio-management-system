@@ -128,44 +128,98 @@ class YahooDataProvider(DataProvider):
 
         return result
 
+    def _build_quote_from_info(self, symbol: str, info: dict) -> Quote | None:
+        """Build a Quote object from yfinance ticker info dict."""
+        price = info.get("regularMarketPrice") or info.get("currentPrice")
+        if not price:
+            return None
+
+        prev_close = info.get("regularMarketPreviousClose", 0)
+        change = Decimal(str(price)) - Decimal(str(prev_close)) if prev_close else None
+        change_pct = (change / Decimal(str(prev_close)) * 100) if change and prev_close else None
+
+        extended_hours = self._parse_extended_hours(info)
+
+        return Quote(
+            symbol=SymbolMapper.normalize(symbol),
+            price=Decimal(str(price)),
+            open=Decimal(str(info.get("regularMarketOpen", 0))) or None,
+            high=Decimal(str(info.get("regularMarketDayHigh", 0))) or None,
+            low=Decimal(str(info.get("regularMarketDayLow", 0))) or None,
+            close=Decimal(str(prev_close)) if prev_close else None,
+            previous_close=Decimal(str(prev_close)) if prev_close else None,
+            volume=info.get("regularMarketVolume"),
+            change=change,
+            change_percent=change_pct,
+            bid=Decimal(str(info.get("bid", 0))) or None,
+            ask=Decimal(str(info.get("ask", 0))) or None,
+            market_session=self.get_market_session(),
+            **extended_hours,
+        )
+
     async def get_quote(self, symbol: str) -> Quote | None:
         """Get real-time quote for a symbol including extended hours data."""
         try:
             yahoo_symbol = self.normalize_symbol(symbol)
             ticker = yf.Ticker(yahoo_symbol)
             info = ticker.info
-
-            price = info.get("regularMarketPrice") or info.get("currentPrice")
-            if not price:
-                return None
-
-            prev_close = info.get("regularMarketPreviousClose", 0)
-            change = Decimal(str(price)) - Decimal(str(prev_close)) if prev_close else None
-            change_pct = (
-                (change / Decimal(str(prev_close)) * 100) if change and prev_close else None
-            )
-
-            extended_hours = self._parse_extended_hours(info)
-
-            return Quote(
-                symbol=SymbolMapper.normalize(symbol),
-                price=Decimal(str(price)),
-                open=Decimal(str(info.get("regularMarketOpen", 0))) or None,
-                high=Decimal(str(info.get("regularMarketDayHigh", 0))) or None,
-                low=Decimal(str(info.get("regularMarketDayLow", 0))) or None,
-                close=Decimal(str(prev_close)) if prev_close else None,
-                previous_close=Decimal(str(prev_close)) if prev_close else None,
-                volume=info.get("regularMarketVolume"),
-                change=change,
-                change_percent=change_pct,
-                bid=Decimal(str(info.get("bid", 0))) or None,
-                ask=Decimal(str(info.get("ask", 0))) or None,
-                market_session=self.get_market_session(),
-                **extended_hours,
-            )
+            return self._build_quote_from_info(symbol, info)
         except Exception as e:
             logger.error(f"Error fetching quote for {symbol}: {e}")
             return None
+
+    async def get_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """Get real-time quotes for multiple symbols in a single batch request.
+
+        Uses yfinance's Tickers class to fetch multiple symbols efficiently
+        in a single API call instead of sequential individual calls.
+
+        Args:
+            symbols: List of stock symbols
+
+        Returns:
+            Dictionary mapping normalized symbol to Quote object
+        """
+        if not symbols:
+            return {}
+
+        try:
+            # Convert symbols to Yahoo format and build mapping
+            symbol_map: dict[str, str] = {}  # yahoo_symbol -> original_symbol
+            yahoo_symbols: list[str] = []
+
+            for symbol in symbols:
+                yahoo_symbol = self.normalize_symbol(symbol)
+                symbol_map[yahoo_symbol] = symbol
+                yahoo_symbols.append(yahoo_symbol)
+
+            # Batch fetch using yfinance Tickers (single API call)
+            tickers_str = " ".join(yahoo_symbols)
+            tickers = yf.Tickers(tickers_str)
+
+            results: dict[str, Quote] = {}
+
+            for yahoo_symbol, original_symbol in symbol_map.items():
+                try:
+                    ticker = tickers.tickers.get(yahoo_symbol)
+                    if ticker is None:
+                        continue
+
+                    info = ticker.info
+                    quote = self._build_quote_from_info(original_symbol, info)
+                    if quote:
+                        # Use normalized symbol as key
+                        results[SymbolMapper.normalize(original_symbol)] = quote
+                except Exception as e:
+                    logger.warning(f"Error processing quote for {original_symbol}: {e}")
+                    continue
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error batch fetching quotes for {symbols}: {e}")
+            # Fallback to sequential fetching on error
+            return await super().get_quotes(symbols)
 
     async def get_historical(
         self,

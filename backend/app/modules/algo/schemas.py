@@ -773,3 +773,27 @@ class SquareOffStrategyResponse(BaseModel):
     total_realized_pnl: Decimal
     closed_positions: list[ClosePositionResponse]
     message: str
+
+
+class SymbolPrice(BaseModel):
+    """Price information for a single symbol."""
+
+    symbol: str
+    price: Decimal
+    change: Decimal | None = None
+    change_percent: Decimal | None = None
+    volume: int | None = None
+
+
+class PricesRequest(BaseModel):
+    """Request body for batch price fetching."""
+
+    symbols: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class PricesResponse(BaseModel):
+    """Response with current prices for multiple symbols."""
+
+    prices: dict[str, SymbolPrice] = Field(default_factory=dict)
+    missing_symbols: list[str] = Field(default_factory=list)
+    fetched_at: datetime

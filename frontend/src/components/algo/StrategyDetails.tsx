@@ -170,11 +170,47 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
     refetchInterval: 30000,
   });
 
-  // Fetch positions for this strategy
-  const { data: positions, refetch: refetchPositions } = useQuery({
+  // Fetch positions for this strategy (fast, without prices initially)
+  const { data: positionsRaw, refetch: refetchPositions } = useQuery({
     queryKey: ['algo-positions', strategy.id],
-    queryFn: () => algoApi.getPositions(strategy.id).then((res) => res.data),
+    queryFn: () => algoApi.getPositions(strategy.id, undefined, false).then((res) => res.data),
     refetchInterval: 30000,
+  });
+
+  // Get symbols for open/partial positions that need price hydration
+  const openSymbols = positionsRaw
+    ?.filter(p => (p.status === 'OPEN' || p.status === 'PARTIAL') && p.remaining_quantity > 0)
+    .map(p => p.symbol) ?? [];
+
+  // Fetch prices for open positions separately (batch API)
+  const { data: pricesData, isFetching: pricesFetching } = useQuery({
+    queryKey: ['algo-position-prices', strategy.id, openSymbols.join(',')],
+    queryFn: () => algoApi.getBatchPrices(openSymbols).then((res) => res.data),
+    enabled: openSymbols.length > 0,
+    refetchInterval: 30000,
+    staleTime: 10000, // Consider fresh for 10s to avoid too many refetches
+  });
+
+  // Hydrate positions with current prices
+  const positions = positionsRaw?.map(p => {
+    if ((p.status === 'OPEN' || p.status === 'PARTIAL') && pricesData?.prices?.[p.symbol]) {
+      const priceInfo = pricesData.prices[p.symbol];
+      const currentPrice = priceInfo.price;
+      const entryValue = p.entry_price * p.remaining_quantity;
+      const currentValue = currentPrice * p.remaining_quantity;
+      const unrealizedPnl = p.side === 'LONG'
+        ? currentValue - entryValue
+        : entryValue - currentValue;
+      const unrealizedPnlPercent = entryValue > 0 ? (unrealizedPnl / entryValue) * 100 : 0;
+
+      return {
+        ...p,
+        current_price: currentPrice,
+        unrealized_pnl: unrealizedPnl,
+        unrealized_pnl_percent: unrealizedPnlPercent,
+      };
+    }
+    return p;
   });
 
   // Fetch recent executions for this strategy
@@ -463,9 +499,15 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                         {pos.exit_price ? formatPrice(pos.exit_price) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {(pos.status === 'OPEN' || pos.status === 'PARTIAL') && pos.current_price != null
-                          ? formatPrice(pos.current_price)
-                          : '-'}
+                        {(pos.status === 'OPEN' || pos.status === 'PARTIAL') ? (
+                          pos.current_price != null ? (
+                            formatPrice(pos.current_price)
+                          ) : pricesFetching ? (
+                            <Loader2 className="h-3 w-3 animate-spin inline" />
+                          ) : (
+                            '-'
+                          )
+                        ) : '-'}
                       </TableCell>
                       <TableCell className={cn(
                         'text-right font-medium',
@@ -481,7 +523,11 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                             </span>
                           </>
                         ) : (pos.status === 'OPEN' || pos.status === 'PARTIAL') ? (
-                          <span className="text-muted-foreground">-</span>
+                          pricesFetching ? (
+                            <Loader2 className="h-3 w-3 animate-spin inline" />
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )
                         ) : (
                           <span className="text-muted-foreground">Closed</span>
                         )}

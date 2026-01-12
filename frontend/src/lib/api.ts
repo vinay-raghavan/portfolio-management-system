@@ -414,8 +414,24 @@ export const algoApi = {
     }>('/algo/universes/refresh-all'),
 
   // Positions
-  getPositions: (strategyId?: string, status?: string) =>
-    api.get<AlgoPosition[]>('/algo/positions', { params: { strategy_id: strategyId, status } }),
+  getPositions: (strategyId?: string, status?: string, includePrices = true) =>
+    api.get<AlgoPosition[]>('/algo/positions', {
+      params: { strategy_id: strategyId, status, include_prices: includePrices }
+    }),
+
+  // Batch price fetching - lightweight endpoint for hydrating position data with current prices
+  getBatchPrices: (symbols: string[]) =>
+    api.post<{
+      prices: Record<string, {
+        symbol: string;
+        price: number;
+        change: number | null;
+        change_percent: number | null;
+        volume: number | null;
+      }>;
+      missing_symbols: string[];
+      fetched_at: string;
+    }>('/algo/prices', null, { params: { symbols } }),
 
   // Profit booking for algo positions
   getAlgoProfitBookingRules: (positionId: string) =>

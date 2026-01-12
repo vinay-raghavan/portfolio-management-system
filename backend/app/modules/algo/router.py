@@ -1,6 +1,7 @@
 """API routes for algo trading."""
 
 import logging
+from datetime import UTC
 from decimal import Decimal
 from typing import Annotated
 
@@ -387,23 +388,20 @@ async def square_off_strategy(
     if data and data.exit_prices:
         exit_prices = data.exit_prices
 
-    # Fetch current prices for positions without provided exit price
+    # Fetch current prices for positions without provided exit price using batch API
     symbols_needing_price = [p.symbol for p in positions if p.symbol not in exit_prices]
     if symbols_needing_price:
         data_provider = YahooDataProvider()
+        try:
+            quotes = await data_provider.get_quotes(symbols_needing_price)
+            for symbol, quote in quotes.items():
+                exit_prices[symbol] = quote.price
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch prices: {e}")
+
+        # Fall back to entry price for any symbols we couldn't get
         for symbol in symbols_needing_price:
-            try:
-                quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    exit_prices[symbol] = Decimal(str(quote.price))
-                else:
-                    # Fall back to entry price if we can't get current price
-                    pos = next((p for p in positions if p.symbol == symbol), None)
-                    if pos:
-                        exit_prices[symbol] = pos.entry_price
-            except Exception as e:
-                logger.warning(f"Could not fetch price for {symbol}: {e}")
-                # Fall back to entry price
+            if symbol not in exit_prices:
                 pos = next((p for p in positions if p.symbol == symbol), None)
                 if pos:
                     exit_prices[symbol] = pos.entry_price
@@ -779,6 +777,58 @@ async def get_index_constituents(
         await nse_provider.close()
 
 
+# ============== Prices Endpoint ==============
+
+
+@router.post("/prices")
+async def get_batch_prices(
+    current_user: CurrentUser,
+    symbols: list[str] = Query(
+        ..., min_length=1, max_length=100, description="Symbols to fetch prices for"
+    ),
+) -> dict:
+    """Get current prices for multiple symbols in a single batch request.
+
+    This is a lightweight endpoint optimized for fetching prices quickly.
+    Use this to hydrate position/P&L data with current prices after
+    initial data load.
+
+    Returns:
+        Dictionary with prices, missing_symbols, and fetched_at timestamp.
+    """
+    from datetime import datetime
+
+    from app.providers.data import YahooDataProvider
+
+    data_provider = YahooDataProvider()
+    prices: dict[str, dict] = {}
+    missing_symbols: list[str] = []
+
+    try:
+        quotes = await data_provider.get_quotes(symbols)
+        for symbol in symbols:
+            if symbol in quotes:
+                quote = quotes[symbol]
+                prices[symbol] = {
+                    "symbol": symbol,
+                    "price": quote.price,
+                    "change": quote.change,
+                    "change_percent": quote.change_percent,
+                    "volume": quote.volume,
+                }
+            else:
+                missing_symbols.append(symbol)
+    except Exception as e:
+        logger.error(f"Failed to fetch prices: {e}")
+        missing_symbols = symbols
+
+    return {
+        "prices": prices,
+        "missing_symbols": missing_symbols,
+        "fetched_at": datetime.now(UTC).isoformat(),
+    }
+
+
 # ============== P&L Endpoints ==============
 
 
@@ -790,11 +840,17 @@ async def list_positions(
     status: str | None = Query(
         default=None, description="Filter by status (OPEN, CLOSED, PARTIAL)"
     ),
+    include_prices: bool = Query(
+        default=True, description="Include current prices (set to false for faster response)"
+    ),
 ) -> list[PositionResponse]:
     """List all algo positions for the current user.
 
     Optionally filter by strategy ID and/or position status.
-    Returns unrealized P&L for open positions.
+    Returns unrealized P&L for open positions when include_prices=true.
+
+    Set include_prices=false to get positions immediately without price fetching,
+    then use /algo/prices endpoint to fetch prices separately.
     """
     from app.providers.data import YahooDataProvider
 
@@ -802,6 +858,10 @@ async def list_positions(
 
     # First get positions without prices to know which symbols we need
     positions_raw = await service.get_positions(current_user.id, strategy_id, status)
+
+    if not include_prices:
+        # Return positions immediately without price fetching
+        return positions_raw
 
     # Filter for open/partial positions that need current prices
     open_symbols = list(
@@ -812,17 +872,15 @@ async def list_positions(
         }
     )
 
-    # Fetch current prices for open positions
+    # Fetch current prices for open positions using batch API
     current_prices: dict[str, Decimal] = {}
     if open_symbols:
         data_provider = YahooDataProvider()
-        for symbol in open_symbols:
-            try:
-                quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    current_prices[symbol] = quote.price
-            except Exception as e:
-                logger.warning(f"Failed to get price for {symbol}: {e}")
+        try:
+            quotes = await data_provider.get_quotes(open_symbols)
+            current_prices = {symbol: quote.price for symbol, quote in quotes.items()}
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch prices: {e}")
 
     # Re-fetch with current prices to calculate unrealized P&L
     if current_prices:
@@ -852,18 +910,16 @@ async def get_pnl_summary(
     all_positions = await service.get_positions(current_user.id)
     positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
 
-    # Fetch current prices for open positions to calculate unrealized P&L
+    # Fetch current prices for open positions using batch API
     current_prices: dict[str, Decimal] = {}
     if positions:
         symbols = list({p.symbol for p in positions})
         data_provider = YahooDataProvider()
-        for symbol in symbols:
-            try:
-                quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    current_prices[symbol] = quote.price
-            except Exception as e:
-                logger.warning(f"Failed to get price for {symbol}: {e}")
+        try:
+            quotes = await data_provider.get_quotes(symbols)
+            current_prices = {symbol: quote.price for symbol, quote in quotes.items()}
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch prices: {e}")
 
     return await service.get_pnl_summary(current_user.id, current_prices)
 
@@ -888,18 +944,16 @@ async def get_pnl_by_strategy(
     all_positions = await service.get_positions(current_user.id)
     positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
 
-    # Fetch current prices for open/partial positions to calculate unrealized P&L
+    # Fetch current prices for open/partial positions using batch API
     current_prices: dict[str, Decimal] = {}
     if positions:
         symbols = list({p.symbol for p in positions})
         data_provider = YahooDataProvider()
-        for symbol in symbols:
-            try:
-                quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    current_prices[symbol] = quote.price
-            except Exception as e:
-                logger.warning(f"Failed to get price for {symbol}: {e}")
+        try:
+            quotes = await data_provider.get_quotes(symbols)
+            current_prices = {symbol: quote.price for symbol, quote in quotes.items()}
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch prices: {e}")
 
     return await service.get_pnl_by_strategy(current_user.id, current_prices)
 
@@ -953,18 +1007,16 @@ async def get_unrealized_pnl(
             positions_count=0,
         )
 
-    # Get current prices for all symbols
+    # Get current prices for all symbols using batch API
     symbols = list({p.symbol for p in positions})
     current_prices: dict[str, Decimal] = {}
 
     data_provider = YahooDataProvider()
-    for symbol in symbols:
-        try:
-            quote = await data_provider.get_quote(symbol)
-            if quote and quote.price:
-                current_prices[symbol] = quote.price
-        except Exception as e:
-            logger.warning(f"Failed to get price for {symbol}: {e}")
+    try:
+        quotes = await data_provider.get_quotes(symbols)
+        current_prices = {symbol: quote.price for symbol, quote in quotes.items()}
+    except Exception as e:
+        logger.warning(f"Failed to batch fetch prices: {e}")
 
     return await service.get_unrealized_pnl(current_user.id, current_prices)
 
