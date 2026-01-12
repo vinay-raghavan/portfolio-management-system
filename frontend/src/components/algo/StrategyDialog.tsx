@@ -140,6 +140,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
       onOpenChange(false);
     },
+    onError: (error) => {
+      console.error('Failed to create strategy:', error);
+    },
   });
 
   const updateMutation = useMutation({
@@ -147,6 +150,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
       onOpenChange(false);
+    },
+    onError: (error) => {
+      console.error('Failed to update strategy:', error);
     },
   });
 
