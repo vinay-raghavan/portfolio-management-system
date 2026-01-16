@@ -1,8 +1,11 @@
 FROM python:3.13-slim
 
-# Install system dependencies
+# Install system dependencies and build tools for packages with C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    gcc \
+    g++ \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

@@ -439,3 +439,148 @@ export const algoApi = {
   getUnrealizedPnL: () =>
     api.get<UnrealizedPnLResponse>('/algo/pnl/unrealized'),
 };
+
+// ============================================================================
+// Broker Integration API
+// ============================================================================
+
+export type BrokerType = 'fyers' | 'angelone' | 'dhan' | 'zerodha';
+
+export interface BrokerCredentialStatus {
+  broker_type: string;
+  is_configured: boolean;
+  is_connected: boolean;
+  is_active: boolean;
+  client_id?: string | null;
+  last_used_at?: string | null;
+  token_expires_at?: string | null;
+}
+
+export interface BrokerListResponse {
+  brokers: BrokerCredentialStatus[];
+}
+
+export interface BrokerCredentialCreate {
+  broker_type: BrokerType;
+  client_id: string;
+  secret_key: string;
+  redirect_uri: string;
+}
+
+export interface BrokerCredentialResponse {
+  id: string;
+  broker_type: string;
+  client_id: string;
+  redirect_uri: string;
+  is_connected: boolean;
+  is_active: boolean;
+  token_expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string | null;
+}
+
+export interface BrokerAuthUrlResponse {
+  auth_url: string;
+  broker_type: string;
+  message: string;
+}
+
+export interface BrokerCallbackRequest {
+  auth_code: string;
+  state?: string;
+}
+
+export interface BrokerCallbackResponse {
+  success: boolean;
+  message: string;
+  broker_type: string;
+  is_connected: boolean;
+}
+
+export interface BrokerDisconnectResponse {
+  success: boolean;
+  message: string;
+  broker_type: string;
+}
+
+export const brokersApi = {
+  // List all broker integrations
+  listBrokers: () =>
+    api.get<BrokerListResponse>('/brokers'),
+
+  // Get status of a specific broker
+  getBrokerStatus: (brokerType: BrokerType) =>
+    api.get<BrokerCredentialStatus>(`/brokers/${brokerType}`),
+
+  // Save broker credentials
+  saveCredentials: (data: BrokerCredentialCreate) =>
+    api.post<BrokerCredentialResponse>('/brokers', data),
+
+  // Delete broker credentials permanently
+  deleteBroker: (brokerType: BrokerType) =>
+    api.delete<BrokerDisconnectResponse>(`/brokers/${brokerType}`),
+
+  // Disconnect broker (clear token but keep credentials)
+  disconnectBroker: (brokerType: BrokerType) =>
+    api.post<BrokerDisconnectResponse>(`/brokers/${brokerType}/disconnect`),
+
+  // Fyers-specific endpoints
+  getFyersAuthUrl: () =>
+    api.get<BrokerAuthUrlResponse>('/brokers/fyers/auth-url'),
+
+  fyersCallback: (data: BrokerCallbackRequest) =>
+    api.post<BrokerCallbackResponse>('/brokers/fyers/callback', data),
+};
+
+// User Settings Types
+export type DataProviderType = 'yahoo' | 'fyers' | 'nse';
+
+export interface UserSettings {
+  id: string;
+  user_id: string;
+  data_provider: DataProviderType;
+  default_market: 'IN' | 'US';
+  currency: 'INR' | 'USD' | 'EUR' | 'GBP';
+  theme: 'light' | 'dark' | 'system';
+  created_at: string;
+  updated_at: string;
+  data_provider_available: boolean;
+  data_provider_message: string | null;
+}
+
+export interface UserSettingsUpdate {
+  data_provider?: DataProviderType;
+  default_market?: 'IN' | 'US';
+  currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
+  theme?: 'light' | 'dark' | 'system';
+}
+
+export interface DataProviderInfo {
+  id: DataProviderType;
+  name: string;
+  description: string;
+  requires_auth: boolean;
+  is_available: boolean;
+  message: string | null;
+}
+
+export interface AvailableProvidersResponse {
+  providers: DataProviderInfo[];
+  current: DataProviderType;
+}
+
+// Settings API
+export const settingsApi = {
+  // Get user settings
+  getSettings: () =>
+    api.get<UserSettings>('/settings'),
+
+  // Update user settings
+  updateSettings: (data: UserSettingsUpdate) =>
+    api.patch<UserSettings>('/settings', data),
+
+  // Get available data providers
+  getProviders: () =>
+    api.get<AvailableProvidersResponse>('/settings/providers'),
+};

@@ -11,12 +11,21 @@ from .factory import (
     set_config_getter,
     set_default_broker_type,
 )
+from .fyers import FyersBroker
+from .fyers_auth import FyersAuthHandler, FyersCredentials, create_auth_handler_from_env
 from .paper import PaperBroker, set_initial_balance
+
+# Register Fyers broker
+BrokerFactory.register("fyers", FyersBroker)
 
 __all__ = [
     "Broker",
     "BrokerFactory",
+    "FyersAuthHandler",
+    "FyersBroker",
+    "FyersCredentials",
     "PaperBroker",
+    "create_auth_handler_from_env",
     "get_broker",
     "set_config_getter",
     "set_default_broker_type",

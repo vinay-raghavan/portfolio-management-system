@@ -97,6 +97,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-internal-worker-key}
       DATA_PROVIDER: ${DATA_PROVIDER:-yahoo}
       DEFAULT_MARKET: ${DEFAULT_MARKET:-IN}

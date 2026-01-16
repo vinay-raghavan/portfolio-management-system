@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # Security
+    # IMPORTANT: SECRET_KEY is used for both JWT signing AND credential encryption.
+    # In production, use a strong, unique 32+ character secret.
+    # Changing this key will invalidate all JWTs and encrypted broker credentials!
     SECRET_KEY: str = "change-this-in-production-use-a-real-secret-key"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
@@ -63,6 +66,15 @@ class Settings(BaseSettings):
     ANGEL_CLIENT_ID: str = ""
     ANGEL_PASSWORD: str = ""
     ANGEL_TOTP_SECRET: str = ""
+
+    # Fyers Credentials
+    FYERS_CLIENT_ID: str = ""  # APP_ID from Fyers API dashboard (format: XXXXX-100)
+    FYERS_SECRET_KEY: str = ""  # Secret key from Fyers API dashboard
+    FYERS_REDIRECT_URI: str = (
+        "http://localhost:8000/api/v1/auth/fyers/callback"  # OAuth redirect URL
+    )
+    FYERS_ACCESS_TOKEN: str = ""  # Access token (set after OAuth flow)
+    FYERS_LOG_PATH: str = ""  # Optional path for Fyers SDK logs
 
 
 @lru_cache

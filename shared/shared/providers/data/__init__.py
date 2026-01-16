@@ -1,7 +1,7 @@
 """Data providers for market data.
 
 This module provides a unified interface for fetching market data from
-various sources (Yahoo Finance, NSE, etc.).
+various sources (Yahoo Finance, NSE, Fyers, etc.).
 
 Usage:
     from shared.providers.data import get_data_provider, DataProviderFactory
@@ -12,6 +12,7 @@ Usage:
     # Get a specific provider
     yahoo = get_data_provider("yahoo")
     nse = get_data_provider("nse")
+    fyers = get_data_provider("fyers")
 
     # Use the provider
     quote = await provider.get_quote("RELIANCE")
@@ -28,6 +29,7 @@ from .factory import (
     set_default_provider,
     set_market_getter,
 )
+from .fyers import FyersDataProvider
 from .nse import NSEDataProvider
 from .rate_limiter import RateLimiter, nse_rate_limiter, yahoo_rate_limiter
 from .yahoo import YahooDataProvider
@@ -35,6 +37,7 @@ from .yahoo import YahooDataProvider
 # Register providers
 DataProviderFactory.register("yahoo", YahooDataProvider)
 DataProviderFactory.register("nse", NSEDataProvider)
+DataProviderFactory.register("fyers", FyersDataProvider)
 
 __all__ = [
     # Base classes
@@ -48,6 +51,7 @@ __all__ = [
     "set_default_provider",
     "set_market_getter",
     # Providers
+    "FyersDataProvider",
     "NSEDataProvider",
     "YahooDataProvider",
     # Rate limiting
