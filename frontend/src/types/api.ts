@@ -145,6 +145,33 @@ export interface DailyPnLHistory {
   period_return_pct: number;
 }
 
+// ============== Funds Types ==============
+
+export interface FundsResponse {
+  id: string;
+  user_id: string;
+  cash_balance: number;
+  margin_used: number;
+  collateral: number;
+  available_cash: number;
+  total_balance: number;
+  available_margin: number;
+}
+
+export interface FundsDepositRequest {
+  amount: number;
+  note?: string;
+}
+
+export interface FundsWithdrawRequest {
+  amount: number;
+  note?: string;
+}
+
+export interface FundsResetRequest {
+  initial_balance?: number;
+}
+
 // ============== Order Types ==============
 
 export interface Order {

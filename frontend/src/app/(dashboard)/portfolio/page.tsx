@@ -15,6 +15,7 @@ import {
   PerformanceChart,
   PortfolioSelector,
   PortfolioDialog,
+  FundsManagement,
 } from '@/components/portfolio';
 import { usePortfolioStore } from '@/store';
 import type { PortfolioInfo } from '@/types';
@@ -106,17 +107,21 @@ export default function PortfolioPage() {
         <SectorAllocation positions={positions} isLoading={isLoading} />
       </div>
 
-      {/* Tabs for Positions and Trade History */}
+      {/* Tabs for Positions, Trade History, and Funds */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="history">Trade History</TabsTrigger>
+          <TabsTrigger value="funds">Funds</TabsTrigger>
         </TabsList>
         <TabsContent value="positions" className="mt-4">
           <PositionsTable positions={positions} isLoading={isLoading} />
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <TradeHistory pageSize={20} />
+        </TabsContent>
+        <TabsContent value="funds" className="mt-4">
+          <FundsManagement />
         </TabsContent>
       </Tabs>
     </div>

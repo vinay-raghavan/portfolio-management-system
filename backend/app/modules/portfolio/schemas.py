@@ -119,6 +119,30 @@ class FundsUpdate(BaseModel):
     reason: str = Field(..., max_length=100, description="Reason for adjustment")
 
 
+class FundsDepositRequest(BaseModel):
+    """Schema for depositing funds."""
+
+    amount: Decimal = Field(..., gt=0, description="Amount to deposit (must be positive)")
+    note: str | None = Field(None, max_length=200, description="Optional note for the deposit")
+
+
+class FundsWithdrawRequest(BaseModel):
+    """Schema for withdrawing funds."""
+
+    amount: Decimal = Field(..., gt=0, description="Amount to withdraw (must be positive)")
+    note: str | None = Field(None, max_length=200, description="Optional note for the withdrawal")
+
+
+class FundsResetRequest(BaseModel):
+    """Schema for resetting funds to initial balance."""
+
+    initial_balance: Decimal | None = Field(
+        None,
+        gt=0,
+        description="Custom initial balance. Uses default if not provided."
+    )
+
+
 class FundsSummary(BaseModel):
     """Schema for funds summary in portfolio view."""
 

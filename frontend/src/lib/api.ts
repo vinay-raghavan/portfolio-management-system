@@ -11,6 +11,10 @@ import type {
   ProfitBookingRules,
   TradeHistoryResponse,
   DailyPnLHistory,
+  FundsResponse,
+  FundsDepositRequest,
+  FundsWithdrawRequest,
+  FundsResetRequest,
   Order,
   OrderListResponse,
   OrderCreate,
@@ -102,6 +106,16 @@ export const portfolioApi = {
     api.get<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`),
   updateProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
     api.patch<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`, rules),
+
+  // Funds management
+  getFunds: () =>
+    api.get<FundsResponse>('/portfolio/funds'),
+  depositFunds: (data: FundsDepositRequest) =>
+    api.post<FundsResponse>('/portfolio/funds/deposit', data),
+  withdrawFunds: (data: FundsWithdrawRequest) =>
+    api.post<FundsResponse>('/portfolio/funds/withdraw', data),
+  resetFunds: (data?: FundsResetRequest) =>
+    api.post<FundsResponse>('/portfolio/funds/reset', data || {}),
 };
 
 // Trading API
