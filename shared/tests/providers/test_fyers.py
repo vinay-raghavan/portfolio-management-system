@@ -4,7 +4,6 @@ These tests use mocking to avoid requiring actual Fyers API credentials.
 """
 
 from datetime import datetime
-from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,13 +12,8 @@ from shared.providers.broker.fyers import FyersBroker
 from shared.providers.broker.fyers_auth import FyersAuthHandler, FyersCredentials
 from shared.providers.data.fyers import FyersDataProvider
 from shared.providers.schemas import (
-    Funds,
-    MarketSession,
-    OrderRequest,
-    OrderSide,
     OrderStatus,
     OrderType,
-    Position,
     ProductType,
 )
 
@@ -142,11 +136,12 @@ class TestFyersDataProvider:
     def test_get_market_session_regular(self, mock_datetime):
         """Test market session during regular hours."""
         from zoneinfo import ZoneInfo
+
         IST = ZoneInfo("Asia/Kolkata")
         # Monday at 10:00 AM IST
         mock_now = datetime(2024, 1, 15, 10, 0, tzinfo=IST)
         mock_datetime.now.return_value = mock_now
-        
+
         provider = FyersDataProvider()
         # Note: This test may not work as expected due to how datetime is mocked
         # The actual implementation uses datetime.now(IST) directly
@@ -217,9 +212,8 @@ class TestFyersBroker:
         broker = FyersBroker(access_token="test_token")
         broker._connected = True
         broker._fyers = MagicMock()
-        
+
         await broker.disconnect()
-        
+
         assert broker._connected is False
         assert broker._fyers is None
-

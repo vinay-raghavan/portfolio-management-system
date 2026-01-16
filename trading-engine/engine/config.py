@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # Security
     INTERNAL_API_KEY: str = "internal-worker-key"
+    SECRET_KEY: str = "change-this-in-production-use-a-real-secret-key"
 
     # Data Provider
     DATA_PROVIDER: str = "yahoo"

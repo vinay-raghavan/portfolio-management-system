@@ -3,6 +3,9 @@
 import logging
 from decimal import Decimal
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.data.schemas import (
     HistoricalDataPoint,
     HistoricalDataResponse,
@@ -14,6 +17,61 @@ from app.modules.data.schemas import (
 from app.providers.data import DataProvider, get_data_provider
 
 logger = logging.getLogger(__name__)
+
+
+async def get_user_data_provider(db: AsyncSession, user_id: str) -> DataProvider | None:
+    """Get a data provider instance based on user's settings.
+
+    Args:
+        db: Database session
+        user_id: User ID
+
+    Returns:
+        DataProvider instance configured for the user, or None to use default
+    """
+    from shared.providers.data.fyers import FyersDataProvider
+
+    from app.modules.broker.models import BrokerCredential
+    from app.modules.settings.models import UserSettings
+
+    # Get user settings
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+    settings = result.scalar_one_or_none()
+
+    if not settings or settings.data_provider == "yahoo":
+        # Use default Yahoo provider
+        return None
+
+    if settings.data_provider == "fyers":
+        # Get Fyers credentials
+        result = await db.execute(
+            select(BrokerCredential).where(
+                BrokerCredential.user_id == user_id,
+                BrokerCredential.broker_type == "fyers",
+            )
+        )
+        cred = result.scalar_one_or_none()
+
+        if cred and cred.access_token_encrypted:
+            # Get decrypted access token
+            access_token = cred.access_token
+            if access_token:
+                logger.info(f"Using Fyers data provider for user {user_id[:8]}...")
+                return FyersDataProvider(
+                    access_token=access_token,
+                    client_id=cred.client_id,
+                )
+        logger.warning(
+            f"Fyers selected but not connected for user {user_id[:8]}, falling back to default"
+        )
+        return None
+
+    if settings.data_provider == "nse":
+        # NSE provider doesn't need special credentials
+        return get_data_provider("nse")
+
+    # Unknown provider, use default
+    return None
 
 
 class MarketDataService:

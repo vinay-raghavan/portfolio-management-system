@@ -59,9 +59,7 @@ class FyersDataProvider(DataProvider):
         """Lazily create Fyers API client."""
         if self._fyers is None:
             if not self.access_token:
-                raise ValueError(
-                    "Fyers access token not configured. Complete OAuth flow first."
-                )
+                raise ValueError("Fyers access token not configured. Complete OAuth flow first.")
             try:
                 from fyers_apiv3 import fyersModel
 
@@ -87,20 +85,56 @@ class FyersDataProvider(DataProvider):
         self.access_token = access_token
         self._fyers = None  # Force recreation with new token
 
+    # Mapping from Yahoo index symbols to Fyers format
+    INDEX_SYMBOL_MAP: dict[str, str] = {
+        "^NSEI": "NSE:NIFTY50-INDEX",
+        "^BSESN": "BSE:SENSEX-INDEX",
+        "^NSEBANK": "NSE:NIFTYBANK-INDEX",
+        "^NSMIDCP": "NSE:NIFTYMIDCAP50-INDEX",
+        "^NSEMDCP50": "NSE:NIFTYMIDCAP50-INDEX",
+        "^CNXIT": "NSE:NIFTYIT-INDEX",
+        "^CNX500": "NSE:NIFTY500-INDEX",
+        "^CNXAUTO": "NSE:NIFTYAUTO-INDEX",
+        "^CNXFIN": "NSE:NIFTYFINSERVICE-INDEX",
+        "^CNXMETAL": "NSE:NIFTYMETAL-INDEX",
+        "^CNXPHARMA": "NSE:NIFTYPHARMA-INDEX",
+        "^CNXPSUBANK": "NSE:NIFTYPSUBANK-INDEX",
+        "^CNXREALTY": "NSE:NIFTYREALTY-INDEX",
+        "^CNXINFRA": "NSE:NIFTYINFRA-INDEX",
+        "^CNXENERGY": "NSE:NIFTYENERGY-INDEX",
+        "^CNXFMCG": "NSE:NIFTYFMCG-INDEX",
+    }
+
     def normalize_symbol(self, symbol: str) -> str:
         """Convert symbol to Fyers format (EXCHANGE:SYMBOL-SEGMENT).
 
         Args:
-            symbol: Stock symbol (e.g., "RELIANCE", "SBIN")
+            symbol: Stock symbol (e.g., "RELIANCE", "SBIN", "^NSEI")
 
         Returns:
-            Fyers format symbol (e.g., "NSE:RELIANCE-EQ")
+            Fyers format symbol (e.g., "NSE:RELIANCE-EQ", "NSE:NIFTY50-INDEX")
         """
         symbol = symbol.upper().strip()
 
         # Already in Fyers format
         if ":" in symbol:
             return symbol
+
+        # Handle Yahoo index symbols (start with ^)
+        if symbol.startswith("^"):
+            if symbol in self.INDEX_SYMBOL_MAP:
+                return self.INDEX_SYMBOL_MAP[symbol]
+            # Try to derive Fyers format for unknown indices
+            # Remove .NS suffix if present and ^ prefix
+            base = symbol.lstrip("^").replace(".NS", "")
+            return f"NSE:{base}-INDEX"
+
+        # Remove Yahoo .NS/.BO suffix
+        if symbol.endswith(".NS"):
+            symbol = symbol[:-3]
+        elif symbol.endswith(".BO"):
+            symbol = symbol[:-3]
+            return f"BSE:{symbol}-EQ"
 
         # Default to NSE equity segment
         return f"NSE:{symbol}-EQ"
@@ -345,4 +379,3 @@ class FyersDataProvider(DataProvider):
         except Exception as e:
             logger.error(f"Error fetching Fyers option chain for {symbol}: {e}")
             return None
-

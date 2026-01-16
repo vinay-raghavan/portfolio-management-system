@@ -58,9 +58,7 @@ class FyersBroker(Broker):
         """Lazily create Fyers API client."""
         if self._fyers is None:
             if not self.access_token:
-                raise ValueError(
-                    "Fyers access token not configured. Complete OAuth flow first."
-                )
+                raise ValueError("Fyers access token not configured. Complete OAuth flow first.")
             try:
                 from fyers_apiv3 import fyersModel
 

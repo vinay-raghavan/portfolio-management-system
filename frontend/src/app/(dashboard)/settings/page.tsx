@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertList, CreateAlertForm, NotificationPreferences } from '@/components/alerts';
+import { BrokerIntegrations, DataProviderSettings } from '@/components/settings';
 import { useUIStore, type Currency } from '@/store';
 
 const CURRENCIES: { value: Currency; label: string; symbol: string }[] = [
@@ -34,6 +35,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="brokers">Broker Integrations</TabsTrigger>
           <TabsTrigger value="alerts">Price Alerts</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
@@ -101,6 +103,14 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <DataProviderSettings />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="brokers" className="mt-4">
+          <div className="max-w-4xl">
+            <BrokerIntegrations />
           </div>
         </TabsContent>
 

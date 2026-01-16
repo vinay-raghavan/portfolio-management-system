@@ -22,8 +22,9 @@ from engine.core.locks import (
 )
 from engine.core.redis import get_redis
 from engine.models.algo import PositionSizingMethod, StrategyStatus, UserStrategy
-from engine.providers.broker import PaperBroker, get_broker
+from engine.providers.broker import PaperBroker
 from engine.providers.data import DataProvider, get_data_provider
+from engine.providers.user_broker import get_user_broker
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,7 @@ class ExecuteStrategyRequest(BaseModel):
     fixed_amount: float = 10000.0
     portfolio_percent: float = 5.0
     risk_per_trade_percent: float = 2.0
+    is_paper_trading: bool = True
 
 
 class ExecuteStrategyResponse(BaseModel):
@@ -179,6 +181,7 @@ class ExecuteStrategyResponse(BaseModel):
 @router.post("/execute", response_model=ExecuteStrategyResponse)
 async def execute_strategy_full(
     request: ExecuteStrategyRequest,
+    db: DbSession,
     _key: InternalKeyDep,
 ) -> ExecuteStrategyResponse:
     """Execute a trading strategy with full configuration.
@@ -203,8 +206,15 @@ async def execute_strategy_full(
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
         )
 
-        # Get broker and data provider
-        broker = get_broker()
+        # Get broker based on paper trading mode
+        # Live trading uses user's connected broker, paper trading uses global paper broker
+        broker = await get_user_broker(
+            db=db,
+            user_id=request.user_id,
+            is_paper_trading=request.is_paper_trading,
+        )
+        if not await broker.is_connected():
+            await broker.connect()
         data_provider = get_data_provider()
         _configure_broker_price_fetcher(broker, data_provider)
         safety_service = SafetyService()
@@ -388,9 +398,13 @@ async def run_scheduled_strategies(
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
                     )
 
-                    # Execute strategy
-                    broker = get_broker()
-                    # Ensure broker is connected (initializes data provider for paper broker)
+                    # Get broker based on paper trading mode
+                    # Live trading uses user's connected broker, paper uses global paper broker
+                    broker = await get_user_broker(
+                        db=db,
+                        user_id=strategy.user_id,
+                        is_paper_trading=strategy.is_paper_trading,
+                    )
                     if not await broker.is_connected():
                         await broker.connect()
                     data_provider = get_data_provider()
@@ -611,9 +625,13 @@ async def execute_strategy_by_id(
             risk_per_trade_percent=strategy.risk_per_trade_percent,
         )
 
-        # Execute strategy
-        broker = get_broker()
-        # Ensure broker is connected
+        # Get broker based on paper trading mode
+        # Live trading uses user's connected broker, paper uses global paper broker
+        broker = await get_user_broker(
+            db=db,
+            user_id=strategy.user_id,
+            is_paper_trading=strategy.is_paper_trading,
+        )
         if not await broker.is_connected():
             await broker.connect()
         data_provider = get_data_provider()

@@ -1,10 +1,12 @@
 """Market data API routes."""
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
+from app.api.deps import DbSession, OptionalUser
 from app.modules.data.schemas import (
     HistoricalDataResponse,
     IndexConstituentsResponse,
@@ -12,7 +14,9 @@ from app.modules.data.schemas import (
     StockInfo,
     StockQuote,
 )
-from app.modules.data.service import MarketDataService
+from app.modules.data.service import MarketDataService, get_user_data_provider
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -60,9 +64,22 @@ async def get_index_constituents(index_name: str) -> IndexConstituentsResponse:
 
 
 @router.get("/{symbol}/quote", response_model=StockQuote)
-async def get_stock_quote(symbol: str) -> StockQuote:
-    """Get current quote for a stock symbol."""
-    service = MarketDataService()
+async def get_stock_quote(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+) -> StockQuote:
+    """Get current quote for a stock symbol.
+
+    Uses the user's preferred data provider if authenticated.
+    Falls back to Yahoo Finance for unauthenticated requests.
+    """
+    # Get user-specific provider if authenticated
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = MarketDataService(provider=provider)
     quote = await service.get_quote(symbol)
 
     if quote is None:
@@ -75,9 +92,17 @@ async def get_stock_quote(symbol: str) -> StockQuote:
 
 
 @router.get("/{symbol}/info", response_model=StockInfo)
-async def get_stock_info(symbol: str) -> StockInfo:
+async def get_stock_info(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+) -> StockInfo:
     """Get detailed information for a stock symbol."""
-    service = MarketDataService()
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = MarketDataService(provider=provider)
     info = await service.get_stock_info(symbol)
 
     if info is None:
@@ -92,11 +117,17 @@ async def get_stock_info(symbol: str) -> StockInfo:
 @router.get("/{symbol}/history", response_model=HistoricalDataResponse)
 async def get_historical_data(
     symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
     period: str = Query("1mo", pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$"),
     interval: str = Query("1d", pattern="^(1m|2m|5m|15m|30m|60m|90m|1h|1d|5d|1wk|1mo|3mo)$"),
 ) -> HistoricalDataResponse:
     """Get historical price data for a stock symbol."""
-    service = MarketDataService()
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = MarketDataService(provider=provider)
     data = await service.get_historical_data(symbol, period, interval)
 
     if data is None:
@@ -109,8 +140,16 @@ async def get_historical_data(
 
 
 @router.get("/search", response_model=list[SearchResult])
-async def search_stocks(q: str = Query(min_length=1, max_length=50)) -> list[SearchResult]:
+async def search_stocks(
+    q: str = Query(min_length=1, max_length=50),
+    db: DbSession = None,
+    current_user: OptionalUser = None,
+) -> list[SearchResult]:
     """Search for stock symbols."""
-    service = MarketDataService()
+    provider = None
+    if current_user and db:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = MarketDataService(provider=provider)
     results = await service.search_symbols(q)
     return [SearchResult(**r) for r in results]

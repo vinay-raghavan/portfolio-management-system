@@ -16,12 +16,21 @@ from app.modules.analysis.schemas import (
     StockInfo,
     TechnicalIndicators,
 )
+from app.providers.data import DataProvider, get_data_provider
 
 logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
     """Service for technical analysis calculations."""
+
+    def __init__(self, provider: DataProvider | None = None):
+        """Initialize with optional custom data provider.
+
+        Args:
+            provider: Data provider instance. If None, uses default from config.
+        """
+        self._provider = provider or get_data_provider()
 
     def _normalize_symbol(self, symbol: str) -> str:
         """Normalize symbol for Yahoo Finance.
@@ -88,29 +97,29 @@ class AnalysisService:
         """Calculate technical indicators for a symbol."""
         try:
             symbol_upper = symbol.upper().strip()
-            hist = None
 
-            # If symbol already has a suffix, use as-is
-            if "." in symbol_upper:
-                hist = self._try_get_history(symbol_upper, period)
-            else:
-                # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
-                if default_market in ("NSE", "IN", "INDIA"):
-                    hist = self._try_get_history(f"{symbol_upper}.NS", period)
-                    if hist is None:
-                        # Fallback to US (no suffix)
-                        hist = self._try_get_history(symbol_upper, period)
-                elif default_market == "BSE":
-                    hist = self._try_get_history(f"{symbol_upper}.BO", period)
-                    if hist is None:
-                        hist = self._try_get_history(symbol_upper, period)
-                else:
-                    # US market default
-                    hist = self._try_get_history(symbol_upper, period)
+            # Use the configured data provider to fetch historical data
+            ohlcv_list = await self._provider.get_historical(symbol_upper, period=period)
 
-            if hist is None:
+            if not ohlcv_list or len(ohlcv_list) < 50:
+                logger.warning(
+                    f"Insufficient data for {symbol}: got {len(ohlcv_list) if ohlcv_list else 0} bars"
+                )
                 return None
+
+            # Convert OHLCV list to pandas DataFrame
+            hist = pd.DataFrame(
+                [
+                    {
+                        "Open": bar.open,
+                        "High": bar.high,
+                        "Low": bar.low,
+                        "Close": bar.close,
+                        "Volume": bar.volume or 0,
+                    }
+                    for bar in ohlcv_list
+                ]
+            )
 
             close = hist["Close"]
             high = hist["High"]
@@ -179,28 +188,11 @@ class AnalysisService:
         try:
             symbol_upper = symbol.upper().strip()
 
-            # Get info with proper market suffix handling
-            info = None
-            if "." in symbol_upper:
-                info = self._try_get_ticker_info(symbol_upper)
-            else:
-                # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
-                if default_market in ("NSE", "IN", "INDIA"):
-                    info = self._try_get_ticker_info(f"{symbol_upper}.NS")
-                    if not info:
-                        info = self._try_get_ticker_info(symbol_upper)
-                elif default_market == "BSE":
-                    info = self._try_get_ticker_info(f"{symbol_upper}.BO")
-                    if not info:
-                        info = self._try_get_ticker_info(symbol_upper)
-                else:
-                    info = self._try_get_ticker_info(symbol_upper)
-
-            if not info:
-                info = {}
-
-            current_price = Decimal(str(info.get("regularMarketPrice", 0)))
+            # Get current price from the configured data provider
+            current_price = Decimal("0")
+            price = await self._provider.get_current_price(symbol_upper)
+            if price is not None:
+                current_price = Decimal(str(price))
 
             # Determine signal based on indicators
             signal = self._calculate_signal(current_price, indicators)
@@ -335,70 +327,155 @@ class AnalysisService:
         return None
 
     async def get_stock_info(self, symbol: str) -> StockInfo | None:
-        """Get detailed stock information."""
+        """Get detailed stock information.
+
+        Uses the configured data provider for quote data, with Yahoo Finance
+        as fallback for fundamental data (P/E, market cap, analyst ratings).
+        """
         try:
             symbol_upper = symbol.upper().strip()
-            info = None
 
-            # If symbol already has a suffix, use as-is
-            if "." in symbol_upper:
-                info = self._try_get_ticker_info(symbol_upper)
-            else:
-                # Try with Indian suffix first (if default market is Indian)
-                default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
-                if default_market in ("NSE", "IN", "INDIA"):
-                    info = self._try_get_ticker_info(f"{symbol_upper}.NS")
-                    if not info:
-                        # Fallback to US (no suffix)
-                        info = self._try_get_ticker_info(symbol_upper)
-                elif default_market == "BSE":
-                    info = self._try_get_ticker_info(f"{symbol_upper}.BO")
-                    if not info:
-                        info = self._try_get_ticker_info(symbol_upper)
-                else:
-                    # US market default - try without suffix first
-                    info = self._try_get_ticker_info(symbol_upper)
+            # Get basic info and quote from the configured data provider
+            instrument_info = await self._provider.get_instrument_info(symbol_upper)
+            quote = await self._provider.get_quote(symbol_upper)
 
-            if not info:
-                return None
+            if not instrument_info and not quote:
+                logger.warning(f"No data from provider for {symbol}, trying Yahoo fallback")
+                # Fall back to Yahoo Finance for fundamental data
+                return await self._get_stock_info_from_yahoo(symbol_upper)
 
-            return StockInfo(
+            # Build StockInfo from provider data
+            stock_info = StockInfo(
                 symbol=symbol_upper,
-                name=info.get("longName") or info.get("shortName"),
-                exchange=info.get("exchange"),
-                currency=info.get("currency"),
-                sector=info.get("sector"),
-                industry=info.get("industry"),
-                current_price=self._to_decimal(info.get("regularMarketPrice")),
-                previous_close=self._to_decimal(info.get("previousClose")),
-                open=self._to_decimal(info.get("open")),
-                day_high=self._to_decimal(info.get("dayHigh")),
-                day_low=self._to_decimal(info.get("dayLow")),
-                week_52_high=self._to_decimal(info.get("fiftyTwoWeekHigh")),
-                week_52_low=self._to_decimal(info.get("fiftyTwoWeekLow")),
-                volume=info.get("volume"),
-                avg_volume=info.get("averageVolume"),
-                avg_volume_10d=info.get("averageVolume10days"),
-                market_cap=self._to_decimal(info.get("marketCap")),
-                shares_outstanding=info.get("sharesOutstanding"),
-                float_shares=info.get("floatShares"),
-                pe_ratio=self._to_decimal(info.get("trailingPE")),
-                forward_pe=self._to_decimal(info.get("forwardPE")),
-                peg_ratio=self._to_decimal(info.get("pegRatio")),
-                price_to_book=self._to_decimal(info.get("priceToBook")),
-                eps=self._to_decimal(info.get("trailingEps")),
-                forward_eps=self._to_decimal(info.get("forwardEps")),
-                dividend_yield=self._to_decimal(info.get("dividendYield")),
-                dividend_rate=self._to_decimal(info.get("dividendRate")),
-                ex_dividend_date=self._format_timestamp(info.get("exDividendDate")),
-                target_mean_price=self._to_decimal(info.get("targetMeanPrice")),
-                target_high_price=self._to_decimal(info.get("targetHighPrice")),
-                target_low_price=self._to_decimal(info.get("targetLowPrice")),
-                recommendation=info.get("recommendationKey"),
-                num_analyst_opinions=info.get("numberOfAnalystOpinions"),
-                beta=self._to_decimal(info.get("beta")),
-                trailing_annual_return=self._to_decimal(info.get("trailingAnnualDividendYield")),
+                name=instrument_info.name if instrument_info else None,
+                exchange=instrument_info.exchange if instrument_info else None,
+                sector=instrument_info.sector if instrument_info else None,
+                industry=instrument_info.industry if instrument_info else None,
+                current_price=self._to_decimal(quote.price) if quote else None,
+                previous_close=self._to_decimal(quote.close) if quote else None,
+                open=self._to_decimal(quote.open) if quote else None,
+                day_high=self._to_decimal(quote.high) if quote else None,
+                day_low=self._to_decimal(quote.low) if quote else None,
+                volume=quote.volume if quote else None,
             )
+
+            # Try to enrich with Yahoo Finance fundamental data (P/E, market cap, etc.)
+            # This is optional enrichment - provider data takes precedence for price info
+            yahoo_info = await self._get_yahoo_fundamentals(symbol_upper)
+            if yahoo_info:
+                # Only add fields not already set from provider
+                if stock_info.name is None:
+                    stock_info.name = yahoo_info.get("longName") or yahoo_info.get("shortName")
+                if stock_info.currency is None:
+                    stock_info.currency = yahoo_info.get("currency")
+                # Add fundamental data (provider doesn't have this)
+                stock_info.week_52_high = self._to_decimal(yahoo_info.get("fiftyTwoWeekHigh"))
+                stock_info.week_52_low = self._to_decimal(yahoo_info.get("fiftyTwoWeekLow"))
+                stock_info.avg_volume = yahoo_info.get("averageVolume")
+                stock_info.avg_volume_10d = yahoo_info.get("averageVolume10days")
+                stock_info.market_cap = self._to_decimal(yahoo_info.get("marketCap"))
+                stock_info.shares_outstanding = yahoo_info.get("sharesOutstanding")
+                stock_info.float_shares = yahoo_info.get("floatShares")
+                stock_info.pe_ratio = self._to_decimal(yahoo_info.get("trailingPE"))
+                stock_info.forward_pe = self._to_decimal(yahoo_info.get("forwardPE"))
+                stock_info.peg_ratio = self._to_decimal(yahoo_info.get("pegRatio"))
+                stock_info.price_to_book = self._to_decimal(yahoo_info.get("priceToBook"))
+                stock_info.eps = self._to_decimal(yahoo_info.get("trailingEps"))
+                stock_info.forward_eps = self._to_decimal(yahoo_info.get("forwardEps"))
+                stock_info.dividend_yield = self._to_decimal(yahoo_info.get("dividendYield"))
+                stock_info.dividend_rate = self._to_decimal(yahoo_info.get("dividendRate"))
+                stock_info.ex_dividend_date = self._format_timestamp(
+                    yahoo_info.get("exDividendDate")
+                )
+                stock_info.target_mean_price = self._to_decimal(yahoo_info.get("targetMeanPrice"))
+                stock_info.target_high_price = self._to_decimal(yahoo_info.get("targetHighPrice"))
+                stock_info.target_low_price = self._to_decimal(yahoo_info.get("targetLowPrice"))
+                stock_info.recommendation = yahoo_info.get("recommendationKey")
+                stock_info.num_analyst_opinions = yahoo_info.get("numberOfAnalystOpinions")
+                stock_info.beta = self._to_decimal(yahoo_info.get("beta"))
+                stock_info.trailing_annual_return = self._to_decimal(
+                    yahoo_info.get("trailingAnnualDividendYield")
+                )
+
+            return stock_info
+
         except Exception as e:
             logger.error(f"Error getting stock info for {symbol}: {e}")
             return None
+
+    async def _get_yahoo_fundamentals(self, symbol: str) -> dict | None:
+        """Get fundamental data from Yahoo Finance (for enrichment)."""
+        default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+        yahoo_symbol = symbol
+
+        if "." not in symbol:
+            if default_market in ("NSE", "IN", "INDIA"):
+                yahoo_symbol = f"{symbol}.NS"
+            elif default_market == "BSE":
+                yahoo_symbol = f"{symbol}.BO"
+
+        info = self._try_get_ticker_info(yahoo_symbol)
+        if not info and yahoo_symbol != symbol:
+            # Try without suffix as fallback
+            info = self._try_get_ticker_info(symbol)
+        return info
+
+    async def _get_stock_info_from_yahoo(self, symbol: str) -> StockInfo | None:
+        """Full stock info from Yahoo Finance (fallback when provider fails)."""
+        default_market = getattr(settings, "DEFAULT_MARKET", "US").upper()
+        info = None
+
+        if "." in symbol:
+            info = self._try_get_ticker_info(symbol)
+        else:
+            if default_market in ("NSE", "IN", "INDIA"):
+                info = self._try_get_ticker_info(f"{symbol}.NS")
+                if not info:
+                    info = self._try_get_ticker_info(symbol)
+            elif default_market == "BSE":
+                info = self._try_get_ticker_info(f"{symbol}.BO")
+                if not info:
+                    info = self._try_get_ticker_info(symbol)
+            else:
+                info = self._try_get_ticker_info(symbol)
+
+        if not info:
+            return None
+
+        return StockInfo(
+            symbol=symbol,
+            name=info.get("longName") or info.get("shortName"),
+            exchange=info.get("exchange"),
+            currency=info.get("currency"),
+            sector=info.get("sector"),
+            industry=info.get("industry"),
+            current_price=self._to_decimal(info.get("regularMarketPrice")),
+            previous_close=self._to_decimal(info.get("previousClose")),
+            open=self._to_decimal(info.get("open")),
+            day_high=self._to_decimal(info.get("dayHigh")),
+            day_low=self._to_decimal(info.get("dayLow")),
+            week_52_high=self._to_decimal(info.get("fiftyTwoWeekHigh")),
+            week_52_low=self._to_decimal(info.get("fiftyTwoWeekLow")),
+            volume=info.get("volume"),
+            avg_volume=info.get("averageVolume"),
+            avg_volume_10d=info.get("averageVolume10days"),
+            market_cap=self._to_decimal(info.get("marketCap")),
+            shares_outstanding=info.get("sharesOutstanding"),
+            float_shares=info.get("floatShares"),
+            pe_ratio=self._to_decimal(info.get("trailingPE")),
+            forward_pe=self._to_decimal(info.get("forwardPE")),
+            peg_ratio=self._to_decimal(info.get("pegRatio")),
+            price_to_book=self._to_decimal(info.get("priceToBook")),
+            eps=self._to_decimal(info.get("trailingEps")),
+            forward_eps=self._to_decimal(info.get("forwardEps")),
+            dividend_yield=self._to_decimal(info.get("dividendYield")),
+            dividend_rate=self._to_decimal(info.get("dividendRate")),
+            ex_dividend_date=self._format_timestamp(info.get("exDividendDate")),
+            target_mean_price=self._to_decimal(info.get("targetMeanPrice")),
+            target_high_price=self._to_decimal(info.get("targetHighPrice")),
+            target_low_price=self._to_decimal(info.get("targetLowPrice")),
+            recommendation=info.get("recommendationKey"),
+            num_analyst_opinions=info.get("numberOfAnalystOpinions"),
+            beta=self._to_decimal(info.get("beta")),
+            trailing_annual_return=self._to_decimal(info.get("trailingAnnualDividendYield")),
+        )

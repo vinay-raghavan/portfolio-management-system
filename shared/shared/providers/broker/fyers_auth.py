@@ -8,8 +8,8 @@ Fyers uses OAuth2 for authentication. The flow is:
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,9 @@ def create_auth_handler_from_env() -> FyersAuthHandler:
     credentials = FyersCredentials(
         client_id=os.getenv("FYERS_CLIENT_ID", ""),
         secret_key=os.getenv("FYERS_SECRET_KEY", ""),
-        redirect_uri=os.getenv("FYERS_REDIRECT_URI", "http://localhost:8000/api/v1/auth/fyers/callback"),
+        redirect_uri=os.getenv(
+            "FYERS_REDIRECT_URI", "http://localhost:8000/api/v1/auth/fyers/callback"
+        ),
         access_token=os.getenv("FYERS_ACCESS_TOKEN", "") or None,
         log_path=os.getenv("FYERS_LOG_PATH", ""),
     )
@@ -158,4 +160,3 @@ def create_auth_handler_from_env() -> FyersAuthHandler:
         )
 
     return FyersAuthHandler(credentials)
-
