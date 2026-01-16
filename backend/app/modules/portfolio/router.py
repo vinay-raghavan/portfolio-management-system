@@ -297,6 +297,7 @@ async def reset_funds(
     if existing_funds:
         # Reset existing funds
         from decimal import Decimal
+
         from app.core.config import settings
 
         if initial_balance is None:
