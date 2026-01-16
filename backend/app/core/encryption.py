@@ -1,110 +1,158 @@
-"""Encryption utilities for secure credential storage.
+"""Secure encryption utilities for credential storage.
 
 Uses Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256)
-for encrypting sensitive data at rest.
+with PBKDF2 key derivation for encrypting sensitive data at rest.
+
+Security features:
+- Separate ENCRYPTION_KEY from SECRET_KEY (key separation)
+- PBKDF2 with 600,000 iterations (OWASP 2023 recommendation)
+- Unique salt per encrypted value (stored with ciphertext)
+- HMAC verification prevents tampering
 """
 
 import base64
-import hashlib
 import logging
+import os
 import secrets
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Salt length in bytes (16 bytes = 128 bits, recommended minimum)
+SALT_LENGTH = 16
 
-def _derive_key_from_secret(secret: str) -> bytes:
-    """Derive a 32-byte Fernet key from the application secret.
+# Separator between salt and ciphertext in stored value
+SEPARATOR = b"$"
 
-    Uses SHA-256 to derive a consistent key from the secret.
-    The key is base64-url encoded as required by Fernet.
+
+def _derive_key(secret: str, salt: bytes, iterations: int) -> bytes:
+    """Derive a Fernet key using PBKDF2.
 
     Args:
-        secret: The application secret key
+        secret: The encryption key from settings
+        salt: Random salt for this derivation
+        iterations: Number of PBKDF2 iterations
 
     Returns:
         Base64-url encoded 32-byte key for Fernet
     """
-    # Use SHA-256 to get exactly 32 bytes
-    key_bytes = hashlib.sha256(secret.encode()).digest()
-    # Fernet requires base64-url encoded key
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=iterations,
+    )
+    key_bytes = kdf.derive(secret.encode())
     return base64.urlsafe_b64encode(key_bytes)
 
 
+def _check_key_security() -> None:
+    """Log warnings if using default/weak encryption keys."""
+    if settings.ENCRYPTION_KEY == "change-this-encryption-key-in-production":
+        logger.warning("Using default ENCRYPTION_KEY! Set a strong unique key in production.")
+    if settings.ENCRYPTION_KEY == settings.SECRET_KEY:
+        logger.warning("ENCRYPTION_KEY equals SECRET_KEY! Use separate keys in production.")
+
+
 @lru_cache
-def get_fernet() -> Fernet:
-    """Get cached Fernet instance for encryption/decryption.
-
-    Uses the application SECRET_KEY to derive the encryption key.
-    In production, ensure SECRET_KEY is a strong, unique value.
-
-    Returns:
-        Fernet instance for encryption operations
-    """
-    if settings.SECRET_KEY == "change-this-in-production-use-a-real-secret-key":
-        logger.warning(
-            "Using default SECRET_KEY for encryption. Set a strong SECRET_KEY in production!"
-        )
-
-    key = _derive_key_from_secret(settings.SECRET_KEY)
-    return Fernet(key)
+def _get_encryption_config() -> tuple[str, int]:
+    """Get cached encryption configuration and log warnings once."""
+    _check_key_security()
+    return settings.ENCRYPTION_KEY, settings.ENCRYPTION_ITERATIONS
 
 
 def encrypt_value(plaintext: str) -> str:
-    """Encrypt a plaintext string.
+    """Encrypt a plaintext string with a unique salt.
+
+    The output format is: base64(salt) + "$" + base64(ciphertext)
+    This allows each encrypted value to have its own derived key.
 
     Args:
         plaintext: The string to encrypt
 
     Returns:
-        Base64-encoded encrypted string (safe for database storage)
+        Salt and encrypted ciphertext, safe for database storage
     """
     if not plaintext:
         return ""
 
-    fernet = get_fernet()
-    encrypted = fernet.encrypt(plaintext.encode())
-    return encrypted.decode()
+    encryption_key, iterations = _get_encryption_config()
+
+    # Generate unique salt for this value
+    salt = os.urandom(SALT_LENGTH)
+
+    # Derive key using PBKDF2
+    key = _derive_key(encryption_key, salt, iterations)
+    fernet = Fernet(key)
+
+    # Encrypt the plaintext
+    ciphertext = fernet.encrypt(plaintext.encode())
+
+    # Combine salt and ciphertext for storage
+    salt_b64 = base64.urlsafe_b64encode(salt)
+    combined = salt_b64 + SEPARATOR + ciphertext
+
+    return combined.decode()
 
 
-def decrypt_value(ciphertext: str) -> str:
-    """Decrypt an encrypted string.
+def decrypt_value(stored_value: str) -> str:
+    """Decrypt a stored encrypted value.
 
     Args:
-        ciphertext: Base64-encoded encrypted string
+        stored_value: The salt$ciphertext string from storage
 
     Returns:
         Decrypted plaintext string
 
     Raises:
-        ValueError: If decryption fails (invalid token or corrupted data)
+        ValueError: If decryption fails (invalid token, corrupted data, or wrong key)
     """
-    if not ciphertext:
+    if not stored_value:
         return ""
 
     try:
-        fernet = get_fernet()
-        decrypted = fernet.decrypt(ciphertext.encode())
+        encryption_key, iterations = _get_encryption_config()
+
+        # Split salt and ciphertext
+        parts = stored_value.encode().split(SEPARATOR, 1)
+        if len(parts) != 2:
+            raise ValueError("Invalid encrypted value format")
+
+        salt_b64, ciphertext = parts
+        salt = base64.urlsafe_b64decode(salt_b64)
+
+        # Derive the same key using stored salt
+        key = _derive_key(encryption_key, salt, iterations)
+        fernet = Fernet(key)
+
+        # Decrypt
+        decrypted = fernet.decrypt(ciphertext)
         return decrypted.decode()
+
     except InvalidToken as e:
-        logger.error("Failed to decrypt value: invalid token or corrupted data")
+        logger.error("Decryption failed: invalid token (wrong key or corrupted data)")
         raise ValueError("Decryption failed: invalid or corrupted data") from e
+    except Exception as e:
+        logger.error(f"Decryption error: {e}")
+        raise ValueError(f"Decryption failed: {e}") from e
 
 
 def generate_secure_token(length: int = 32) -> str:
     """Generate a cryptographically secure random token.
 
     Args:
-        length: Number of bytes (output will be 2x this in hex)
+        length: Number of bytes (output will be longer due to encoding)
 
     Returns:
-        Hex-encoded secure random token
+        URL-safe base64-encoded secure random token
     """
-    return secrets.token_hex(length)
+    return secrets.token_urlsafe(length)
 
 
 def mask_sensitive_value(value: str, visible_chars: int = 4) -> str:

@@ -21,13 +21,19 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
 
-    # Security
-    # IMPORTANT: SECRET_KEY is used for both JWT signing AND credential encryption.
-    # In production, use a strong, unique 32+ character secret.
-    # Changing this key will invalidate all JWTs and encrypted broker credentials!
+    # Security - JWT Signing
+    # Used for signing JWT tokens. Changing invalidates all active sessions.
     SECRET_KEY: str = "change-this-in-production-use-a-real-secret-key"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
+
+    # Security - Credential Encryption (separate from JWT signing)
+    # Used for encrypting broker credentials at rest.
+    # MUST be different from SECRET_KEY in production!
+    # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    ENCRYPTION_KEY: str = "change-this-encryption-key-in-production"
+    # Number of PBKDF2 iterations (OWASP 2023 recommends 600,000 for SHA-256)
+    ENCRYPTION_ITERATIONS: int = 600_000
 
     # Database (port 5433 to avoid conflicts with other projects)
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/portfolio"
