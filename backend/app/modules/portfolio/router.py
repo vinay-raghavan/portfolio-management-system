@@ -3,7 +3,12 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.modules.portfolio.funds_service import FundsService
 from app.modules.portfolio.schemas import (
+    FundsDepositRequest,
+    FundsResetRequest,
+    FundsResponse,
+    FundsWithdrawRequest,
     PortfolioCreate,
     PortfolioDetailResponse,
     PortfolioInfo,
@@ -193,3 +198,128 @@ async def update_profit_booking_rules(
         )
     await db.commit()
     return updated_rules
+
+
+# ============== Funds Management Endpoints ==============
+
+
+@router.get("/funds", response_model=FundsResponse)
+async def get_funds(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> FundsResponse:
+    """Get current user funds/balance."""
+    service = FundsService(db)
+    funds = await service.get_or_create_funds(current_user.id)
+    return FundsResponse(
+        id=funds.id,
+        user_id=funds.user_id,
+        cash_balance=funds.cash_balance,
+        margin_used=funds.margin_used,
+        collateral=funds.collateral,
+        available_cash=funds.available_cash,
+        total_balance=funds.total_balance,
+        available_margin=funds.available_margin,
+    )
+
+
+@router.post("/funds/deposit", response_model=FundsResponse)
+async def deposit_funds(
+    db: DbSession,
+    current_user: CurrentUser,
+    request: FundsDepositRequest,
+) -> FundsResponse:
+    """Add funds to account (simulated deposit for paper trading)."""
+    service = FundsService(db)
+    note = request.note or "Manual deposit"
+    funds = await service.add_cash(current_user.id, request.amount, reason=note)
+    await db.commit()
+    return FundsResponse(
+        id=funds.id,
+        user_id=funds.user_id,
+        cash_balance=funds.cash_balance,
+        margin_used=funds.margin_used,
+        collateral=funds.collateral,
+        available_cash=funds.available_cash,
+        total_balance=funds.total_balance,
+        available_margin=funds.available_margin,
+    )
+
+
+@router.post("/funds/withdraw", response_model=FundsResponse)
+async def withdraw_funds(
+    db: DbSession,
+    current_user: CurrentUser,
+    request: FundsWithdrawRequest,
+) -> FundsResponse:
+    """Withdraw funds from account (simulated withdrawal for paper trading)."""
+    service = FundsService(db)
+    note = request.note or "Manual withdrawal"
+    try:
+        funds = await service.deduct_cash(current_user.id, request.amount, reason=note)
+        await db.commit()
+        return FundsResponse(
+            id=funds.id,
+            user_id=funds.user_id,
+            cash_balance=funds.cash_balance,
+            margin_used=funds.margin_used,
+            collateral=funds.collateral,
+            available_cash=funds.available_cash,
+            total_balance=funds.total_balance,
+            available_margin=funds.available_margin,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.post("/funds/reset", response_model=FundsResponse)
+async def reset_funds(
+    db: DbSession,
+    current_user: CurrentUser,
+    request: FundsResetRequest | None = None,
+) -> FundsResponse:
+    """Reset funds to initial balance (for paper trading).
+
+    This will reset the balance to the specified amount or the default
+    initial balance configured for paper trading.
+    """
+    service = FundsService(db)
+
+    # Get existing funds or create new
+    existing_funds = await service.get_funds(current_user.id)
+
+    initial_balance = request.initial_balance if request else None
+
+    if existing_funds:
+        # Reset existing funds
+        from decimal import Decimal
+
+        from app.core.config import settings
+
+        if initial_balance is None:
+            initial_balance = Decimal(str(settings.PAPER_TRADING_INITIAL_BALANCE))
+
+        existing_funds.cash_balance = initial_balance
+        existing_funds.margin_used = Decimal("0")
+        existing_funds.collateral = Decimal("0")
+        await db.flush()
+        await db.refresh(existing_funds)
+        funds = existing_funds
+    else:
+        # Create new funds
+        funds = await service.initialize_funds(current_user.id, initial_balance)
+
+    await db.commit()
+    return FundsResponse(
+        id=funds.id,
+        user_id=funds.user_id,
+        cash_balance=funds.cash_balance,
+        margin_used=funds.margin_used,
+        collateral=funds.collateral,
+        available_cash=funds.available_cash,
+        total_balance=funds.total_balance,
+        available_margin=funds.available_margin,
+    )

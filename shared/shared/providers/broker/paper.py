@@ -1,10 +1,13 @@
 """Paper trading broker implementation."""
 
+from __future__ import annotations
+
 import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from ..schemas import (
@@ -17,6 +20,9 @@ from ..schemas import (
     Position,
 )
 from .base import Broker
+
+if TYPE_CHECKING:
+    from .funds_provider import FundsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -56,22 +62,38 @@ class PaperBroker(Broker):
         self,
         initial_balance: Decimal | None = None,
         price_fetcher: PriceFetcher | None = None,
+        funds_provider: FundsProvider | None = None,
     ):
         """Initialize paper broker.
 
         Args:
             initial_balance: Starting balance for new users
             price_fetcher: Function to fetch current price for a symbol
+            funds_provider: Optional database-backed funds provider for persistence.
+                          When provided, funds are synced with database instead of
+                          in-memory storage.
         """
         self._connected = False
         self._initial_balance = initial_balance or _default_initial_balance
         self._price_fetcher = price_fetcher
+        self._funds_provider = funds_provider
 
         # In-memory storage per user
         self._positions: dict[str, dict[str, Position]] = {}
         self._funds: dict[str, Funds] = {}
         self._orders: dict[str, dict[str, OrderResponse]] = {}
         self._pending_trigger_orders: dict[str, dict[str, OrderResponse]] = {}
+
+    def set_funds_provider(self, provider: FundsProvider) -> None:
+        """Set a database-backed funds provider.
+
+        When set, all funds operations will be persisted to the database.
+
+        Args:
+            provider: FundsProvider implementation (e.g., DatabaseFundsProvider)
+        """
+        self._funds_provider = provider
+        logger.info("Paper broker configured with database funds provider")
 
     def set_price_fetcher(self, fetcher: PriceFetcher) -> None:
         """Set the price fetcher function.
@@ -153,8 +175,8 @@ class PaperBroker(Broker):
         order_value = price * order.quantity
         fees = order_value * self.FEE_PERCENT
 
-        # Check funds for buy orders
-        funds = self._funds[user_id]
+        # Check funds for buy orders - use provider if available
+        funds = await self.get_funds(user_id)
         if order.side == OrderSide.BUY:
             total_cost = order_value + fees
             if total_cost > funds.available_cash:
@@ -318,15 +340,25 @@ class PaperBroker(Broker):
     ) -> OrderResponse:
         """Execute an order immediately."""
         order_id = str(uuid4())
-        order_value = price * order.quantity
 
-        # Update funds
-        funds = self._funds[user_id]
-        if order.side == OrderSide.BUY:
-            funds.available_cash -= order_value + fees
+        # Update funds - use provider if available for database sync
+        if self._funds_provider is not None:
+            await self._funds_provider.update_funds_for_trade(
+                user_id=user_id,
+                side=order.side.value,
+                quantity=Decimal(str(order.quantity)),
+                price=price,
+                fees=fees,
+            )
         else:
-            funds.available_cash += order_value - fees
-        funds.total_balance = funds.available_cash + funds.used_margin
+            # In-memory funds update (no persistence)
+            order_value = price * order.quantity
+            funds = self._funds[user_id]
+            if order.side == OrderSide.BUY:
+                funds.available_cash -= order_value + fees
+            else:
+                funds.available_cash += order_value - fees
+            funds.total_balance = funds.available_cash + funds.used_margin
 
         # Update position
         await self._update_position(user_id, order, price)
@@ -452,7 +484,20 @@ class PaperBroker(Broker):
         return list(self._positions[user_id].values())
 
     async def get_funds(self, user_id: str) -> Funds:
-        """Get account funds."""
+        """Get account funds.
+
+        If a funds provider is configured, retrieves funds from the database.
+        Otherwise, returns in-memory funds.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Funds object with current balances
+        """
+        if self._funds_provider is not None:
+            return await self._funds_provider.get_funds(user_id)
+
         self._ensure_user(user_id)
         return self._funds[user_id]
 

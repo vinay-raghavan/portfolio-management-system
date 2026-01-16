@@ -50,10 +50,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { algoApi } from '@/lib/api';
+import { algoApi, portfolioApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard } from '@/components/algo';
+import { FundsSummary } from '@/components/dashboard';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -349,7 +350,10 @@ export default function AlgoTradingPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        {/* Funds Summary */}
+        <FundsSummary />
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Strategies</CardTitle>

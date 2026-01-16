@@ -450,10 +450,16 @@ class SafetyCheck:
 
 
 class SafetyService:
-    """Simple safety service for order validation.
+    """Safety service for order validation.
 
-    Provides basic safety checks without requiring Redis.
-    For production use, consider using the Redis-based classes above.
+    Provides safety checks including:
+    - Order value limits
+    - Quantity limits
+    - Blocked symbols
+    - Funds availability (when broker provided)
+
+    For production use with Redis-based rate limiting and circuit breakers,
+    see the other classes in this module.
     """
 
     def __init__(
@@ -461,6 +467,7 @@ class SafetyService:
         max_order_value: Decimal = Decimal("1000000"),
         max_quantity: int = 10000,
         blocked_symbols: list[str] | None = None,
+        broker=None,
     ):
         """Initialize safety service.
 
@@ -468,10 +475,12 @@ class SafetyService:
             max_order_value: Maximum value per order
             max_quantity: Maximum quantity per order
             blocked_symbols: List of symbols that cannot be traded
+            broker: Optional broker for funds validation
         """
         self.max_order_value = max_order_value
         self.max_quantity = max_quantity
         self.blocked_symbols = blocked_symbols or []
+        self.broker = broker
 
     def check_order(
         self,
@@ -480,7 +489,9 @@ class SafetyService:
         quantity: int,
         price: Decimal,
     ) -> SafetyCheck:
-        """Check if an order passes safety checks.
+        """Check if an order passes safety checks (sync version).
+
+        For async funds validation, use check_order_with_funds().
 
         Args:
             symbol: Trading symbol
@@ -509,6 +520,56 @@ class SafetyService:
                 passed=False,
                 reason=f"Order value ₹{order_value:.2f} exceeds max ₹{self.max_order_value:.2f}",
             )
+
+        return SafetyCheck(passed=True)
+
+    async def check_order_with_funds(
+        self,
+        user_id: str,
+        symbol: str,
+        side: str,
+        quantity: int,
+        price: Decimal,
+    ) -> SafetyCheck:
+        """Check if an order passes safety checks including funds validation.
+
+        This is the async version that validates available funds for buy orders.
+
+        Args:
+            user_id: User placing the order
+            symbol: Trading symbol
+            side: Order side (BUY/SELL)
+            quantity: Order quantity
+            price: Order price
+
+        Returns:
+            SafetyCheck with pass/fail status
+        """
+        # Run basic checks first
+        basic_check = self.check_order(symbol, side, quantity, price)
+        if not basic_check.passed:
+            return basic_check
+
+        # Check funds for buy orders (if broker is configured)
+        if side == "BUY" and self.broker is not None:
+            try:
+                order_value = price * Decimal(quantity)
+                # Add estimated fees (0.1%)
+                estimated_fees = order_value * Decimal("0.001")
+                total_required = order_value + estimated_fees
+
+                funds = await self.broker.get_funds(user_id)
+                if funds.available_cash < total_required:
+                    return SafetyCheck(
+                        passed=False,
+                        reason=(
+                            f"Insufficient funds: required ₹{total_required:.2f}, "
+                            f"available ₹{funds.available_cash:.2f}"
+                        ),
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to check funds for {user_id}: {e}")
+                # Continue with order - broker will validate at execution time
 
         return SafetyCheck(passed=True)
 

@@ -17,8 +17,9 @@ from app.modules.trading.validator import (
     ValidationResult,
     create_validation_error_response,
 )
-from app.providers.broker import Broker, BrokerFactory, get_broker
+from app.providers.broker import Broker, BrokerFactory, PaperBroker, get_broker
 from app.providers.data import get_data_provider
+from app.providers.funds_provider import DatabaseFundsProvider
 from app.providers.schemas import (
     OrderRequest,
 )
@@ -73,9 +74,17 @@ class TradingService:
 
     @property
     def broker(self) -> Broker:
-        """Get broker instance (lazy initialization)."""
+        """Get broker instance (lazy initialization).
+
+        For PaperBroker, configures a DatabaseFundsProvider to sync funds
+        with the database for persistence across restarts.
+        """
         if self._broker is None:
             self._broker = get_broker()
+            # Configure database-backed funds for paper trading
+            if isinstance(self._broker, PaperBroker):
+                funds_provider = DatabaseFundsProvider(self.db)
+                self._broker.set_funds_provider(funds_provider)
         return self._broker
 
     @property
