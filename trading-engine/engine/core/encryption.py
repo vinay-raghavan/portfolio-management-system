@@ -1,77 +1,93 @@
-"""Encryption utilities for secure credential storage.
+"""Secure encryption utilities for credential storage.
 
 Uses Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256)
-for decrypting broker credentials stored by the backend.
+with PBKDF2 key derivation for decrypting broker credentials.
+
+Must use the same ENCRYPTION_KEY and algorithm as the backend.
 """
 
 import base64
-import hashlib
 import logging
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from engine.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Separator between salt and ciphertext (must match backend)
+SEPARATOR = b"$"
 
-def _derive_key_from_secret(secret: str) -> bytes:
-    """Derive a 32-byte Fernet key from the application secret.
 
-    Uses SHA-256 to derive a consistent key from the secret.
-    The key is base64-url encoded as required by Fernet.
+def _derive_key(secret: str, salt: bytes, iterations: int) -> bytes:
+    """Derive a Fernet key using PBKDF2.
 
     Args:
-        secret: The application secret key
+        secret: The encryption key from settings
+        salt: Random salt for this derivation
+        iterations: Number of PBKDF2 iterations
 
     Returns:
         Base64-url encoded 32-byte key for Fernet
     """
-    # Use SHA-256 to get exactly 32 bytes
-    key_bytes = hashlib.sha256(secret.encode()).digest()
-    # Fernet requires base64-url encoded key
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=iterations,
+    )
+    key_bytes = kdf.derive(secret.encode())
     return base64.urlsafe_b64encode(key_bytes)
 
 
 @lru_cache
-def get_fernet() -> Fernet:
-    """Get cached Fernet instance for encryption/decryption.
-
-    Uses the application SECRET_KEY to derive the encryption key.
-    Must match the key used by the backend for encryption.
-
-    Returns:
-        Fernet instance for decryption operations
-    """
-    if settings.SECRET_KEY == "change-this-in-production-use-a-real-secret-key":
-        logger.warning(
-            "Using default SECRET_KEY for encryption. Set a strong SECRET_KEY in production!"
-        )
-
-    key = _derive_key_from_secret(settings.SECRET_KEY)
-    return Fernet(key)
+def _get_encryption_config() -> tuple[str, int]:
+    """Get cached encryption configuration."""
+    if settings.ENCRYPTION_KEY == "change-this-encryption-key-in-production":
+        logger.warning("Using default ENCRYPTION_KEY! Set a strong unique key in production.")
+    return settings.ENCRYPTION_KEY, settings.ENCRYPTION_ITERATIONS
 
 
-def decrypt_value(ciphertext: str) -> str:
-    """Decrypt an encrypted string.
+def decrypt_value(stored_value: str) -> str:
+    """Decrypt a stored encrypted value.
 
     Args:
-        ciphertext: Base64-encoded encrypted string
+        stored_value: The salt$ciphertext string from storage
 
     Returns:
         Decrypted plaintext string
 
     Raises:
-        ValueError: If decryption fails (invalid token or corrupted data)
+        ValueError: If decryption fails (invalid token, corrupted data, or wrong key)
     """
-    if not ciphertext:
+    if not stored_value:
         return ""
 
     try:
-        fernet = get_fernet()
-        decrypted = fernet.decrypt(ciphertext.encode())
+        encryption_key, iterations = _get_encryption_config()
+
+        # Split salt and ciphertext
+        parts = stored_value.encode().split(SEPARATOR, 1)
+        if len(parts) != 2:
+            raise ValueError("Invalid encrypted value format")
+
+        salt_b64, ciphertext = parts
+        salt = base64.urlsafe_b64decode(salt_b64)
+
+        # Derive the same key using stored salt
+        key = _derive_key(encryption_key, salt, iterations)
+        fernet = Fernet(key)
+
+        # Decrypt
+        decrypted = fernet.decrypt(ciphertext)
         return decrypted.decode()
+
     except InvalidToken as e:
-        logger.error("Failed to decrypt value: invalid token or corrupted data")
+        logger.error("Decryption failed: invalid token (wrong key or corrupted data)")
         raise ValueError("Decryption failed: invalid or corrupted data") from e
+    except Exception as e:
+        logger.error(f"Decryption error: {e}")
+        raise ValueError(f"Decryption failed: {e}") from e
