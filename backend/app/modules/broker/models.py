@@ -109,11 +109,10 @@ class BrokerCredential(Base):
         """Check if broker has valid access token."""
         if not self.access_token_encrypted:
             return False
-        if self.token_expires_at and self.token_expires_at < datetime.now(
-            self.token_expires_at.tzinfo
-        ):
-            return False
-        return True
+        return not (
+            self.token_expires_at
+            and self.token_expires_at < datetime.now(self.token_expires_at.tzinfo)
+        )
 
     @property
     def masked_client_id(self) -> str:

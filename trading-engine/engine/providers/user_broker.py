@@ -43,7 +43,7 @@ async def get_user_broker(
     result = await db.execute(
         select(BrokerCredential).where(
             BrokerCredential.user_id == user_id,
-            BrokerCredential.is_active == True,
+            BrokerCredential.is_active.is_(True),
         )
     )
     credentials = list(result.scalars().all())
@@ -120,7 +120,7 @@ async def get_connected_broker_type(db: AsyncSession, user_id: str) -> str | Non
     result = await db.execute(
         select(BrokerCredential).where(
             BrokerCredential.user_id == user_id,
-            BrokerCredential.is_active == True,
+            BrokerCredential.is_active.is_(True),
         )
     )
     credentials = list(result.scalars().all())

@@ -137,12 +137,12 @@ class TestFyersDataProvider:
         """Test market session during regular hours."""
         from zoneinfo import ZoneInfo
 
-        IST = ZoneInfo("Asia/Kolkata")
+        ist = ZoneInfo("Asia/Kolkata")
         # Monday at 10:00 AM IST
-        mock_now = datetime(2024, 1, 15, 10, 0, tzinfo=IST)
+        mock_now = datetime(2024, 1, 15, 10, 0, tzinfo=ist)
         mock_datetime.now.return_value = mock_now
 
-        provider = FyersDataProvider()
+        _ = FyersDataProvider()
         # Note: This test may not work as expected due to how datetime is mocked
         # The actual implementation uses datetime.now(IST) directly
 
