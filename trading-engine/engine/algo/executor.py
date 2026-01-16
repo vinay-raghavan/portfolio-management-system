@@ -104,7 +104,8 @@ class StrategyExecutor:
         """
         self.broker = broker
         self.data_provider = data_provider
-        self.safety_service = safety_service or SafetyService()
+        # Initialize safety service with broker for funds validation
+        self.safety_service = safety_service or SafetyService(broker=broker)
         self.notification_service = AlgoNotificationService()
 
     async def execute(
@@ -274,17 +275,18 @@ class StrategyExecutor:
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
-        # Calculate position size
-        quantity = self._calculate_position_size(config, signal)
+        # Calculate position size (async to fetch funds for percent-based sizing)
+        quantity = await self._calculate_position_size(config, signal)
         if quantity <= 0:
             logger.debug(f"Position size is 0 for {signal.symbol}, skipping")
             return None
 
-        # Run safety check
+        # Run safety check (with funds validation for buy orders)
         price = signal.entry_price or signal.price_at_signal
         side = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
 
-        safety_check = self.safety_service.check_order(
+        safety_check = await self.safety_service.check_order_with_funds(
+            user_id=config.user_id,
             symbol=signal.symbol,
             side=side,
             quantity=quantity,
@@ -334,12 +336,23 @@ class StrategyExecutor:
                 "reason": str(e),
             }
 
-    def _calculate_position_size(
+    async def _calculate_position_size(
         self,
         config: StrategyConfig,
         signal: SignalData,
     ) -> int:
-        """Calculate position size based on strategy config."""
+        """Calculate position size based on strategy config.
+
+        For percentage-based methods (PORTFOLIO_PERCENT, RISK_PERCENT),
+        fetches actual portfolio value from the broker.
+
+        Args:
+            config: Strategy configuration with sizing method
+            signal: Signal data with price information
+
+        Returns:
+            Position size as integer quantity
+        """
         method = config.position_sizing_method
         price = signal.entry_price or signal.price_at_signal
 
@@ -349,6 +362,51 @@ class StrategyExecutor:
         if method == PositionSizingMethod.FIXED_AMOUNT:
             amount = config.fixed_amount or Decimal("10000")
             return max(1, int(amount / price))
+
+        if method == PositionSizingMethod.PORTFOLIO_PERCENT:
+            # Fetch actual portfolio value from broker
+            try:
+                funds = await self.broker.get_funds(config.user_id)
+                portfolio_value = funds.total_balance
+                pct = config.portfolio_percent or Decimal("5.0")
+                amount_to_invest = portfolio_value * (pct / Decimal("100"))
+                quantity = int(amount_to_invest / price)
+                logger.debug(
+                    f"PORTFOLIO_PERCENT sizing: {pct}% of {portfolio_value} = "
+                    f"{amount_to_invest}, qty={quantity} @ {price}"
+                )
+                return max(1, quantity) if quantity > 0 else 0
+            except Exception as e:
+                logger.warning(f"Failed to get portfolio value: {e}, using fixed amount")
+                return max(1, int((config.fixed_amount or Decimal("10000")) / price))
+
+        if method == PositionSizingMethod.RISK_PERCENT:
+            # Risk-based sizing: risk_amount = portfolio_value * risk_percent
+            # quantity = risk_amount / (entry_price - stop_loss)
+            try:
+                funds = await self.broker.get_funds(config.user_id)
+                portfolio_value = funds.total_balance
+                risk_pct = config.risk_per_trade_percent or Decimal("2.0")
+                risk_amount = portfolio_value * (risk_pct / Decimal("100"))
+
+                # Calculate risk per share (entry - stop_loss)
+                stop_loss = signal.stop_loss
+                if stop_loss and price > stop_loss:
+                    risk_per_share = price - stop_loss
+                    quantity = int(risk_amount / risk_per_share)
+                    logger.debug(
+                        f"RISK_PERCENT sizing: {risk_pct}% risk = {risk_amount}, "
+                        f"risk/share={risk_per_share}, qty={quantity}"
+                    )
+                    return max(1, quantity) if quantity > 0 else 0
+                else:
+                    # No stop loss defined, fall back to portfolio percent
+                    pct = config.portfolio_percent or Decimal("5.0")
+                    amount = portfolio_value * (pct / Decimal("100"))
+                    return max(1, int(amount / price))
+            except Exception as e:
+                logger.warning(f"Failed risk-based sizing: {e}, using fixed amount")
+                return max(1, int((config.fixed_amount or Decimal("10000")) / price))
 
         # Default: fixed quantity
         return 1
