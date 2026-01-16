@@ -88,4 +88,3 @@ class FundsProvider(ABC):
             True if user has sufficient funds
         """
         pass
-

@@ -6,11 +6,11 @@ enabling PaperBroker to persist funds to the database.
 
 from decimal import Decimal
 
+from shared.providers.broker.funds_provider import FundsProvider
+from shared.providers.schemas import Funds
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.portfolio.funds_service import FundsService
-from shared.providers.broker.funds_provider import FundsProvider
-from shared.providers.schemas import Funds
 
 
 class DatabaseFundsProvider(FundsProvider):
@@ -126,4 +126,3 @@ class DatabaseFundsProvider(FundsProvider):
             True if user has sufficient funds
         """
         return await self._funds_service.check_buying_power(user_id, required_amount)
-
