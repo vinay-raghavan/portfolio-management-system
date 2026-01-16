@@ -200,7 +200,6 @@ async def update_profit_booking_rules(
     return updated_rules
 
 
-
 # ============== Funds Management Endpoints ==============
 
 

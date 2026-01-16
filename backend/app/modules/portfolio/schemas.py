@@ -137,9 +137,7 @@ class FundsResetRequest(BaseModel):
     """Schema for resetting funds to initial balance."""
 
     initial_balance: Decimal | None = Field(
-        None,
-        gt=0,
-        description="Custom initial balance. Uses default if not provided."
+        None, gt=0, description="Custom initial balance. Uses default if not provided."
     )
 
 
