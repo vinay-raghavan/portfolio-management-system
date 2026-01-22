@@ -312,19 +312,21 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
-        # Trailing stop fields (disabled for this test)
+        # Trailing stop fields
         position.trailing_stop_enabled = False
         position.trailing_stop_pct = None
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock both get_all_open_positions and get_open_position
+        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
 
         current_prices = {"RELIANCE": Decimal("940.00")}  # Below stop loss
 
@@ -354,19 +356,21 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
-        # Trailing stop fields (disabled for this test)
+        # Trailing stop fields
         position.trailing_stop_enabled = False
         position.trailing_stop_pct = None
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock both get_all_open_positions and get_open_position
+        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
 
         current_prices = {"INFY": Decimal("1650.00")}  # Above take profit
 
@@ -396,19 +400,21 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
-        # Trailing stop fields (disabled for this test)
+        # Trailing stop fields
         position.trailing_stop_enabled = False
         position.trailing_stop_pct = None
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock both get_all_open_positions and get_open_position
+        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
 
         current_prices = {"TCS": Decimal("3650.00")}  # Above stop loss
 
@@ -439,16 +445,19 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
-        # Trailing stop fields (disabled for this test)
+        # Trailing stop fields
         position.trailing_stop_enabled = False
         position.trailing_stop_pct = None
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [position]
-        mock_db.execute.return_value = mock_result
+        # Mock strategy query (first) and get_all_open_positions (second)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all]
 
         current_prices = {"HDFC": Decimal("2050.00")}  # Between SL and TP
 
@@ -489,25 +498,27 @@ class TestProfitBookingRules:
         position.take_profit = None
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        # Trailing stop fields
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
         # Set profit booking rules: 25% at 1% profit
         position.profit_booking_rules = {
             "enabled": True,
             "rules": [{"target_pct": 1, "quantity_pct": 25}],
             "executed": [],
         }
-        # Trailing stop fields (disabled for this test)
-        position.trailing_stop_enabled = False
-        position.trailing_stop_pct = None
-        position.trailing_stop_price = None
-        position.highest_price_since_entry = None
-        position.lowest_price_since_entry = None
 
-        # Mock get_all_open_positions and get_open_position
+        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
 
         # 1.5% profit (above 1% target)
         current_prices = {"RELIANCE": Decimal("1015.00")}
@@ -539,6 +550,12 @@ class TestProfitBookingRules:
         position.take_profit = None
         position.realized_pnl = Decimal("375")
         position.exit_quantity = 25
+        # Trailing stop fields
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
         # 1% rule already executed
         position.profit_booking_rules = {
             "enabled": True,
@@ -548,16 +565,13 @@ class TestProfitBookingRules:
             ],
             "executed": [1.0],  # 1% already executed
         }
-        # Trailing stop fields (disabled for this test)
-        position.trailing_stop_enabled = False
-        position.trailing_stop_pct = None
-        position.trailing_stop_price = None
-        position.highest_price_since_entry = None
-        position.lowest_price_since_entry = None
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [position]
-        mock_db.execute.return_value = mock_result
+        # Mock strategy query (first) and get_all_open_positions (second)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all]
 
         # 2% profit (still below 5% target)
         current_prices = {"INFY": Decimal("1530.00")}
@@ -586,22 +600,25 @@ class TestProfitBookingRules:
         position.take_profit = None
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
+        # Trailing stop fields
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
         # Disabled profit booking
         position.profit_booking_rules = {
             "enabled": False,
             "rules": [{"target_pct": 1, "quantity_pct": 25}],
             "executed": [],
         }
-        # Trailing stop fields (disabled for this test)
-        position.trailing_stop_enabled = False
-        position.trailing_stop_pct = None
-        position.trailing_stop_price = None
-        position.highest_price_since_entry = None
-        position.lowest_price_since_entry = None
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [position]
-        mock_db.execute.return_value = mock_result
+        # Mock strategy query (first) and get_all_open_positions (second)
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all]
 
         # 5% profit
         current_prices = {"TCS": Decimal("3150.00")}

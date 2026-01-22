@@ -12,6 +12,7 @@ from app.modules.algo.models import (
     ScheduleType,
     StrategyStatus,
 )
+from app.modules.portfolio.schemas import ProfitBookingRules
 
 # ============== Universe Schemas ==============
 
@@ -327,6 +328,10 @@ class StrategyCreate(BaseModel):
     overall_profit_target: Decimal | None = None
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
+    # Strategy-level default trailing stop and profit booking settings
+    default_trailing_stop_enabled: bool = False
+    default_trailing_stop_pct: Decimal | None = None
+    default_profit_booking_rules: ProfitBookingRules | None = None
 
 
 class StrategyUpdate(BaseModel):
@@ -349,6 +354,10 @@ class StrategyUpdate(BaseModel):
     overall_profit_target: Decimal | None = None
     profit_cutoff_action: ProfitCutoffAction | None = None
     is_paper_trading: bool | None = None
+    # Strategy-level default trailing stop and profit booking settings
+    default_trailing_stop_enabled: bool | None = None
+    default_trailing_stop_pct: Decimal | None = None
+    default_profit_booking_rules: ProfitBookingRules | None = None
 
 
 class RecentExecutionSummary(BaseModel):
@@ -395,6 +404,10 @@ class StrategyResponse(BaseModel):
     overall_profit_target: Decimal | None
     profit_cutoff_action: ProfitCutoffAction
     is_paper_trading: bool
+    # Strategy-level default trailing stop and profit booking settings
+    default_trailing_stop_enabled: bool = False
+    default_trailing_stop_pct: Decimal | None = None
+    default_profit_booking_rules: ProfitBookingRules | None = None
     last_run_at: datetime | None
     next_run_at: datetime | None
     total_trades: int
@@ -477,6 +490,13 @@ class StrategyResponse(BaseModel):
                 "overall_profit_target": obj.overall_profit_target,
                 "profit_cutoff_action": obj.profit_cutoff_action,
                 "is_paper_trading": obj.is_paper_trading,
+                "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
+                "default_trailing_stop_pct": obj.default_trailing_stop_pct,
+                "default_profit_booking_rules": (
+                    ProfitBookingRules.model_validate(obj.default_profit_booking_rules)
+                    if obj.default_profit_booking_rules
+                    else None
+                ),
                 "last_run_at": obj.last_run_at,
                 "next_run_at": obj.next_run_at,
                 "total_trades": obj.total_trades,

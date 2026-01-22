@@ -70,6 +70,13 @@ class AlgoService:
             overall_profit_target=data.overall_profit_target,
             profit_cutoff_action=data.profit_cutoff_action,
             is_paper_trading=data.is_paper_trading,
+            default_trailing_stop_enabled=data.default_trailing_stop_enabled,
+            default_trailing_stop_pct=data.default_trailing_stop_pct,
+            default_profit_booking_rules=(
+                data.default_profit_booking_rules.model_dump(mode="json")
+                if data.default_profit_booking_rules
+                else None
+            ),
             status=StrategyStatus.DISABLED,
         )
         self.db.add(strategy)
@@ -142,8 +149,24 @@ class AlgoService:
             return None
 
         update_data = data.model_dump(exclude_unset=True)
+
+        # Handle special field mappings
+        field_mappings = {
+            "strategy_config": "strategy_params",
+            "symbols": "custom_symbols",
+            "position_size_value": "portfolio_percent",
+        }
+
         for field, value in update_data.items():
-            setattr(strategy, field, value)
+            # Apply field mapping if exists
+            model_field = field_mappings.get(field, field)
+
+            # Handle default_profit_booking_rules - convert to JSON dict
+            if field == "default_profit_booking_rules" and value is not None:
+                # Value is already a dict from model_dump
+                setattr(strategy, model_field, value)
+            else:
+                setattr(strategy, model_field, value)
 
         await self.db.flush()
         await self.db.refresh(strategy)

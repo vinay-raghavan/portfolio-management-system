@@ -11,7 +11,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from engine.models.algo import AlgoPosition, PositionSide, PositionStatus
+from engine.models.algo import AlgoPosition, PositionSide, PositionStatus, UserStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -363,15 +363,31 @@ class PositionTracker:
         )
         return result, stats
 
-    async def _update_trailing_stop(self, position: AlgoPosition, current_price: Decimal) -> bool:
+    async def _update_trailing_stop(
+        self,
+        position: AlgoPosition,
+        current_price: Decimal,
+        strategy: UserStrategy | None = None,
+    ) -> bool:
         """Update trailing stop price based on current market price.
 
         For LONG positions: if current price > highest, update highest and recalculate stop.
         For SHORT positions: if current price < lowest, update lowest and recalculate stop.
 
+        Uses position-level settings if configured, otherwise falls back to strategy-level defaults.
+
         Returns True if trailing stop was updated.
         """
-        if not position.trailing_stop_enabled or not position.trailing_stop_pct:
+        # Determine effective trailing stop settings (hierarchical: position -> strategy)
+        trailing_enabled = position.trailing_stop_enabled
+        trailing_pct = position.trailing_stop_pct
+
+        # If position-level trailing stop is not configured, use strategy defaults
+        if not trailing_enabled and trailing_pct is None and strategy:
+            trailing_enabled = strategy.default_trailing_stop_enabled
+            trailing_pct = strategy.default_trailing_stop_pct
+
+        if not trailing_enabled or not trailing_pct:
             return False
 
         updated = False
@@ -384,7 +400,7 @@ class PositionTracker:
                 or current_price > position.highest_price_since_entry
             ):
                 position.highest_price_since_entry = current_price
-                new_stop = current_price * (Decimal("1") - position.trailing_stop_pct)
+                new_stop = current_price * (Decimal("1") - trailing_pct)
                 # Only update if new stop is higher than current stop (never lower)
                 if position.trailing_stop_price is None or new_stop > position.trailing_stop_price:
                     position.trailing_stop_price = new_stop
@@ -396,7 +412,7 @@ class PositionTracker:
                 or current_price < position.lowest_price_since_entry
             ):
                 position.lowest_price_since_entry = current_price
-                new_stop = current_price * (Decimal("1") + position.trailing_stop_pct)
+                new_stop = current_price * (Decimal("1") + trailing_pct)
                 # Only update if new stop is lower than current stop (never higher)
                 if position.trailing_stop_price is None or new_stop < position.trailing_stop_price:
                     position.trailing_stop_price = new_stop
@@ -423,6 +439,12 @@ class PositionTracker:
         Returns:
             Tuple of (closed positions, aggregated PnL stats)
         """
+        # Fetch the strategy for strategy-level default settings
+        strategy_result = await self.db.execute(
+            select(UserStrategy).where(UserStrategy.id == strategy_id)
+        )
+        strategy = strategy_result.scalar_one_or_none()
+
         # Include partial positions for profit booking checks
         open_positions = await self.get_all_open_positions(
             strategy_id, user_id, include_partial=True
@@ -435,19 +457,26 @@ class PositionTracker:
             if not current_price:
                 continue
 
-            # Update trailing stop price before checking SL
-            if position.trailing_stop_enabled:
-                await self._update_trailing_stop(position, current_price)
+            # Determine effective trailing stop settings (hierarchical: position -> strategy)
+            trailing_enabled = position.trailing_stop_enabled
+            trailing_pct = position.trailing_stop_pct
+            if not trailing_enabled and trailing_pct is None and strategy:
+                trailing_enabled = strategy.default_trailing_stop_enabled
+                trailing_pct = strategy.default_trailing_stop_pct
+
+            # Update trailing stop price before checking SL (pass strategy for fallback)
+            if trailing_enabled:
+                await self._update_trailing_stop(position, current_price, strategy)
 
             should_close = False
             close_reason = ""
 
             # Determine effective stop loss:
-            # - If trailing stop is enabled, use trailing_stop_price
+            # - If trailing stop is enabled (position or strategy level), use trailing_stop_price
             # - Otherwise, use fixed stop_loss
             effective_stop = (
                 position.trailing_stop_price
-                if position.trailing_stop_enabled and position.trailing_stop_price
+                if trailing_enabled and position.trailing_stop_price
                 else position.stop_loss
             )
 
@@ -455,14 +484,10 @@ class PositionTracker:
             if position.status == PositionStatus.OPEN and effective_stop:
                 if position.side == PositionSide.LONG and current_price <= effective_stop:
                     should_close = True
-                    close_reason = (
-                        "trailing-stop-loss" if position.trailing_stop_enabled else "stop-loss"
-                    )
+                    close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
                 elif position.side == PositionSide.SHORT and current_price >= effective_stop:
                     should_close = True
-                    close_reason = (
-                        "trailing-stop-loss" if position.trailing_stop_enabled else "stop-loss"
-                    )
+                    close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
 
             # Check take-profit (only for fully open positions)
             if not should_close and position.status == PositionStatus.OPEN and position.take_profit:
@@ -499,7 +524,7 @@ class PositionTracker:
 
             # Check profit booking rules (for both OPEN and PARTIAL positions)
             profit_booking_result = await self._check_profit_booking_rules(
-                position, current_price, strategy_id, user_id
+                position, current_price, strategy_id, user_id, strategy
             )
             if profit_booking_result:
                 closed_results.append(profit_booking_result)
@@ -516,28 +541,40 @@ class PositionTracker:
         current_price: Decimal,
         strategy_id: str,
         user_id: str,
+        strategy: UserStrategy | None = None,
     ) -> PositionResult | None:
         """Check and execute profit booking rules for a position.
+
+        Uses position-level settings if configured, otherwise falls back to strategy-level defaults.
 
         Args:
             position: The position to check
             current_price: Current market price
             strategy_id: Strategy ID
             user_id: User ID
+            strategy: Optional strategy for fallback to default profit booking rules
 
         Returns:
             PositionResult if a partial exit was executed, None otherwise
         """
-        # Check if profit booking rules exist and are enabled
-        if not position.profit_booking_rules:
-            return None
-
+        # Determine effective profit booking rules (hierarchical: position -> strategy)
         rules_data = position.profit_booking_rules
+
+        # If position doesn't have profit booking rules, use strategy defaults
+        if not rules_data and strategy and strategy.default_profit_booking_rules:
+            rules_data = strategy.default_profit_booking_rules
+
+        if not rules_data:
+            return None
         if not rules_data.get("enabled", False):
             return None
 
         rules = rules_data.get("rules", [])
-        executed = rules_data.get("executed", [])
+
+        # Get executed targets from position's profit_booking_rules (not strategy's)
+        # This ensures we track execution per-position even when using strategy defaults
+        position_rules = position.profit_booking_rules or {}
+        executed = position_rules.get("executed", [])
 
         if not rules:
             return None
