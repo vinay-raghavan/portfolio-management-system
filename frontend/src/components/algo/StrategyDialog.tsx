@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { algoApi, signalsApi } from '@/lib/api';
-import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction } from '@/types';
+import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule } from '@/types';
 
 interface StrategyDialogProps {
   open: boolean;
@@ -78,6 +79,16 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [overallProfitTarget, setOverallProfitTarget] = useState('');
   const [profitCutoffAction, setProfitCutoffAction] = useState<ProfitCutoffAction>('PAUSE_STRATEGY');
   const [isPaperTrading, setIsPaperTrading] = useState(true);
+  // Strategy-level default trailing stop state
+  const [defaultTrailingStopEnabled, setDefaultTrailingStopEnabled] = useState(false);
+  const [defaultTrailingStopPct, setDefaultTrailingStopPct] = useState('5');
+  // Strategy-level default profit booking state
+  const [defaultProfitBookingEnabled, setDefaultProfitBookingEnabled] = useState(false);
+  const [defaultProfitBookingRules, setDefaultProfitBookingRules] = useState<ProfitBookingRule[]>([
+    { target_pct: 5, quantity_pct: 25 },
+    { target_pct: 10, quantity_pct: 25 },
+    { target_pct: 15, quantity_pct: 50 },
+  ]);
 
   // Fetch available strategies and universes
   const { data: availableStrategies } = useQuery({
@@ -111,6 +122,20 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setOverallProfitTarget(strategy.overall_profit_target ? String(strategy.overall_profit_target) : '');
       setProfitCutoffAction(strategy.profit_cutoff_action || 'PAUSE_STRATEGY');
       setIsPaperTrading(strategy.is_paper_trading);
+      // Strategy-level trailing stop and profit booking
+      setDefaultTrailingStopEnabled(strategy.default_trailing_stop_enabled || false);
+      setDefaultTrailingStopPct(strategy.default_trailing_stop_pct ? String(strategy.default_trailing_stop_pct * 100) : '5');
+      if (strategy.default_profit_booking_rules) {
+        setDefaultProfitBookingEnabled(strategy.default_profit_booking_rules.enabled);
+        setDefaultProfitBookingRules(strategy.default_profit_booking_rules.rules || []);
+      } else {
+        setDefaultProfitBookingEnabled(false);
+        setDefaultProfitBookingRules([
+          { target_pct: 5, quantity_pct: 25 },
+          { target_pct: 10, quantity_pct: 25 },
+          { target_pct: 15, quantity_pct: 50 },
+        ]);
+      }
     } else {
       // Reset to defaults
       setName('');
@@ -131,6 +156,15 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setOverallProfitTarget('');
       setProfitCutoffAction('PAUSE_STRATEGY');
       setIsPaperTrading(true);
+      // Strategy-level trailing stop and profit booking defaults
+      setDefaultTrailingStopEnabled(false);
+      setDefaultTrailingStopPct('5');
+      setDefaultProfitBookingEnabled(false);
+      setDefaultProfitBookingRules([
+        { target_pct: 5, quantity_pct: 25 },
+        { target_pct: 10, quantity_pct: 25 },
+        { target_pct: 15, quantity_pct: 50 },
+      ]);
     }
   }, [strategy, open]);
 
@@ -176,12 +210,55 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       overall_profit_target: overallProfitTarget ? parseFloat(overallProfitTarget) : undefined,
       profit_cutoff_action: profitCutoffAction,
       is_paper_trading: isPaperTrading,
+      // Strategy-level default trailing stop and profit booking
+      default_trailing_stop_enabled: defaultTrailingStopEnabled,
+      default_trailing_stop_pct: defaultTrailingStopEnabled ? parseFloat(defaultTrailingStopPct) / 100 : undefined,
+      default_profit_booking_rules: defaultProfitBookingEnabled
+        ? {
+            enabled: true,
+            rules: defaultProfitBookingRules.sort((a, b) => Number(a.target_pct) - Number(b.target_pct)),
+            executed: [],
+          }
+        : undefined,
     };
 
     if (isEditing) {
       updateMutation.mutate(data);
     } else {
       createMutation.mutate(data);
+    }
+  };
+
+  // Helper functions for profit booking rules
+  const addProfitBookingRule = () => {
+    setDefaultProfitBookingRules([...defaultProfitBookingRules, { target_pct: 20, quantity_pct: 25 }]);
+  };
+
+  const removeProfitBookingRule = (index: number) => {
+    setDefaultProfitBookingRules(defaultProfitBookingRules.filter((_, i) => i !== index));
+  };
+
+  const updateProfitBookingRule = (index: number, field: keyof ProfitBookingRule, value: string) => {
+    const newRules = [...defaultProfitBookingRules];
+    newRules[index] = { ...newRules[index], [field]: parseFloat(value) || 0 };
+    setDefaultProfitBookingRules(newRules);
+  };
+
+  // Get position size label based on method
+  const getPositionSizeLabel = () => {
+    switch (positionSizingMethod) {
+      case 'FIXED_QUANTITY':
+        return 'Quantity (shares)';
+      case 'FIXED_AMOUNT':
+        return 'Amount (₹)';
+      case 'PERCENT_OF_PORTFOLIO':
+        return 'Portfolio %';
+      case 'RISK_BASED':
+        return 'Risk per Trade %';
+      case 'VOLATILITY_ADJUSTED':
+        return 'ATR Multiplier';
+      default:
+        return 'Position Size Value';
     }
   };
 
@@ -424,123 +501,226 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
             )}
           </TabsContent>
 
-          <TabsContent value="risk" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="positionSizing">Position Sizing Method</Label>
-              <Select
-                value={positionSizingMethod}
-                onValueChange={(v) => setPositionSizingMethod(v as PositionSizingMethod)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {positionSizingMethods.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <TabsContent value="risk" className="space-y-4 mt-4 max-h-[60vh] overflow-y-auto pr-2">
+            {/* Section 1: Position Sizing */}
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="h-4 w-4 text-blue-500" />
+                <h4 className="text-sm font-medium">Position Sizing</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="positionSizing">Sizing Method</Label>
+                  <Select
+                    value={positionSizingMethod}
+                    onValueChange={(v) => setPositionSizingMethod(v as PositionSizingMethod)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positionSizingMethods.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="positionSize">{getPositionSizeLabel()}</Label>
+                  <Input
+                    id="positionSize"
+                    type="number"
+                    value={positionSizeValue}
+                    onChange={(e) => setPositionSizeValue(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxPosition">Max Position Value (₹)</Label>
+                <Input
+                  id="maxPosition"
+                  type="number"
+                  value={maxPositionValue}
+                  onChange={(e) => setMaxPositionValue(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Maximum value for any single position</p>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="positionSize">Position Size Value</Label>
-              <Input
-                id="positionSize"
-                type="number"
-                value={positionSizeValue}
-                onChange={(e) => setPositionSizeValue(e.target.value)}
-              />
+            {/* Section 2: Loss Protection */}
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="h-4 w-4 text-red-500" />
+                <h4 className="text-sm font-medium">Loss Protection</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maxDailyLoss">Max Daily Loss (₹)</Label>
+                  <Input
+                    id="maxDailyLoss"
+                    type="number"
+                    value={maxDailyLoss}
+                    onChange={(e) => setMaxDailyLoss(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxConsecutiveLosses">Max Consecutive Losses</Label>
+                  <Input
+                    id="maxConsecutiveLosses"
+                    type="number"
+                    value={maxConsecutiveLosses}
+                    onChange={(e) => setMaxConsecutiveLosses(e.target.value)}
+                    min="1"
+                  />
+                </div>
+              </div>
+              {/* Default Trailing Stop */}
+              <div className="border-t pt-4 mt-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="h-4 w-4 text-orange-500" />
+                    <Label htmlFor="defaultTrailingStop" className="font-medium">Default Trailing Stop</Label>
+                  </div>
+                  <Switch
+                    id="defaultTrailingStop"
+                    checked={defaultTrailingStopEnabled}
+                    onCheckedChange={setDefaultTrailingStopEnabled}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Applied to all positions unless overridden at position level
+                </p>
+                {defaultTrailingStopEnabled && (
+                  <div className="space-y-2">
+                    <Label htmlFor="trailingStopPct">Trailing Stop %</Label>
+                    <Input
+                      id="trailingStopPct"
+                      type="number"
+                      value={defaultTrailingStopPct}
+                      onChange={(e) => setDefaultTrailingStopPct(e.target.value)}
+                      min="0.1"
+                      max="50"
+                      step="0.1"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="maxPosition">Max Position Value (₹)</Label>
-              <Input
-                id="maxPosition"
-                type="number"
-                value={maxPositionValue}
-                onChange={(e) => setMaxPositionValue(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxDailyLoss">Max Daily Loss (₹)</Label>
-              <Input
-                id="maxDailyLoss"
-                type="number"
-                value={maxDailyLoss}
-                onChange={(e) => setMaxDailyLoss(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxConsecutiveLosses">Max Consecutive Losses</Label>
-              <Input
-                id="maxConsecutiveLosses"
-                type="number"
-                value={maxConsecutiveLosses}
-                onChange={(e) => setMaxConsecutiveLosses(e.target.value)}
-                min="1"
-              />
-            </div>
-
-            {/* Profit Cutoff Section */}
-            <div className="col-span-2 border-t pt-4 mt-2">
-              <h4 className="text-sm font-medium mb-3">Profit Cutoff Settings</h4>
-              <p className="text-xs text-muted-foreground mb-4">
-                Automatically stop trading when profit targets are reached to lock in gains.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxDailyProfit">Max Daily Profit (₹)</Label>
-              <Input
-                id="maxDailyProfit"
-                type="number"
-                value={maxDailyProfit}
-                onChange={(e) => setMaxDailyProfit(e.target.value)}
-                placeholder="e.g., 20000"
-              />
-              <p className="text-xs text-muted-foreground">
-                Stop trading for the day after reaching this profit. Leave empty to disable.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="overallProfitTarget">Overall Profit Target (₹)</Label>
-              <Input
-                id="overallProfitTarget"
-                type="number"
-                value={overallProfitTarget}
-                onChange={(e) => setOverallProfitTarget(e.target.value)}
-                placeholder="e.g., 100000"
-              />
-              <p className="text-xs text-muted-foreground">
-                Lifetime profit target for this strategy. Leave empty to disable.
-              </p>
-            </div>
-
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="profitCutoffAction">Action When Target Reached</Label>
-              <Select
-                value={profitCutoffAction}
-                onValueChange={(value: ProfitCutoffAction) => setProfitCutoffAction(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {profitCutoffActions.map((action) => (
-                    <SelectItem key={action.value} value={action.value}>
-                      <div className="flex flex-col">
-                        <span>{action.label}</span>
-                        <span className="text-xs text-muted-foreground">{action.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Section 3: Profit Taking */}
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="h-4 w-4 text-green-500" />
+                <h4 className="text-sm font-medium">Profit Taking</h4>
+              </div>
+              {/* Default Profit Booking Rules */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="defaultProfitBooking" className="font-medium">Default Profit Booking</Label>
+                  <Switch
+                    id="defaultProfitBooking"
+                    checked={defaultProfitBookingEnabled}
+                    onCheckedChange={setDefaultProfitBookingEnabled}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Automatically book profits at target levels. Applied to all positions unless overridden.
+                </p>
+                {defaultProfitBookingEnabled && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Target % → Book % of position</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addProfitBookingRule}>
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {defaultProfitBookingRules.map((rule, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            className="w-20"
+                            placeholder="Target"
+                            value={rule.target_pct}
+                            onChange={(e) => updateProfitBookingRule(index, 'target_pct', e.target.value)}
+                          />
+                          <span className="text-xs text-muted-foreground">%→</span>
+                          <Input
+                            type="number"
+                            className="w-20"
+                            placeholder="Book"
+                            value={rule.quantity_pct}
+                            onChange={(e) => updateProfitBookingRule(index, 'quantity_pct', e.target.value)}
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeProfitBookingRule(index)}
+                            disabled={defaultProfitBookingRules.length <= 1}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Profit Cutoff */}
+              <div className="border-t pt-4 mt-2 space-y-3">
+                <Label className="font-medium">Profit Cutoff</Label>
+                <p className="text-xs text-muted-foreground">
+                  Stop trading when profit targets are reached to lock in gains.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="maxDailyProfit">Daily Profit Limit (₹)</Label>
+                    <Input
+                      id="maxDailyProfit"
+                      type="number"
+                      value={maxDailyProfit}
+                      onChange={(e) => setMaxDailyProfit(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="overallProfitTarget">Overall Target (₹)</Label>
+                    <Input
+                      id="overallProfitTarget"
+                      type="number"
+                      value={overallProfitTarget}
+                      onChange={(e) => setOverallProfitTarget(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="profitCutoffAction">Action When Reached</Label>
+                  <Select
+                    value={profitCutoffAction}
+                    onValueChange={(value: ProfitCutoffAction) => setProfitCutoffAction(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profitCutoffActions.map((action) => (
+                        <SelectItem key={action.value} value={action.value}>
+                          <div className="flex flex-col">
+                            <span>{action.label}</span>
+                            <span className="text-xs text-muted-foreground">{action.description}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

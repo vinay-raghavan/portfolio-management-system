@@ -18,6 +18,8 @@ from app.modules.portfolio.schemas import (
     ProfitBookingRules,
     TradeHistoryResponse,
     TradeResponse,
+    TrailingStopConfig,
+    TrailingStopUpdate,
 )
 from app.modules.portfolio.service import PortfolioService
 
@@ -198,6 +200,52 @@ async def update_profit_booking_rules(
         )
     await db.commit()
     return updated_rules
+
+
+# ============== Trailing Stop Endpoints ==============
+
+
+@router.get("/positions/{position_id}/trailing-stop", response_model=TrailingStopConfig | None)
+async def get_trailing_stop_config(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+) -> TrailingStopConfig | None:
+    """Get trailing stop configuration for a position."""
+    service = PortfolioService(db)
+    config = await service.get_trailing_stop_config(current_user.id, position_id)
+    return config
+
+
+@router.patch("/positions/{position_id}/trailing-stop", response_model=TrailingStopConfig)
+async def update_trailing_stop(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+    config: TrailingStopUpdate,
+) -> TrailingStopConfig:
+    """Set or update trailing stop configuration for a position.
+
+    When enabled, the stop loss will automatically adjust upward (for LONG positions)
+    or downward (for SHORT positions) as the price moves favorably, while never
+    moving in the unfavorable direction.
+    """
+    service = PortfolioService(db)
+    try:
+        updated_config = await service.update_trailing_stop(current_user.id, position_id, config)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    if updated_config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found",
+        )
+    await db.commit()
+    return updated_config
 
 
 # ============== Funds Management Endpoints ==============

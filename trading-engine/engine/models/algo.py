@@ -205,6 +205,17 @@ class UserStrategy(Base):
         default=ProfitCutoffAction.PAUSE_STRATEGY,
     )
 
+    # Strategy-level default trailing stop settings (applied to positions unless overridden)
+    default_trailing_stop_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    default_trailing_stop_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Default trailing stop percentage (e.g., 0.05 = 5%)
+
+    # Strategy-level default profit booking rules (applied to positions unless overridden)
+    default_profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -403,6 +414,21 @@ class AlgoPosition(Base):
     # Risk management
     stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+
+    # Trailing stop loss fields
+    trailing_stop_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    trailing_stop_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Percentage distance from high/low price (e.g., 0.05 = 5%)
+    trailing_stop_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Current calculated trailing stop price
+    highest_price_since_entry: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Track highest price for LONG positions
+    lowest_price_since_entry: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Track lowest price for SHORT positions
 
     # Profit booking rules
     profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)

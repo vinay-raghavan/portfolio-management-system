@@ -86,6 +86,7 @@ def check_sl_tp_orders(self) -> dict:
             checked = 0
             triggered = 0
             profit_booked = 0
+            trailing_stops_updated = 0
 
             for pos in positions:
                 checked += 1
@@ -98,6 +99,14 @@ def check_sl_tp_orders(self) -> dict:
                 position_id = pos["id"]
                 profit_booking_rules = pos.get("profit_booking_rules")
 
+                # Trailing stop fields
+                trailing_stop_enabled = pos.get("trailing_stop_enabled", False)
+                trailing_stop_price = (
+                    Decimal(str(pos["trailing_stop_price"]))
+                    if pos.get("trailing_stop_price")
+                    else None
+                )
+
                 # Get current price
                 price_response = client.get(f"{api_url}/data/quote/{symbol}")
                 if price_response.status_code != 200:
@@ -107,16 +116,45 @@ def check_sl_tp_orders(self) -> dict:
                 if current_price <= 0:
                     continue
 
+                # Update trailing stop price if enabled (before checking SL)
+                # This adjusts the stop price based on favorable price movement
+                if trailing_stop_enabled:
+                    # For LONG positions: update when price moves up
+                    # Assume quantity > 0 means LONG position
+                    is_long = quantity > 0
+                    update_response = client.patch(
+                        f"{api_url}/trading/positions/{position_id}/trailing-stop-price",
+                        json={"current_price": str(current_price), "is_long": is_long},
+                    )
+                    if update_response.status_code == 200:
+                        update_result = update_response.json()
+                        if update_result.get("updated"):
+                            trailing_stops_updated += 1
+                            # Refresh trailing_stop_price with the new value
+                            trailing_stop_price = Decimal(update_result["trailing_stop_price"])
+                            logger.debug(
+                                f"Trailing stop updated for {symbol}: new stop @ {trailing_stop_price}"
+                            )
+
+                # Determine effective stop loss price:
+                # - If trailing stop is enabled, use trailing_stop_price
+                # - Otherwise, use fixed stop_loss
+                effective_stop_loss = trailing_stop_price if trailing_stop_enabled else stop_loss
+
                 # Check SL condition (highest priority)
-                if stop_loss and current_price <= stop_loss:
-                    logger.info(f"SL triggered for {symbol} @ {current_price} (SL: {stop_loss})")
+                if effective_stop_loss and current_price <= effective_stop_loss:
+                    stop_type = "Trailing SL" if trailing_stop_enabled else "SL"
+                    logger.info(
+                        f"{stop_type} triggered for {symbol} @ {current_price} "
+                        f"(Stop: {effective_stop_loss})"
+                    )
                     # Execute sell order
                     order_data = {
                         "symbol": symbol,
                         "side": "SELL",
                         "order_type": "MARKET",
-                        "quantity": int(quantity),
-                        "notes": f"Auto SL triggered at {current_price}",
+                        "quantity": int(abs(quantity)),  # Use abs for SHORT positions
+                        "notes": f"Auto {stop_type} triggered at {current_price}",
                     }
                     sell_response = client.post(
                         f"{api_url}/trading/orders",
@@ -125,7 +163,7 @@ def check_sl_tp_orders(self) -> dict:
                     )
                     if sell_response.status_code == 200:
                         triggered += 1
-                        logger.info(f"SL order executed for {symbol}")
+                        logger.info(f"{stop_type} order executed for {symbol}")
                     continue
 
                 # Check TP condition
@@ -210,13 +248,15 @@ def check_sl_tp_orders(self) -> dict:
 
             logger.info(
                 f"SL/TP/Profit booking check complete. Checked: {checked}, "
-                f"SL/TP Triggered: {triggered}, Profit Booked: {profit_booked}"
+                f"SL/TP Triggered: {triggered}, Profit Booked: {profit_booked}, "
+                f"Trailing Stops Updated: {trailing_stops_updated}"
             )
             return {
                 "status": "success",
                 "checked": checked,
                 "triggered": triggered,
                 "profit_booked": profit_booked,
+                "trailing_stops_updated": trailing_stops_updated,
             }
 
     except Exception as e:

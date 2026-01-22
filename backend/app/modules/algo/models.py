@@ -164,6 +164,17 @@ class UserStrategy(Base):
         default=ProfitCutoffAction.PAUSE_STRATEGY,
     )
 
+    # Strategy-level default trailing stop settings (applied to positions unless overridden)
+    default_trailing_stop_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    default_trailing_stop_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Default trailing stop percentage (e.g., 0.05 = 5%)
+
+    # Strategy-level default profit booking rules (applied to positions unless overridden)
+    default_profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Tracking
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -31,7 +31,11 @@ from app.modules.algo.schemas import (
     UnrealizedPnLPosition,
     UnrealizedPnLResponse,
 )
-from app.modules.portfolio.schemas import ProfitBookingRules
+from app.modules.portfolio.schemas import (
+    ProfitBookingRules,
+    TrailingStopConfig,
+    TrailingStopUpdate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,13 @@ class AlgoService:
             overall_profit_target=data.overall_profit_target,
             profit_cutoff_action=data.profit_cutoff_action,
             is_paper_trading=data.is_paper_trading,
+            default_trailing_stop_enabled=data.default_trailing_stop_enabled,
+            default_trailing_stop_pct=data.default_trailing_stop_pct,
+            default_profit_booking_rules=(
+                data.default_profit_booking_rules.model_dump(mode="json")
+                if data.default_profit_booking_rules
+                else None
+            ),
             status=StrategyStatus.DISABLED,
         )
         self.db.add(strategy)
@@ -138,8 +149,24 @@ class AlgoService:
             return None
 
         update_data = data.model_dump(exclude_unset=True)
+
+        # Handle special field mappings
+        field_mappings = {
+            "strategy_config": "strategy_params",
+            "symbols": "custom_symbols",
+            "position_size_value": "portfolio_percent",
+        }
+
         for field, value in update_data.items():
-            setattr(strategy, field, value)
+            # Apply field mapping if exists
+            model_field = field_mappings.get(field, field)
+
+            # Handle default_profit_booking_rules - convert to JSON dict
+            if field == "default_profit_booking_rules" and value is not None:
+                # Value is already a dict from model_dump
+                setattr(strategy, model_field, value)
+            else:
+                setattr(strategy, model_field, value)
 
         await self.db.flush()
         await self.db.refresh(strategy)
@@ -659,6 +686,84 @@ class AlgoService:
         await self.db.refresh(position)
 
         return ProfitBookingRules.model_validate(position.profit_booking_rules)
+
+    # ============ Trailing Stop Management ============
+
+    async def get_trailing_stop_config(
+        self, user_id: str, position_id: str
+    ) -> TrailingStopConfig | None:
+        """Get trailing stop configuration for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        return TrailingStopConfig(
+            enabled=position.trailing_stop_enabled,
+            percentage=position.trailing_stop_pct,
+            current_stop_price=position.trailing_stop_price,
+            highest_price=position.highest_price_since_entry,
+            lowest_price=position.lowest_price_since_entry,
+        )
+
+    async def update_trailing_stop(
+        self, user_id: str, position_id: str, config: TrailingStopUpdate
+    ) -> TrailingStopConfig | None:
+        """Update trailing stop configuration for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        position.trailing_stop_enabled = config.enabled
+
+        if config.enabled:
+            if config.percentage is None:
+                raise ValueError("Trailing stop percentage is required when enabling")
+
+            position.trailing_stop_pct = config.percentage
+
+            # Initialize highest/lowest price tracking if not set
+            entry_price = position.entry_price
+            if position.highest_price_since_entry is None:
+                position.highest_price_since_entry = entry_price
+            if position.lowest_price_since_entry is None:
+                position.lowest_price_since_entry = entry_price
+
+            # Calculate initial trailing stop price based on position side
+            is_long = position.side == PositionSide.LONG
+            reference_price = (
+                position.highest_price_since_entry if is_long else position.lowest_price_since_entry
+            )
+            if is_long:
+                position.trailing_stop_price = reference_price * (1 - config.percentage)
+            else:
+                position.trailing_stop_price = reference_price * (1 + config.percentage)
+        else:
+            position.trailing_stop_pct = None
+            position.trailing_stop_price = None
+            # Keep highest/lowest price for reference
+
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        return TrailingStopConfig(
+            enabled=position.trailing_stop_enabled,
+            percentage=position.trailing_stop_pct,
+            current_stop_price=position.trailing_stop_price,
+            highest_price=position.highest_price_since_entry,
+            lowest_price=position.lowest_price_since_entry,
+        )
 
     # ============== Exit Position Methods ==============
 

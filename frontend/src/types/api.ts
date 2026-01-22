@@ -69,6 +69,19 @@ export interface ProfitBookingRules {
   executed: number[];
 }
 
+export interface TrailingStopConfig {
+  enabled: boolean;
+  percentage: number | null;
+  current_stop_price: number | null;
+  highest_price: number | null;
+  lowest_price: number | null;
+}
+
+export interface TrailingStopUpdate {
+  enabled: boolean;
+  percentage?: number | null;
+}
+
 export interface Position {
   id: string;
   portfolio_id?: string | null;
@@ -81,6 +94,9 @@ export interface Position {
   market_value: number | null;
   unrealized_pnl: number | null;
   unrealized_pnl_pct: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  trailing_stop?: TrailingStopConfig | null;
   sector?: string;
   profit_booking_rules?: ProfitBookingRules | null;
 }
@@ -577,6 +593,10 @@ export interface AlgoStrategy {
   overall_profit_target: number | null;
   profit_cutoff_action: ProfitCutoffAction;
   is_paper_trading: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled: boolean;
+  default_trailing_stop_pct: number | null;
+  default_profit_booking_rules: ProfitBookingRules | null;
   last_run_at: string | null;
   next_run_at: string | null;
   total_trades: number;
@@ -606,6 +626,10 @@ export interface AlgoStrategyCreate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
 }
 
 export interface AlgoStrategyUpdate {
@@ -627,6 +651,10 @@ export interface AlgoStrategyUpdate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
 }
 
 export interface AlgoOrderDetail {
@@ -842,6 +870,7 @@ export interface AlgoPosition {
   is_winner: boolean | null;
   stop_loss: number | null;
   take_profit: number | null;
+  trailing_stop?: TrailingStopConfig | null;
   profit_booking_rules?: ProfitBookingRules | null;
   created_at: string;
   updated_at: string;
