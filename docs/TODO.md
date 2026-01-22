@@ -1845,6 +1845,233 @@ Track screener effectiveness over time.
   - Best performing preset screener
 - [ ] Use data to improve screener weights
 
+### 1.11 Research Module (Week 8)
+> 🌿 **Branch:** `phase-1/research`
+
+**Goal**: Comprehensive stock research capabilities combining fundamental data, news, and deep-dive analysis pages inspired by FYERS MarketSmith integration.
+
+#### Research Module Flow Diagram
+
+```mermaid
+flowchart TB
+    subgraph DataSources["📡 Data Sources"]
+        TechnicalData[Technical Data<br/>Price, Volume, Indicators]
+        FundamentalData[Fundamental Data<br/>P/E, EPS, Revenue]
+        NewsData[News API<br/>Headlines, Sentiment]
+        PeerData[Peer Comparison<br/>Industry averages]
+    end
+
+    subgraph ResearchEngine["🔬 Research Engine"]
+        FundamentalFilters[Fundamental Filters<br/>P/E, EPS Growth, Dividend]
+        NewsAggregator[News Aggregator<br/>Multi-source, Dedupe]
+        SentimentAnalyzer[Sentiment Scoring<br/>Bullish/Bearish/Neutral]
+        PeerAnalyzer[Peer Analyzer<br/>Relative performance]
+    end
+
+    subgraph ResearchOutputs["📊 Research Outputs"]
+        StockResearchPage[Stock Research Page<br/>/research/{symbol}]
+        DailyDigest[Daily Research Digest<br/>Market Summary]
+        SectorHeatmap[Sector Heatmap<br/>Performance visualization]
+        FundamentalScreener[Fundamental Screener<br/>Value/Growth filters]
+    end
+
+    subgraph UserActions["🎯 User Actions"]
+        AddWatchlist[Add to Watchlist]
+        SetAlert[Set Price Alert]
+        ViewChart[View Chart]
+        QuickTrade[Quick Trade]
+        SaveResearch[Save Research Note]
+    end
+
+    DataSources --> ResearchEngine
+    ResearchEngine --> ResearchOutputs
+    ResearchOutputs --> UserActions
+
+    style DataSources fill:#e3f2fd,stroke:#1976d2
+    style ResearchEngine fill:#fff3e0,stroke:#ff9800
+    style ResearchOutputs fill:#e8f5e9,stroke:#4caf50
+    style UserActions fill:#fce4ec,stroke:#e91e63
+```
+
+#### 1.11.1 Fundamental Data Integration
+Extend data providers to include fundamental metrics.
+
+**Tasks:**
+- [ ] Extend `YahooDataProvider` with fundamental data methods
+  - `get_fundamentals(symbol)` - P/E, P/B, EPS, Revenue, etc.
+  - `get_financials(symbol)` - Income statement, balance sheet
+  - `get_dividends(symbol)` - Dividend history and yield
+- [ ] Create fundamental data schemas
+  ```python
+  class FundamentalData(BaseModel):
+      symbol: str
+      pe_ratio: float | None
+      pb_ratio: float | None
+      eps: float | None
+      eps_growth_yoy: float | None
+      revenue: float | None
+      revenue_growth_yoy: float | None
+      dividend_yield: float | None
+      market_cap: float | None
+      debt_to_equity: float | None
+      roe: float | None
+      sector: str | None
+      industry: str | None
+  ```
+- [ ] Cache fundamental data (refresh daily after market close)
+
+#### 1.11.2 Fundamental Screener Filters
+Add fundamental analysis filters to the screener engine.
+
+**Tasks:**
+- [ ] Create `FundamentalFilter` class
+  ```python
+  class FundamentalFilter(BaseFilter):
+      filter_type = FilterType.FUNDAMENTAL
+
+      def configure(
+          self,
+          max_pe: float | None = None,      # P/E ratio ceiling
+          min_pe: float | None = None,      # P/E ratio floor
+          min_eps_growth: float | None = None,  # YoY EPS growth %
+          min_revenue_growth: float | None = None,
+          min_dividend_yield: float | None = None,
+          max_debt_to_equity: float | None = None,
+          min_roe: float | None = None,
+          sectors: list[str] | None = None,
+          industries: list[str] | None = None,
+      ):
+          ...
+  ```
+- [ ] Create preset fundamental screeners:
+  - **Value Screener**: P/E < 15, P/B < 2, Dividend > 2%
+  - **Growth Screener**: EPS growth > 20%, Revenue growth > 15%
+  - **Dividend Screener**: Dividend yield > 3%, consistent payout
+  - **Quality Screener**: ROE > 15%, Debt/Equity < 0.5
+- [ ] Update screener API to support fundamental filters
+
+#### 1.11.3 News Integration
+Integrate news feeds for market and stock-level news.
+
+**Tasks:**
+- [ ] Create news provider abstraction
+  ```python
+  class BaseNewsProvider(ABC):
+      @abstractmethod
+      async def get_stock_news(symbol: str, limit: int) -> list[NewsArticle]
+
+      @abstractmethod
+      async def get_market_news(limit: int) -> list[NewsArticle]
+
+      @abstractmethod
+      async def get_sector_news(sector: str, limit: int) -> list[NewsArticle]
+  ```
+- [ ] Implement news providers (choose based on API availability):
+  - Option A: `NewsAPIProvider` (newsapi.org - free tier: 100 req/day)
+  - Option B: `YahooNewsProvider` (scrape Yahoo Finance news)
+  - Option C: `GoogleNewsProvider` (Google News RSS feeds)
+- [ ] Create news schemas
+  ```python
+  class NewsArticle(BaseModel):
+      title: str
+      summary: str | None
+      source: str
+      url: str
+      published_at: datetime
+      symbols: list[str]  # Related stock symbols
+      sentiment: str | None  # "bullish", "bearish", "neutral"
+      sentiment_score: float | None  # -1.0 to 1.0
+  ```
+- [ ] Basic sentiment scoring (keyword-based initially)
+  - Bullish keywords: "surge", "breakout", "record high", "beat estimates"
+  - Bearish keywords: "crash", "plunge", "miss", "downgrade", "sell-off"
+
+#### 1.11.4 Stock Research Page
+Dedicated deep-dive page for comprehensive stock analysis.
+
+**Tasks:**
+- [ ] Create `/research/[symbol]` page route
+- [ ] **Header Section**
+  - Stock name, symbol, current price, change %
+  - Quick action buttons (Add to Watchlist, Trade, Set Alert)
+  - Last updated timestamp
+- [ ] **Technical Analysis Tab**
+  - TradingView chart embed or custom chart
+  - Key technical indicators (RSI, MACD, Moving Averages)
+  - Support/resistance levels
+  - Technical signal summary (Buy/Sell/Hold)
+- [ ] **Fundamental Analysis Tab**
+  - Key ratios: P/E, P/B, EPS, ROE, D/E
+  - Revenue and earnings trends (mini charts)
+  - Dividend history
+  - Comparison to sector averages
+- [ ] **News & Sentiment Tab**
+  - Recent news articles (last 7 days)
+  - Sentiment indicator (overall bullish/bearish)
+  - News volume chart (articles per day)
+- [ ] **Peer Comparison Tab**
+  - Industry peers table
+  - Comparative metrics (P/E, Market Cap, Performance)
+  - Relative strength ranking
+- [ ] **Notes Section**
+  - User can save personal research notes
+  - Notes stored per symbol per user
+
+#### 1.11.5 Daily Research Digest
+Automated daily market intelligence summary.
+
+**Tasks:**
+- [ ] Create daily digest Celery task (runs at market close)
+- [ ] Digest components:
+  - **Market Summary**: Index performance (Nifty, BankNifty, Sensex)
+  - **Top Gainers/Losers**: Top 5 each with % change and reason
+  - **Sector Performance**: Heatmap data for all sectors
+  - **Volume Leaders**: Unusual volume activity
+  - **Breakout Candidates**: From breakout screener
+  - **News Highlights**: Top 5 market-moving news
+- [ ] API endpoint `GET /research/digest` to fetch daily digest
+- [ ] Frontend Dashboard widget showing digest summary
+- [ ] Optional: Email digest to subscribed users
+
+#### 1.11.6 Sector Heatmap
+Visual sector performance analysis.
+
+**Tasks:**
+- [ ] Create sector performance API
+  - `GET /research/sectors` - All sectors with daily/weekly/monthly performance
+  - `GET /research/sectors/{sector}` - Stocks in sector with performance
+- [ ] Frontend sector heatmap component
+  - Color-coded by performance (green = up, red = down)
+  - Click to drill down into sector stocks
+  - Toggle timeframe (1D, 1W, 1M, 3M, 1Y)
+- [ ] Sector rotation analysis
+  - Track sector momentum over time
+  - Identify rotating leadership
+
+#### 1.11.7 Research API Endpoints
+Expose research functionality via REST API.
+
+**Tasks:**
+- [ ] Create research router (`/api/v1/research`)
+  ```python
+  # Stock research
+  GET /research/{symbol}          # Full research data for symbol
+  GET /research/{symbol}/fundamentals  # Fundamental data only
+  GET /research/{symbol}/news     # News for symbol
+  GET /research/{symbol}/peers    # Peer comparison
+
+  # Market research
+  GET /research/digest            # Daily digest
+  GET /research/sectors           # Sector performance
+  GET /research/sectors/{sector}  # Stocks in sector
+
+  # User research notes
+  GET /research/notes             # User's saved notes
+  POST /research/notes            # Save research note
+  DELETE /research/notes/{id}     # Delete note
+  ```
+- [ ] Register research router in main API router
+
 ---
 
 ## 🚀 PHASE 2: Live Trading with Angel One (Weeks 8-9)
