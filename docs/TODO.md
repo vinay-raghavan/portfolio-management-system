@@ -131,7 +131,8 @@ main                           # Production-ready code
 │   │   ├── notifications      # Week 4-5: Notification system
 │   │   ├── signals-backtest   # Week 5: Signals & backtesting
 │   │   ├── algo-trading       # Week 5-6: Algo trading engine
-│   │   └── testing            # Week 6-7: Testing & polish
+│   │   ├── testing            # Week 6-7: Testing & polish
+│   │   └── ux-improvements    # Week 8-9: UX enhancements
 │   │
 │   ├── phase-2/               # Phase 2: Live Trading
 │   │   ├── angelone           # Angel One integration
@@ -189,7 +190,8 @@ main                           # Production-ready code
 | 1 | 5-6 | `phase-1/algo-trading` | Strategy framework, Executor, Scheduler |
 | 1 | 7 | `phase-1/screener` | Stock screener, Research page, Recommendations |
 | 1 | 7 | `phase-1/testing` | Unit tests, E2E tests, Validation |
-| 2 | 8 | `phase-2/angelone` | Angel One API integration |
+| 1 | 8-9 | `phase-1/ux-improvements` | UX enhancements, Accessibility, Trading workflow |
+| 2 | 9-10 | `phase-2/angelone` | Angel One API integration |
 | 2 | 8-9 | `phase-2/live-safety` | Live trading safety features |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
@@ -336,7 +338,14 @@ flowchart TB
             W7C[Unit + E2E Tests]
         end
 
-        Week1 --> Week2 --> Week3 --> Week4 --> Week5 --> Week6 --> Week7
+        subgraph Week8["Week 8-9: 🎨 UX Improvements"]
+            W8A[Trade from Charts]
+            W8B[Keyboard Shortcuts]
+            W8C[Accessibility]
+            W8D[Toast Notifications]
+        end
+
+        Week1 --> Week2 --> Week3 --> Week4 --> Week5 --> Week6 --> Week7 --> Week8
     end
 
     subgraph Providers["🔌 Provider Abstraction Layer"]
@@ -2074,6 +2083,340 @@ Expose research functionality via REST API.
 
 ---
 
+### 1.12 UX Improvements (Week 8-9)
+> 🌿 **Branch:** `phase-1/ux-improvements`
+
+**Goal**: Address UX gaps identified in comprehensive UX review to improve trading workflow efficiency, accessibility, and user feedback.
+
+#### UX Improvement Categories
+
+```mermaid
+flowchart TB
+    subgraph Priority1["🔴 Priority 1: Critical (Week 8)"]
+        P1A[Trade from Analysis Page]
+        P1B[Keyboard Shortcuts]
+        P1C[Error Boundary]
+        P1D[Skip Links & Focus States]
+        P1E[Toast Notifications]
+    end
+
+    subgraph Priority2["🟡 Priority 2: Important (Week 8-9)"]
+        P2A[Multi-Chart Layout]
+        P2B[Signal → Trade Flow]
+        P2C[One-Click Square-Off]
+        P2D[ARIA Labels]
+        P2E[Order Templates]
+    end
+
+    subgraph Priority3["🟢 Priority 3: Enhancement (Week 9+)"]
+        P3A[Branded Loading]
+        P3B[Drag-and-Drop Reordering]
+        P3C[Chart Comparison]
+        P3D[Theme-aware Charts]
+        P3E[Backtest Comparison]
+    end
+
+    Priority1 --> Priority2 --> Priority3
+
+    style Priority1 fill:#ffebee,stroke:#c62828
+    style Priority2 fill:#fff3e0,stroke:#ff9800
+    style Priority3 fill:#e8f5e9,stroke:#4caf50
+```
+
+#### 1.12.1 Trade from Analysis Page
+Reduce trading friction by allowing order placement directly from the Analysis page.
+
+**Tasks:**
+- [ ] Add collapsible order panel to Analysis page
+  - Side panel or bottom drawer
+  - Pre-fill symbol from current chart
+  - Show real-time quote in order form
+- [ ] Quick trade buttons on chart
+  - Buy/Sell buttons near price display
+  - Right-click context menu on chart
+- [ ] Price level selection from chart
+  - Click on chart to set limit price
+  - Drag to set stop loss / take profit levels
+- [ ] Order confirmation inline (no page navigation)
+
+#### 1.12.2 Keyboard Shortcuts
+Essential for active traders who need fast execution.
+
+**Tasks:**
+- [ ] Create keyboard shortcut system
+  ```typescript
+  // Global navigation shortcuts
+  G + D → Dashboard
+  G + P → Portfolio
+  G + A → Analysis
+  G + S → Signals
+  G + O → Orders
+  G + W → Watchlist
+  G + T → Algo Trading
+  G + B → Backtest
+  G + , → Settings
+
+  // Trading shortcuts
+  B → Focus Buy order
+  S → Focus Sell order
+  N → New order
+  ESC → Cancel/Close modal
+
+  // Chart shortcuts
+  + / - → Zoom in/out
+  ← / → → Pan chart
+  1-9 → Switch timeframes
+  I → Toggle indicators panel
+  D → Toggle drawing tools
+  ```
+- [ ] Create `useKeyboardShortcuts` hook
+- [ ] Add shortcut hints in UI (tooltips, menu items)
+- [ ] Settings page to customize shortcuts
+- [ ] Shortcut help modal (`?` key to open)
+- [ ] Prevent shortcuts when typing in inputs
+
+#### 1.12.3 Error Boundary & Error Handling
+Prevent app crashes and provide graceful error recovery.
+
+**Tasks:**
+- [ ] Create React Error Boundary component
+  - Catch rendering errors
+  - Display friendly error message
+  - "Reload" and "Report Issue" buttons
+  - Log errors to backend/monitoring
+- [ ] Add error boundaries at page level
+- [ ] Add error boundaries around critical widgets
+- [ ] Global error handler for API failures
+  - Retry logic with exponential backoff
+  - Offline detection and indicator
+  - Queue failed mutations for retry
+- [ ] Error state components for each widget
+  - Consistent error UI across app
+  - "Try Again" button
+
+#### 1.12.4 Accessibility: Skip Links & Focus States
+Basic WCAG 2.1 AA compliance for accessibility.
+
+**Tasks:**
+- [ ] Add skip link ("Skip to main content")
+  - Visible on focus at top of page
+  - Links to main content area
+- [ ] Implement visible focus indicators
+  - Focus ring on all interactive elements
+  - High contrast focus styles
+  - Respect `prefers-reduced-motion`
+- [ ] Keyboard navigation for sidebar
+  - Tab through navigation items
+  - Enter to navigate, Space to expand
+  - Arrow keys for menu items
+- [ ] Screen reader improvements
+  - ARIA labels on icon-only buttons
+  - ARIA live regions for dynamic content
+  - Proper heading hierarchy (h1 → h2 → h3)
+- [ ] Add `prefers-reduced-motion` support
+  - Disable animations when preferred
+  - Alternative transitions
+
+#### 1.12.5 Toast Notification System
+Consistent feedback for user actions.
+
+**Tasks:**
+- [ ] Create Toast component (or use shadcn/ui Sonner)
+  - Success, Error, Warning, Info variants
+  - Auto-dismiss with configurable duration
+  - Dismiss button
+  - Action button support ("Undo", "View")
+- [ ] Create `useToast` hook for triggering toasts
+- [ ] Add toasts for:
+  - Order placed/filled/cancelled/rejected
+  - Watchlist symbol added/removed
+  - Portfolio created/deleted
+  - Settings saved
+  - Strategy enabled/disabled
+  - Kill switch activated
+  - Alert triggered
+- [ ] Toast queue management (prevent stacking too many)
+- [ ] Position configuration (top-right, bottom-right, etc.)
+
+#### 1.12.6 Multi-Chart Layout
+Professional trading feature for monitoring multiple instruments.
+
+**Tasks:**
+- [ ] Create multi-chart container component
+  - 1x1, 2x1, 2x2, 3x2 grid layouts
+  - Layout selector UI
+- [ ] Independent chart state per panel
+  - Symbol, timeframe, indicators per chart
+  - Synced crosshairs (optional)
+- [ ] Chart panel controls
+  - Symbol search per panel
+  - Close/maximize panel
+  - Swap panel positions
+- [ ] Save/load chart layouts
+  - User can save favorite layouts
+  - Quick switch between saved layouts
+- [ ] Responsive behavior
+  - Stack vertically on smaller screens
+
+#### 1.12.7 Signal to Trade Flow
+Enable direct order placement from signals.
+
+**Tasks:**
+- [ ] Add "Trade Now" button on signal rows
+  - Opens order form pre-filled with signal data
+  - Symbol, side (buy/sell), suggested price
+- [ ] Signal detail modal with trade option
+  - View full signal analysis
+  - "Place Order" button in modal
+- [ ] Bulk signal actions
+  - Select multiple signals
+  - "Trade All Selected" action
+- [ ] Signal → Order tracking
+  - Link orders to originating signals
+  - Show which signals resulted in trades
+
+#### 1.12.8 One-Click Square-Off
+Critical for fast markets and risk management.
+
+**Tasks:**
+- [ ] Add "Square Off" button on position rows
+  - Single click to close position
+  - Confirmation optional (can be disabled in settings)
+- [ ] "Square Off All" button in portfolio header
+  - Close all open positions
+  - Requires confirmation
+- [ ] Square off by category
+  - Square off all intraday positions
+  - Square off all loss-making positions
+  - Square off by sector
+- [ ] Quick square-off keyboard shortcut
+  - `X` key on selected position
+
+#### 1.12.9 ARIA Labels & Screen Reader Support
+Improve accessibility for users with disabilities.
+
+**Tasks:**
+- [ ] Add ARIA labels to all icon-only buttons
+  ```tsx
+  <Button aria-label="Close modal">
+    <X className="h-4 w-4" />
+  </Button>
+  ```
+- [ ] Add ARIA roles to data tables
+  - `role="table"`, `role="row"`, `role="cell"`
+  - Column headers with `scope="col"`
+- [ ] Add ARIA live regions for dynamic content
+  - Price updates: `aria-live="polite"`
+  - Alerts: `aria-live="assertive"`
+- [ ] Announce route changes to screen readers
+- [ ] Add descriptive text for charts (alt text)
+
+#### 1.12.10 Order Templates & Presets
+Faster repeat orders for active traders.
+
+**Tasks:**
+- [ ] Create `OrderTemplate` model
+  ```python
+  class OrderTemplate:
+      id: str
+      user_id: str
+      name: str  # "Quick RELIANCE Buy"
+      symbol: str
+      side: str  # buy/sell
+      order_type: str
+      quantity: int | None
+      quantity_pct: float | None  # % of portfolio
+      stop_loss_pct: float | None
+      take_profit_pct: float | None
+  ```
+- [ ] Order template management UI
+  - Create/Edit/Delete templates
+  - List saved templates
+- [ ] Quick template buttons in order form
+  - "Use Template" dropdown
+  - Recent templates section
+- [ ] One-click trade from template
+  - Template button executes immediately
+  - Optional confirmation
+
+#### 1.12.11 Branded Loading States
+Visual polish for professional appearance.
+
+**Tasks:**
+- [ ] Create branded loading spinner
+  - App logo animation
+  - Consistent with brand colors
+- [ ] Full-page loading state for initial load
+- [ ] Skeleton screens for all data-loading components
+  - Dashboard cards
+  - Tables
+  - Charts
+- [ ] Progress indicators for long operations
+  - Backtest progress
+  - Bulk operations
+
+#### 1.12.12 Drag-and-Drop Reordering
+Customization for watchlists and portfolios.
+
+**Tasks:**
+- [ ] Watchlist symbol reordering
+  - Drag symbols to reorder
+  - Persist order to backend
+- [ ] Watchlist list reordering
+  - Reorder watchlists in sidebar
+- [ ] Dashboard widget reordering (future)
+  - Drag widgets to rearrange
+  - Resize widgets
+
+#### 1.12.13 Chart Comparison & Overlay
+Enhanced technical analysis capabilities.
+
+**Tasks:**
+- [ ] Symbol comparison overlay
+  - Add multiple symbols to same chart
+  - Normalized/percentage view
+  - Toggle symbols on/off
+- [ ] Index comparison
+  - Compare stock to Nifty 50
+  - Relative strength display
+- [ ] Custom comparison groups
+  - Save groups of symbols
+  - Quick switch between comparisons
+
+#### 1.12.14 Theme-Aware Charts
+Visual consistency between app theme and charts.
+
+**Tasks:**
+- [ ] Dynamic chart colors based on theme
+  - Read CSS variables for colors
+  - Apply to chart background, grid, text
+- [ ] Profit/loss colors match app theme
+  - Use `--profit` and `--loss` variables
+- [ ] Indicator colors theme-aware
+  - Configurable indicator palette
+- [ ] Chart theme persistence
+  - Save chart theme preference
+
+#### 1.12.15 Backtest Results Comparison
+Better strategy evaluation through comparison.
+
+**Tasks:**
+- [ ] Save backtest results to database
+  - Store results with timestamp
+  - Tag results with notes
+- [ ] Backtest history list
+  - View past backtest results
+  - Filter by strategy, symbol, date
+- [ ] Side-by-side comparison view
+  - Compare 2-4 backtests
+  - Metrics comparison table
+  - Overlaid equity curves
+- [ ] Export backtest results
+  - CSV export
+  - PDF report generation
+
+---
+
 ## 🚀 PHASE 2: Live Trading with Angel One (Weeks 8-9)
 
 **Goal**: Connect to Angel One API for real trading. Platform stays the same!
@@ -2703,8 +3046,9 @@ portfolio-management-system/
 | 5 | Signals + Backtest | `phase-1/signals-backtest` | Signal engine, Backtesting framework |
 | 5-6 | **Algo Trading** | `phase-1/algo-trading` | Strategy framework, Built-in strategies, Executor |
 | 6-7 | Testing + Polish | `phase-1/testing` | E2E tests, Bug fixes, Algo validation |
-| 8 | Angel One | `phase-2/angelone` | Angel One API integration |
-| 8-9 | Live Safety | `phase-2/live-safety` | Live trading safety features |
+| 8-9 | **UX Improvements** | `phase-1/ux-improvements` | Trade from charts, Keyboard shortcuts, Accessibility |
+| 9-10 | Angel One | `phase-2/angelone` | Angel One API integration |
+| 10-11 | Live Safety | `phase-2/live-safety` | Live trading safety features |
 
 ---
 
@@ -2759,6 +3103,14 @@ Before moving to Phase 2, ensure:
    - [ ] Strategy backtests pass validation
    - [ ] Algo execution tested in simulated market conditions
    - [ ] Notification delivery tested for all channels
+
+7. **UX Improvements Complete**
+   - [ ] Trade from Analysis page works
+   - [ ] Keyboard shortcuts functional
+   - [ ] Error boundaries prevent app crashes
+   - [ ] Toast notifications show for key actions
+   - [ ] Skip links and focus states for accessibility
+   - [ ] ARIA labels on icon-only buttons
 
 ---
 
