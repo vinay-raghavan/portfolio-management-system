@@ -9,6 +9,8 @@ import type {
   PortfolioCreate,
   PortfolioUpdate,
   ProfitBookingRules,
+  TrailingStopConfig,
+  TrailingStopUpdate,
   TradeHistoryResponse,
   DailyPnLHistory,
   FundsResponse,
@@ -106,6 +108,12 @@ export const portfolioApi = {
     api.get<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`),
   updateProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
     api.patch<ProfitBookingRules>(`/portfolio/positions/${positionId}/profit-booking`, rules),
+
+  // Trailing stop
+  getTrailingStopConfig: (positionId: string) =>
+    api.get<TrailingStopConfig>(`/portfolio/positions/${positionId}/trailing-stop`),
+  updateTrailingStop: (positionId: string, config: TrailingStopUpdate) =>
+    api.patch<TrailingStopConfig>(`/portfolio/positions/${positionId}/trailing-stop`, config),
 
   // Funds management
   getFunds: () =>
@@ -436,6 +444,12 @@ export const algoApi = {
     api.get<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`),
   updateAlgoProfitBookingRules: (positionId: string, rules: ProfitBookingRules) =>
     api.patch<ProfitBookingRules>(`/algo/positions/${positionId}/profit-booking`, rules),
+
+  // Trailing stop for algo positions
+  getAlgoTrailingStopConfig: (positionId: string) =>
+    api.get<TrailingStopConfig>(`/algo/positions/${positionId}/trailing-stop`),
+  updateAlgoTrailingStop: (positionId: string, config: TrailingStopUpdate) =>
+    api.patch<TrailingStopConfig>(`/algo/positions/${positionId}/trailing-stop`, config),
 
   // Position Exit Endpoints
   closePosition: (strategyId: string, symbol: string, data?: ClosePositionRequest) =>

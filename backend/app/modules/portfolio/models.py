@@ -90,6 +90,21 @@ class Position(Base):
     stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
 
+    # Trailing stop loss fields
+    trailing_stop_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    trailing_stop_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Percentage distance from high/low price (e.g., 0.05 = 5%)
+    trailing_stop_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Current calculated trailing stop price
+    highest_price_since_entry: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Track highest price for LONG positions
+    lowest_price_since_entry: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # Track lowest price for SHORT positions
+
     # Profit booking rules (percentage-based)
     profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 

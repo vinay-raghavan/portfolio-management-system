@@ -8,6 +8,7 @@ import { formatPercent, cn } from '@/lib/utils';
 import { useTradingStore, useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
 import { ProfitBookingDialog } from './ProfitBookingDialog';
+import { TrailingStopDialog } from './TrailingStopDialog';
 import { PositionActionsMenu, toUnifiedPosition } from '@/components/shared';
 import type { Position } from '@/types';
 
@@ -23,6 +24,7 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortField, setSortField] = useState<SortField>('market_value');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [profitBookingPosition, setProfitBookingPosition] = useState<Position | null>(null);
+  const [trailingStopPosition, setTrailingStopPosition] = useState<Position | null>(null);
   const router = useRouter();
   const { quickBuy } = useTradingStore();
   const { setSelectedSymbol } = useUIStore();
@@ -175,6 +177,7 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
                             position={toUnifiedPosition(position)}
                             context="portfolio"
                             onProfitBookingClick={() => setProfitBookingPosition(position)}
+                            onTrailingStopClick={() => setTrailingStopPosition(position)}
                             onAddClick={() => quickBuy(position.symbol)}
                           />
                         </div>
@@ -191,6 +194,11 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
         position={profitBookingPosition}
         open={!!profitBookingPosition}
         onOpenChange={(open) => !open && setProfitBookingPosition(null)}
+      />
+      <TrailingStopDialog
+        position={trailingStopPosition}
+        open={!!trailingStopPosition}
+        onOpenChange={(open) => !open && setTrailingStopPosition(null)}
       />
     </Card>
   );

@@ -1,6 +1,9 @@
 """Trading API routes."""
 
+from decimal import Decimal
+
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.data.service import MarketDataService
@@ -8,6 +11,34 @@ from app.modules.trading.schemas import OrderCreate, OrderListResponse, OrderRes
 from app.modules.trading.service import OrderValidationError, TradingService
 
 router = APIRouter()
+
+
+# Schema for position with SL/TP data
+class PositionWithSLTP(BaseModel):
+    """Position data for SL/TP/Trailing Stop monitoring."""
+
+    id: str
+    user_id: str
+    symbol: str
+    quantity: Decimal
+    avg_cost: Decimal
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    trailing_stop_enabled: bool = False
+    trailing_stop_pct: Decimal | None = None
+    trailing_stop_price: Decimal | None = None
+    highest_price_since_entry: Decimal | None = None
+    lowest_price_since_entry: Decimal | None = None
+    profit_booking_rules: dict | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class TrailingStopPriceUpdate(BaseModel):
+    """Request to update trailing stop price for a position."""
+
+    current_price: Decimal
+    is_long: bool = True
 
 
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
@@ -119,3 +150,66 @@ async def process_amo_orders(
     service = TradingService(db)
     result = await service.process_all_amo_orders()
     return result
+
+
+# ============== SL/TP Monitoring Endpoints (Internal) ==============
+
+
+@router.get("/positions-with-sl-tp", response_model=list[PositionWithSLTP])
+async def get_positions_with_sl_tp(
+    db: DbSession,
+) -> list[PositionWithSLTP]:
+    """Get all positions that have SL/TP, trailing stop, or profit booking rules set.
+
+    This is an internal endpoint used by the Celery worker for SL/TP monitoring.
+    Returns positions for all users that need to be monitored.
+    """
+    from sqlalchemy import or_, select
+
+    from app.modules.portfolio.models import Position
+
+    # Get all positions with SL/TP set, trailing stop enabled, or profit booking rules
+    query = select(Position).where(
+        Position.quantity > 0,
+        or_(
+            Position.stop_loss.isnot(None),
+            Position.take_profit.isnot(None),
+            Position.trailing_stop_enabled == True,  # noqa: E712
+            Position.profit_booking_rules.isnot(None),
+        ),
+    )
+    result = await db.execute(query)
+    positions = result.scalars().all()
+
+    return [PositionWithSLTP.model_validate(p) for p in positions]
+
+
+@router.patch("/positions/{position_id}/trailing-stop-price")
+async def update_trailing_stop_price(
+    db: DbSession,
+    position_id: str,
+    data: TrailingStopPriceUpdate,
+) -> dict:
+    """Update the trailing stop price for a position based on current market price.
+
+    This is an internal endpoint used by the Celery worker.
+    It updates the trailing stop price (and highest/lowest prices) when the market
+    price moves favorably.
+    """
+    from app.modules.portfolio.service import PortfolioService
+
+    service = PortfolioService(db)
+    position = await service.update_trailing_stop_price(
+        position_id, data.current_price, data.is_long
+    )
+
+    if position:
+        await db.commit()
+        return {
+            "updated": True,
+            "trailing_stop_price": str(position.trailing_stop_price),
+            "highest_price": str(position.highest_price_since_entry),
+            "lowest_price": str(position.lowest_price_since_entry),
+        }
+
+    return {"updated": False}

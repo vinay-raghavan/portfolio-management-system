@@ -75,6 +75,39 @@ class ProfitBookingRules(BaseModel):
     )
 
 
+class TrailingStopConfig(BaseModel):
+    """Schema for trailing stop configuration response."""
+
+    enabled: bool = Field(default=False, description="Whether trailing stop is enabled")
+    percentage: Decimal | None = Field(
+        None,
+        ge=Decimal("0.001"),
+        le=Decimal("0.50"),
+        description="Trailing stop percentage (0.01 = 1%, max 50%)",
+    )
+    current_stop_price: Decimal | None = Field(
+        None, description="Current calculated trailing stop price"
+    )
+    highest_price: Decimal | None = Field(
+        None, description="Highest price since entry (for LONG positions)"
+    )
+    lowest_price: Decimal | None = Field(
+        None, description="Lowest price since entry (for SHORT positions)"
+    )
+
+
+class TrailingStopUpdate(BaseModel):
+    """Schema for updating trailing stop configuration."""
+
+    enabled: bool = Field(..., description="Whether to enable trailing stop")
+    percentage: Decimal | None = Field(
+        None,
+        gt=Decimal("0"),
+        le=Decimal("0.50"),
+        description="Trailing stop percentage (0.05 = 5%, max 50%). Required if enabled=True",
+    )
+
+
 class PositionResponse(BaseModel):
     """Schema for position response."""
 
@@ -89,6 +122,9 @@ class PositionResponse(BaseModel):
     market_value: Decimal | None = None
     unrealized_pnl: Decimal | None = None
     unrealized_pnl_pct: Decimal | None = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    trailing_stop: TrailingStopConfig | None = None
     profit_booking_rules: ProfitBookingRules | None = None
 
     model_config = {"from_attributes": True}

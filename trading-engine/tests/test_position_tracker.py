@@ -312,6 +312,12 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -348,6 +354,12 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -384,6 +396,12 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         # Mock both get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -421,6 +439,12 @@ class TestPositionTrackerUnit:
         position.realized_pnl = Decimal("0")
         position.exit_quantity = None
         position.profit_booking_rules = None
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [position]
@@ -471,6 +495,12 @@ class TestProfitBookingRules:
             "rules": [{"target_pct": 1, "quantity_pct": 25}],
             "executed": [],
         }
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         # Mock get_all_open_positions and get_open_position
         mock_result_all = MagicMock()
@@ -518,6 +548,12 @@ class TestProfitBookingRules:
             ],
             "executed": [1.0],  # 1% already executed
         }
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [position]
@@ -556,6 +592,12 @@ class TestProfitBookingRules:
             "rules": [{"target_pct": 1, "quantity_pct": 25}],
             "executed": [],
         }
+        # Trailing stop fields (disabled for this test)
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
 
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [position]

@@ -26,6 +26,7 @@ import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { AlgoProfitBookingDialog } from './AlgoProfitBookingDialog';
+import { AlgoTrailingStopDialog } from './AlgoTrailingStopDialog';
 import { PositionActionsMenu, toUnifiedAlgoPosition } from '@/components/shared';
 import type { StrategyPnL, AlgoDailyPnL, UnrealizedPnLPosition } from '@/types';
 
@@ -323,6 +324,7 @@ function UnrealizedPositionsTable({
   totalUnrealized: number;
 }) {
   const [profitBookingPosition, setProfitBookingPosition] = useState<UnrealizedPnLPosition | null>(null);
+  const [trailingStopPosition, setTrailingStopPosition] = useState<UnrealizedPnLPosition | null>(null);
   return (
     <Card>
       <CardHeader>
@@ -378,6 +380,7 @@ function UnrealizedPositionsTable({
                       position={toUnifiedAlgoPosition(p)}
                       context="algo"
                       onProfitBookingClick={() => setProfitBookingPosition(p)}
+                      onTrailingStopClick={() => setTrailingStopPosition(p)}
                     />
                   </TableCell>
                 </TableRow>
@@ -390,6 +393,11 @@ function UnrealizedPositionsTable({
         position={profitBookingPosition}
         open={!!profitBookingPosition}
         onOpenChange={(open) => !open && setProfitBookingPosition(null)}
+      />
+      <AlgoTrailingStopDialog
+        position={trailingStopPosition}
+        open={!!trailingStopPosition}
+        onOpenChange={(open) => !open && setTrailingStopPosition(null)}
       />
     </Card>
   );

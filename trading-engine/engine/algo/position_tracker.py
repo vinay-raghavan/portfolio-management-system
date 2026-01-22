@@ -363,6 +363,50 @@ class PositionTracker:
         )
         return result, stats
 
+    async def _update_trailing_stop(self, position: AlgoPosition, current_price: Decimal) -> bool:
+        """Update trailing stop price based on current market price.
+
+        For LONG positions: if current price > highest, update highest and recalculate stop.
+        For SHORT positions: if current price < lowest, update lowest and recalculate stop.
+
+        Returns True if trailing stop was updated.
+        """
+        if not position.trailing_stop_enabled or not position.trailing_stop_pct:
+            return False
+
+        updated = False
+        is_long = position.side == PositionSide.LONG
+
+        if is_long:
+            # For LONG positions: trailing stop moves up when price moves up
+            if (
+                position.highest_price_since_entry is None
+                or current_price > position.highest_price_since_entry
+            ):
+                position.highest_price_since_entry = current_price
+                new_stop = current_price * (Decimal("1") - position.trailing_stop_pct)
+                # Only update if new stop is higher than current stop (never lower)
+                if position.trailing_stop_price is None or new_stop > position.trailing_stop_price:
+                    position.trailing_stop_price = new_stop
+                    updated = True
+        else:
+            # For SHORT positions: trailing stop moves down when price moves down
+            if (
+                position.lowest_price_since_entry is None
+                or current_price < position.lowest_price_since_entry
+            ):
+                position.lowest_price_since_entry = current_price
+                new_stop = current_price * (Decimal("1") + position.trailing_stop_pct)
+                # Only update if new stop is lower than current stop (never higher)
+                if position.trailing_stop_price is None or new_stop < position.trailing_stop_price:
+                    position.trailing_stop_price = new_stop
+                    updated = True
+
+        if updated:
+            await self.db.flush()
+
+        return updated
+
     async def check_stop_loss_take_profit(
         self,
         strategy_id: str,
@@ -391,17 +435,34 @@ class PositionTracker:
             if not current_price:
                 continue
 
+            # Update trailing stop price before checking SL
+            if position.trailing_stop_enabled:
+                await self._update_trailing_stop(position, current_price)
+
             should_close = False
             close_reason = ""
 
-            # Check stop-loss (only for fully open positions)
-            if position.status == PositionStatus.OPEN and position.stop_loss:
-                if position.side == PositionSide.LONG and current_price <= position.stop_loss:
+            # Determine effective stop loss:
+            # - If trailing stop is enabled, use trailing_stop_price
+            # - Otherwise, use fixed stop_loss
+            effective_stop = (
+                position.trailing_stop_price
+                if position.trailing_stop_enabled and position.trailing_stop_price
+                else position.stop_loss
+            )
+
+            # Check stop-loss / trailing stop (only for fully open positions)
+            if position.status == PositionStatus.OPEN and effective_stop:
+                if position.side == PositionSide.LONG and current_price <= effective_stop:
                     should_close = True
-                    close_reason = "stop-loss"
-                elif position.side == PositionSide.SHORT and current_price >= position.stop_loss:
+                    close_reason = (
+                        "trailing-stop-loss" if position.trailing_stop_enabled else "stop-loss"
+                    )
+                elif position.side == PositionSide.SHORT and current_price >= effective_stop:
                     should_close = True
-                    close_reason = "stop-loss"
+                    close_reason = (
+                        "trailing-stop-loss" if position.trailing_stop_enabled else "stop-loss"
+                    )
 
             # Check take-profit (only for fully open positions)
             if not should_close and position.status == PositionStatus.OPEN and position.take_profit:
@@ -416,7 +477,7 @@ class PositionTracker:
                 logger.info(
                     f"Closing position {position.symbol} due to {close_reason}: "
                     f"entry={position.entry_price}, current={current_price}, "
-                    f"sl={position.stop_loss}, tp={position.take_profit}"
+                    f"effective_stop={effective_stop}, tp={position.take_profit}"
                 )
                 result = await self.close_position(
                     strategy_id,

@@ -69,6 +69,19 @@ export interface ProfitBookingRules {
   executed: number[];
 }
 
+export interface TrailingStopConfig {
+  enabled: boolean;
+  percentage: number | null;
+  current_stop_price: number | null;
+  highest_price: number | null;
+  lowest_price: number | null;
+}
+
+export interface TrailingStopUpdate {
+  enabled: boolean;
+  percentage?: number | null;
+}
+
 export interface Position {
   id: string;
   portfolio_id?: string | null;
@@ -81,6 +94,9 @@ export interface Position {
   market_value: number | null;
   unrealized_pnl: number | null;
   unrealized_pnl_pct: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  trailing_stop?: TrailingStopConfig | null;
   sector?: string;
   profit_booking_rules?: ProfitBookingRules | null;
 }
@@ -842,6 +858,7 @@ export interface AlgoPosition {
   is_winner: boolean | null;
   stop_loss: number | null;
   take_profit: number | null;
+  trailing_stop?: TrailingStopConfig | null;
   profit_booking_rules?: ProfitBookingRules | null;
   created_at: string;
   updated_at: string;

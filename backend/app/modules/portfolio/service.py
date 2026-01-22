@@ -17,6 +17,8 @@ from app.modules.portfolio.schemas import (
     PortfolioUpdate,
     PositionResponse,
     ProfitBookingRules,
+    TrailingStopConfig,
+    TrailingStopUpdate,
 )
 
 
@@ -531,3 +533,118 @@ class PortfolioService:
         await self.db.refresh(position)
 
         return ProfitBookingRules.model_validate(position.profit_booking_rules)
+
+    # ============ Trailing Stop Management ============
+
+    async def get_trailing_stop_config(
+        self, user_id: str, position_id: str
+    ) -> TrailingStopConfig | None:
+        """Get trailing stop configuration for a position."""
+        result = await self.db.execute(
+            select(Position).where(Position.id == position_id, Position.user_id == user_id)
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        return TrailingStopConfig(
+            enabled=position.trailing_stop_enabled,
+            percentage=position.trailing_stop_pct,
+            current_stop_price=position.trailing_stop_price,
+            highest_price=position.highest_price_since_entry,
+            lowest_price=position.lowest_price_since_entry,
+        )
+
+    async def update_trailing_stop(
+        self, user_id: str, position_id: str, config: TrailingStopUpdate
+    ) -> TrailingStopConfig | None:
+        """Update trailing stop configuration for a position."""
+        result = await self.db.execute(
+            select(Position).where(Position.id == position_id, Position.user_id == user_id)
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        # Validate: if enabling, percentage must be provided
+        if config.enabled and not config.percentage:
+            raise ValueError("Trailing stop percentage is required when enabling trailing stop")
+
+        # Update the position fields
+        position.trailing_stop_enabled = config.enabled
+        position.trailing_stop_pct = config.percentage if config.enabled else None
+
+        if config.enabled:
+            # Initialize highest/lowest price to current avg_cost (entry price)
+            position.highest_price_since_entry = position.avg_cost
+            position.lowest_price_since_entry = position.avg_cost
+            # Calculate initial trailing stop price (for LONG positions: below entry)
+            # For now, we assume LONG positions (DELIVERY = LONG by convention)
+            position.trailing_stop_price = position.avg_cost * (Decimal("1") - config.percentage)
+        else:
+            # Clear trailing stop data when disabled
+            position.trailing_stop_price = None
+            position.highest_price_since_entry = None
+            position.lowest_price_since_entry = None
+
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        return TrailingStopConfig(
+            enabled=position.trailing_stop_enabled,
+            percentage=position.trailing_stop_pct,
+            current_stop_price=position.trailing_stop_price,
+            highest_price=position.highest_price_since_entry,
+            lowest_price=position.lowest_price_since_entry,
+        )
+
+    async def update_trailing_stop_price(
+        self, position_id: str, current_price: Decimal, is_long: bool = True
+    ) -> Position | None:
+        """Update trailing stop price based on current market price.
+
+        For LONG positions: if current price > highest, update highest and recalculate stop.
+        For SHORT positions: if current price < lowest, update lowest and recalculate stop.
+
+        Returns the updated position, or None if no update was needed.
+        """
+        result = await self.db.execute(select(Position).where(Position.id == position_id))
+        position = result.scalar_one_or_none()
+
+        if not position or not position.trailing_stop_enabled or not position.trailing_stop_pct:
+            return None
+
+        updated = False
+
+        if is_long:
+            # For LONG positions: trailing stop moves up when price moves up
+            if (
+                position.highest_price_since_entry is None
+                or current_price > position.highest_price_since_entry
+            ):
+                position.highest_price_since_entry = current_price
+                new_stop = current_price * (Decimal("1") - position.trailing_stop_pct)
+                # Only update if new stop is higher than current stop (never lower)
+                if position.trailing_stop_price is None or new_stop > position.trailing_stop_price:
+                    position.trailing_stop_price = new_stop
+                    updated = True
+        else:
+            # For SHORT positions: trailing stop moves down when price moves down
+            if (
+                position.lowest_price_since_entry is None
+                or current_price < position.lowest_price_since_entry
+            ):
+                position.lowest_price_since_entry = current_price
+                new_stop = current_price * (Decimal("1") + position.trailing_stop_pct)
+                # Only update if new stop is lower than current stop (never higher)
+                if position.trailing_stop_price is None or new_stop < position.trailing_stop_price:
+                    position.trailing_stop_price = new_stop
+                    updated = True
+
+        if updated:
+            await self.db.flush()
+            await self.db.refresh(position)
+
+        return position if updated else None

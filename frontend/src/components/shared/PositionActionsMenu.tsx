@@ -7,6 +7,7 @@ import {
   Target,
   XCircle,
   TrendingUp,
+  TrendingDown,
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ interface PositionActionsMenuProps {
   position: UnifiedPosition;
   context: 'portfolio' | 'algo';
   onProfitBookingClick?: () => void;
+  onTrailingStopClick?: () => void;
   onAddClick?: () => void;
 }
 
@@ -60,6 +62,7 @@ export function PositionActionsMenu({
   position,
   context,
   onProfitBookingClick,
+  onTrailingStopClick,
   onAddClick,
 }: PositionActionsMenuProps) {
   const { toast } = useToast();
@@ -155,14 +158,19 @@ export function PositionActionsMenu({
             <Target className="mr-2 h-4 w-4" />
             Set Profit Booking
           </DropdownMenuItem>
-          
+
+          <DropdownMenuItem onClick={onTrailingStopClick}>
+            <TrendingDown className="mr-2 h-4 w-4" />
+            Trailing Stop Loss
+          </DropdownMenuItem>
+
           {context === 'portfolio' && onAddClick && (
             <DropdownMenuItem onClick={onAddClick}>
               <TrendingUp className="mr-2 h-4 w-4" />
               Add to Position
             </DropdownMenuItem>
           )}
-          
+
           <DropdownMenuSeparator />
           
           <DropdownMenuItem
