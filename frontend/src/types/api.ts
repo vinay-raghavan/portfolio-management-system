@@ -593,6 +593,10 @@ export interface AlgoStrategy {
   overall_profit_target: number | null;
   profit_cutoff_action: ProfitCutoffAction;
   is_paper_trading: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled: boolean;
+  default_trailing_stop_pct: number | null;
+  default_profit_booking_rules: ProfitBookingRules | null;
   last_run_at: string | null;
   next_run_at: string | null;
   total_trades: number;
@@ -622,6 +626,10 @@ export interface AlgoStrategyCreate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
 }
 
 export interface AlgoStrategyUpdate {
@@ -643,6 +651,10 @@ export interface AlgoStrategyUpdate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
 }
 
 export interface AlgoOrderDetail {
