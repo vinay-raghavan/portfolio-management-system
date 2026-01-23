@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -19,7 +19,8 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
-import { ErrorBoundary } from '@/components/shared';
+import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef } from '@/components/shared';
+import { useKeyboardShortcuts } from '@/hooks';
 import {
   Tooltip,
   TooltipContent,
@@ -28,15 +29,15 @@ import {
 } from '@/components/ui/tooltip';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
-  { name: 'Analysis', href: '/analysis', icon: LineChart },
-  { name: 'Signals', href: '/signals', icon: Zap },
-  { name: 'Algo Trading', href: '/algo', icon: Bot },
-  { name: 'Backtest', href: '/backtest', icon: FlaskConical },
-  { name: 'Orders', href: '/orders', icon: ListOrdered },
-  { name: 'Watchlist', href: '/watchlist', icon: Star },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
+  { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
+  { name: 'Analysis', href: '/analysis', icon: LineChart, shortcut: 'G A' },
+  { name: 'Signals', href: '/signals', icon: Zap, shortcut: 'G S' },
+  { name: 'Algo Trading', href: '/algo', icon: Bot, shortcut: 'G T' },
+  { name: 'Backtest', href: '/backtest', icon: FlaskConical, shortcut: 'G B' },
+  { name: 'Orders', href: '/orders', icon: ListOrdered, shortcut: 'G O' },
+  { name: 'Watchlist', href: '/watchlist', icon: Star, shortcut: 'G W' },
+  { name: 'Settings', href: '/settings', icon: Settings, shortcut: 'G ,' },
 ];
 
 export default function DashboardLayout({
@@ -47,9 +48,17 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const [isExpanded, setIsExpanded] = useState(false);
+  const helpModalRef = useRef<KeyboardShortcutsHelpRef>(null);
+  const { registerHelpModal } = useKeyboardShortcuts(true);
+
+  // Register the help modal with the keyboard shortcuts hook
+  useEffect(() => {
+    registerHelpModal(helpModalRef.current);
+  }, [registerHelpModal]);
 
   return (
     <TooltipProvider delayDuration={0}>
+      <KeyboardShortcutsHelp ref={helpModalRef} />
       <div className="flex h-screen">
         {/* Sidebar */}
         <aside
@@ -104,8 +113,11 @@ export default function DashboardLayout({
                     <TooltipTrigger asChild>
                       {linkContent}
                     </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {item.name}
+                    <TooltipContent side="right" className="flex items-center gap-2">
+                      <span>{item.name}</span>
+                      <kbd className="ml-1 inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                        {item.shortcut}
+                      </kbd>
                     </TooltipContent>
                   </Tooltip>
                 );
