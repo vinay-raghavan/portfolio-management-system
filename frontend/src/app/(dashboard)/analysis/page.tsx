@@ -9,10 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { CandlestickChart, DrawingToolbar } from '@/components/charts';
+import { QuickTradePanel } from '@/components/trading';
 import { marketDataApi, analysisApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
 import { formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
-import { useUIStore } from '@/store';
+import { useUIStore, useTradingStore } from '@/store';
 import { useCurrency } from '@/hooks';
 
 const TIMEFRAMES = [
@@ -252,14 +253,33 @@ export default function AnalysisPage() {
                 {stockInfo?.name && (
                   <p className="text-muted-foreground mb-2">{stockInfo.name}</p>
                 )}
-                <div className="flex items-baseline gap-4">
-                  <p className="text-3xl font-bold">{formatPrice(quoteData?.price ?? stockInfo?.current_price ?? 0)}</p>
-                  {quoteData && (
-                    <div className={cn('text-lg font-medium', (quoteData.change_pct ?? 0) >= 0 ? 'text-profit' : 'text-loss')}>
-                      {(quoteData.change ?? 0) >= 0 ? '+' : ''}{formatPrice(quoteData.change ?? 0)}
-                      {' '}({formatPercent(quoteData.change_pct ?? 0)})
-                    </div>
-                  )}
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-baseline gap-4">
+                    <p className="text-3xl font-bold">{formatPrice(quoteData?.price ?? stockInfo?.current_price ?? 0)}</p>
+                    {quoteData && (
+                      <div className={cn('text-lg font-medium', (quoteData.change_pct ?? 0) >= 0 ? 'text-profit' : 'text-loss')}>
+                        {(quoteData.change ?? 0) >= 0 ? '+' : ''}{formatPrice(quoteData.change ?? 0)}
+                        {' '}({formatPercent(quoteData.change_pct ?? 0)})
+                      </div>
+                    )}
+                  </div>
+                  {/* Quick Trade Buttons */}
+                  <div className="flex gap-2 ml-auto md:ml-4">
+                    <Button
+                      size="sm"
+                      className="bg-profit hover:bg-profit/90"
+                      onClick={() => useTradingStore.getState().quickBuy(currentSymbol)}
+                    >
+                      Buy
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-loss hover:bg-loss/90"
+                      onClick={() => useTradingStore.getState().quickSell(currentSymbol)}
+                    >
+                      Sell
+                    </Button>
+                  </div>
                 </div>
                 {stockInfo && (
                   <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
@@ -506,6 +526,9 @@ export default function AnalysisPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Quick Trade Panel */}
+      <QuickTradePanel symbol={currentSymbol} />
     </div>
   );
 }
