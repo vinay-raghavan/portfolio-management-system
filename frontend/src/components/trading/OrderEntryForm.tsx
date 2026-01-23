@@ -11,6 +11,7 @@ import { tradingApi } from '@/lib/api';
 import { useQuote, useCurrency } from '@/hooks';
 import { useTradingStore, useNotificationStore } from '@/store';
 import { safeToFixed, cn } from '@/lib/utils';
+import { TemplateSelector } from './TemplateSelector';
 import type { OrderSide, OrderType, ProductType, OrderCreate } from '@/types';
 
 interface OrderEntryFormProps {
@@ -94,6 +95,9 @@ export function OrderEntryForm({ onSuccess, onConfirm }: OrderEntryFormProps) {
         <CardTitle>Place Order</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Template Selector */}
+        <TemplateSelector />
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Buy/Sell Toggle */}
           <div className="grid grid-cols-2 gap-2">

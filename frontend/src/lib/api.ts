@@ -20,6 +20,11 @@ import type {
   Order,
   OrderListResponse,
   OrderCreate,
+  OrderTemplate,
+  OrderTemplateCreate,
+  OrderTemplateUpdate,
+  OrderTemplateListResponse,
+  OrderFromTemplateExecute,
   StockQuote,
   StockInfo,
   HistoricalDataResponse,
@@ -136,6 +141,22 @@ export const tradingApi = {
     api.get<Order>(`/orders/${orderId}`),
   cancelOrder: (orderId: string) =>
     api.delete<{ message: string }>(`/orders/${orderId}`),
+};
+
+// Order Templates API
+export const templateApi = {
+  getTemplates: (favoritesOnly?: boolean) =>
+    api.get<OrderTemplateListResponse>('/orders/templates', { params: { favorites_only: favoritesOnly } }),
+  getTemplate: (id: string) =>
+    api.get<OrderTemplate>(`/orders/templates/${id}`),
+  createTemplate: (data: OrderTemplateCreate) =>
+    api.post<OrderTemplate>('/orders/templates', data),
+  updateTemplate: (id: string, data: OrderTemplateUpdate) =>
+    api.put<OrderTemplate>(`/orders/templates/${id}`, data),
+  deleteTemplate: (id: string) =>
+    api.delete<{ message: string }>(`/orders/templates/${id}`),
+  executeTemplate: (id: string, data: OrderFromTemplateExecute) =>
+    api.post<Order>(`/orders/templates/${id}/execute`, data),
 };
 
 // Market Data API

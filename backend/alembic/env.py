@@ -15,7 +15,7 @@ from app.core.database import Base
 from app.modules.auth.models import User  # noqa: F401
 from app.modules.instruments.models import Instrument  # noqa: F401
 from app.modules.portfolio.models import Position, Trade  # noqa: F401
-from app.modules.trading.models import Order  # noqa: F401
+from app.modules.trading.models import Order, OrderTemplate  # noqa: F401
 from app.modules.watchlist.models import Watchlist, WatchlistItem  # noqa: F401
 
 # Alembic Config object

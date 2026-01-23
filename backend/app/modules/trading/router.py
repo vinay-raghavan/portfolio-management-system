@@ -7,7 +7,16 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.data.service import MarketDataService
-from app.modules.trading.schemas import OrderCreate, OrderListResponse, OrderResponse
+from app.modules.trading.schemas import (
+    OrderCreate,
+    OrderFromTemplateCreate,
+    OrderListResponse,
+    OrderResponse,
+    OrderTemplateCreate,
+    OrderTemplateListResponse,
+    OrderTemplateResponse,
+    OrderTemplateUpdate,
+)
 from app.modules.trading.service import OrderValidationError, TradingService
 
 router = APIRouter()
@@ -213,3 +222,119 @@ async def update_trailing_stop_price(
         }
 
     return {"updated": False}
+
+
+# ============== Order Template Endpoints ==============
+
+
+@router.post("/templates", response_model=OrderTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_template(
+    template_data: OrderTemplateCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> OrderTemplateResponse:
+    """Create a new order template."""
+    service = TradingService(db)
+    template = await service.create_template(current_user.id, template_data)
+    return OrderTemplateResponse.model_validate(template)
+
+
+@router.get("/templates", response_model=OrderTemplateListResponse)
+async def get_templates(
+    db: DbSession,
+    current_user: CurrentUser,
+    favorites_only: bool = Query(False),
+) -> OrderTemplateListResponse:
+    """Get all order templates for the current user."""
+    service = TradingService(db)
+    templates, total_count = await service.get_templates(current_user.id, favorites_only)
+    return OrderTemplateListResponse(
+        templates=[OrderTemplateResponse.model_validate(t) for t in templates],
+        total_count=total_count,
+    )
+
+
+@router.get("/templates/{template_id}", response_model=OrderTemplateResponse)
+async def get_template(
+    template_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> OrderTemplateResponse:
+    """Get a single order template."""
+    service = TradingService(db)
+    template = await service.get_template(current_user.id, template_id)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+    return OrderTemplateResponse.model_validate(template)
+
+
+@router.put("/templates/{template_id}", response_model=OrderTemplateResponse)
+async def update_template(
+    template_id: str,
+    template_data: OrderTemplateUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> OrderTemplateResponse:
+    """Update an order template."""
+    service = TradingService(db)
+    template = await service.update_template(current_user.id, template_id, template_data)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+    return OrderTemplateResponse.model_validate(template)
+
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_template(
+    template_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """Delete an order template."""
+    service = TradingService(db)
+    deleted = await service.delete_template(current_user.id, template_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found",
+        )
+
+
+@router.post("/templates/{template_id}/execute", response_model=OrderResponse)
+async def execute_template(
+    template_id: str,
+    data: OrderFromTemplateCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> OrderResponse:
+    """Execute an order from a template.
+
+    Creates and executes an order based on the template settings.
+    SL/TP are calculated from percentages using the provided current_price.
+    """
+    from app.modules.trading.service import OrderValidationError
+
+    service = TradingService(db)
+    try:
+        order = await service.execute_template(
+            user_id=current_user.id,
+            template_id=template_id,
+            current_price=data.current_price,
+            quantity_override=data.quantity_override,
+        )
+        return OrderResponse.model_validate(order)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except OrderValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.detail,
+        )
