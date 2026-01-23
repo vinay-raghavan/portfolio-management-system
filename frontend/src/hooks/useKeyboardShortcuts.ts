@@ -156,6 +156,9 @@ export function useKeyboardShortcuts(enabled: boolean = true) {
           case 'a':
             router.push('/analysis');
             break;
+          case 'c':
+            router.push('/charts');
+            break;
           case 's':
             router.push('/signals');
             break;
@@ -234,6 +237,7 @@ export function getShortcutGroups(): ShortcutGroup[] {
         { keys: 'G then D', description: 'Go to Dashboard' },
         { keys: 'G then P', description: 'Go to Portfolio' },
         { keys: 'G then A', description: 'Go to Analysis' },
+        { keys: 'G then C', description: 'Go to Charts (Multi-View)' },
         { keys: 'G then S', description: 'Go to Signals' },
         { keys: 'G then O', description: 'Go to Orders' },
         { keys: 'G then W', description: 'Go to Watchlist' },
