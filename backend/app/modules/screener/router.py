@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, status
 from shared.providers.data import get_data_provider
 
 from app.api.deps import CurrentUser, DbSession
-from app.modules.data.service import get_user_data_provider
 from app.core.celery_client import celery_client
 from app.core.redis import get_redis
 from app.modules.algo.universe_service import (
@@ -15,6 +14,7 @@ from app.modules.algo.universe_service import (
     PREDEFINED_UNIVERSES,
     UniverseService,
 )
+from app.modules.data.service import get_user_data_provider
 from app.modules.screener.schemas import (
     CategoryPerformanceStats,
     CategoryRecommendations,
