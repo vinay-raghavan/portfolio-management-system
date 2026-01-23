@@ -90,14 +90,14 @@ export function WatchlistTable({ watchlistId }: WatchlistTableProps) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" role="table" aria-label="Watchlist symbols">
               <thead>
-                <tr className="border-b text-sm text-muted-foreground">
-                  <th className="text-left py-3 px-2">Symbol</th>
-                  <th className="text-right py-3 px-2">Price</th>
-                  <th className="text-right py-3 px-2">Change</th>
-                  <th className="text-right py-3 px-2">Change %</th>
-                  <th className="text-right py-3 px-2">Actions</th>
+                <tr className="border-b text-sm text-muted-foreground" role="row">
+                  <th className="text-left py-3 px-2" scope="col">Symbol</th>
+                  <th className="text-right py-3 px-2" scope="col">Price</th>
+                  <th className="text-right py-3 px-2" scope="col">Change</th>
+                  <th className="text-right py-3 px-2" scope="col">Change %</th>
+                  <th className="text-right py-3 px-2" scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -141,6 +141,7 @@ export function WatchlistTable({ watchlistId }: WatchlistTableProps) {
                             size="sm"
                             variant="ghost"
                             onClick={() => removeMutation.mutate(item.symbol)}
+                            aria-label={`Remove ${item.symbol} from watchlist`}
                           >
                             <X className="h-4 w-4" />
                           </Button>

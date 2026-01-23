@@ -136,13 +136,18 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
     <th
       className="text-left py-3 px-3 cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={() => handleSort(field)}
+      scope="col"
+      aria-sort={sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
       <div className="flex items-center gap-1">
         {children}
-        <ArrowUpDown className={cn(
-          'h-3 w-3',
-          sortField === field ? 'text-foreground' : 'text-muted-foreground'
-        )} />
+        <ArrowUpDown
+          className={cn(
+            'h-3 w-3',
+            sortField === field ? 'text-foreground' : 'text-muted-foreground'
+          )}
+          aria-hidden="true"
+        />
       </div>
     </th>
   );
@@ -176,17 +181,17 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" role="table" aria-label="Portfolio positions">
               <thead>
-                <tr className="border-b text-sm text-muted-foreground">
+                <tr className="border-b text-sm text-muted-foreground" role="row">
                   <SortHeader field="symbol">Symbol</SortHeader>
                   <SortHeader field="quantity">Qty</SortHeader>
-                  <th className="text-right py-3 px-3">Avg Cost</th>
-                  <th className="text-right py-3 px-3">Current</th>
+                  <th className="text-right py-3 px-3" scope="col">Avg Cost</th>
+                  <th className="text-right py-3 px-3" scope="col">Current</th>
                   <SortHeader field="market_value">Value</SortHeader>
                   <SortHeader field="unrealized_pnl">P&L</SortHeader>
                   <SortHeader field="unrealized_pnl_pct">P&L %</SortHeader>
-                  <th className="text-right py-3 px-3">Actions</th>
+                  <th className="text-right py-3 px-3" scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>

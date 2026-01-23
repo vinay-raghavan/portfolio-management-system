@@ -115,6 +115,7 @@ export function AlertList() {
                       variant="ghost"
                       size="sm"
                       onClick={() => toggleMutation.mutate({ id: alert.id, enabled: alert.status === 'DISABLED' })}
+                      aria-label={alert.status === 'DISABLED' ? `Enable alert for ${alert.symbol}` : `Disable alert for ${alert.symbol}`}
                     >
                       {alert.status === 'DISABLED' ? (
                         <Bell className="h-4 w-4" />
@@ -126,6 +127,7 @@ export function AlertList() {
                       variant="ghost"
                       size="sm"
                       onClick={() => deleteMutation.mutate(alert.id)}
+                      aria-label={`Delete alert for ${alert.symbol}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

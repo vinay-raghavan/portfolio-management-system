@@ -408,6 +408,7 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
                     className="h-7 w-7 border-destructive bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
                     onClick={() => setSquareOffDialog(true)}
                     disabled={squareOffMutation.isPending}
+                    aria-label="Exit all positions"
                   >
                     {squareOffMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

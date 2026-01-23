@@ -154,6 +154,7 @@ export function OrderBook({ statusFilter, pageSize = 10 }: OrderBookProps) {
                       size="sm"
                       onClick={() => cancelMutation.mutate(order.id)}
                       disabled={cancelMutation.isPending}
+                      aria-label={`Cancel ${order.side} order for ${order.symbol}`}
                     >
                       <X className="h-4 w-4" />
                     </Button>
