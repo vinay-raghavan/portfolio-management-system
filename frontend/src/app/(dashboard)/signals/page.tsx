@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Info,
   ShoppingCart,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,7 @@ import { signalsApi, Signal } from '@/lib/api';
 import { formatPercent, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
 import { useTradingStore } from '@/store';
+import { useToast } from '@/components/ui/use-toast';
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -50,6 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function SignalsPage() {
   const { format: formatPrice } = useCurrency();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [symbolFilter, setSymbolFilter] = useState('');
@@ -91,6 +94,7 @@ export default function SignalsPage() {
       signalsApi
         .getSignals(statusFilter || undefined, symbolFilter || undefined)
         .then((res) => res.data),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
   const { data: strategiesData } = useQuery({
@@ -103,9 +107,38 @@ export default function SignalsPage() {
   const generateMutation = useMutation({
     mutationFn: (params: { symbols: string[]; strategy_name?: string; timeframe?: string }) =>
       signalsApi.generateSignals(params),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['signals'] });
       setGenerateSymbols('');
+      toast({
+        title: 'Signals Generated',
+        description: `Generated ${data.data.signals_generated} trading signals`,
+      });
+    },
+    onError: (error: unknown) => {
+      toast({
+        variant: 'destructive',
+        title: 'Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate signals',
+      });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => signalsApi.cancelSignal(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['signals'] });
+      toast({
+        title: 'Signal Cancelled',
+        description: 'The signal has been cancelled',
+      });
+    },
+    onError: (error: unknown) => {
+      toast({
+        variant: 'destructive',
+        title: 'Cancel Failed',
+        description: error instanceof Error ? error.message : 'Failed to cancel signal',
+      });
     },
   });
 
@@ -349,20 +382,35 @@ export default function SignalsPage() {
                         </TableCell>
                         <TableCell>
                           {signal.status === 'ACTIVE' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className={cn(
-                                'h-7 text-xs',
-                                signal.signal_type === 'BUY'
-                                  ? 'border-profit text-profit hover:bg-profit hover:text-white'
-                                  : 'border-loss text-loss hover:bg-loss hover:text-white'
-                              )}
-                              onClick={(e) => handleTradeFromSignal(signal, e)}
-                            >
-                              <ShoppingCart className="h-3 w-3 mr-1" />
-                              Trade
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className={cn(
+                                  'h-7 text-xs',
+                                  signal.signal_type === 'BUY'
+                                    ? 'border-profit text-profit hover:bg-profit hover:text-white'
+                                    : 'border-loss text-loss hover:bg-loss hover:text-white'
+                                )}
+                                onClick={(e) => handleTradeFromSignal(signal, e)}
+                              >
+                                <ShoppingCart className="h-3 w-3 mr-1" />
+                                Trade
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelMutation.mutate(signal.id);
+                                }}
+                                disabled={cancelMutation.isPending}
+                                aria-label="Cancel signal"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -424,7 +472,7 @@ export default function SignalsPage() {
                                 </div>
                               )}
 
-                              {/* Trade Action Button */}
+                              {/* Trade Action Buttons */}
                               {signal.status === 'ACTIVE' && (
                                 <div className="flex items-center gap-4 pt-4 border-t">
                                   <Button
@@ -438,8 +486,20 @@ export default function SignalsPage() {
                                     <ShoppingCart className="h-4 w-4 mr-2" />
                                     Place {signal.signal_type} Order
                                   </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="border-destructive text-destructive hover:bg-destructive hover:text-white"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      cancelMutation.mutate(signal.id);
+                                    }}
+                                    disabled={cancelMutation.isPending}
+                                  >
+                                    <X className="h-4 w-4 mr-2" />
+                                    Cancel Signal
+                                  </Button>
                                   <span className="text-sm text-muted-foreground">
-                                    Opens order form pre-filled with signal data
+                                    Trade opens order form pre-filled with signal data
                                   </span>
                                 </div>
                               )}
