@@ -108,14 +108,15 @@ class AnalysisService:
                 return None
 
             # Convert OHLCV list to pandas DataFrame
+            # Note: Convert Decimal to float for ta library compatibility
             hist = pd.DataFrame(
                 [
                     {
-                        "Open": bar.open,
-                        "High": bar.high,
-                        "Low": bar.low,
-                        "Close": bar.close,
-                        "Volume": bar.volume or 0,
+                        "Open": float(bar.open),
+                        "High": float(bar.high),
+                        "Low": float(bar.low),
+                        "Close": float(bar.close),
+                        "Volume": int(bar.volume or 0),
                     }
                     for bar in ohlcv_list
                 ]
