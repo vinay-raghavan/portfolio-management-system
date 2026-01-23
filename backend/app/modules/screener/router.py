@@ -13,6 +13,7 @@ from app.modules.algo.universe_service import (
     UniverseService,
 )
 from app.modules.screener.schemas import (
+    CategoryPerformanceStats,
     CategoryRecommendations,
     CreateUniverseFromScreenerRequest,
     CreateUniverseFromScreenerResponse,
@@ -22,12 +23,14 @@ from app.modules.screener.schemas import (
     CustomScreenerUpdate,
     DailyRecommendationsResponse,
     FilterConfig,
+    OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
     ScreenerPresetRunRequest,
     ScreenerPresetsResponse,
     ScreenerRunRequest,
     ScreenerRunResponse,
+    UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
 from shared.providers.data import NSEDataProvider
@@ -658,6 +661,224 @@ async def refresh_screener_universe(
     finally:
         if redis:
             await redis.close()
+
+
+# ============== Performance Tracking Endpoints ==============
+
+
+@router.post("/recommendations/update-returns", response_model=UpdateReturnsResponse)
+async def update_recommendation_returns(
+    db: DbSession,
+) -> UpdateReturnsResponse:
+    """Update return metrics for past recommendations (internal endpoint).
+
+    Called by Celery task after market close to:
+    - Update 1-day returns for yesterday's recommendations
+    - Update 1-week returns for 1-week-old recommendations
+    - Update 1-month returns for 1-month-old recommendations
+    """
+    from datetime import date, timedelta
+    from sqlalchemy import select, and_
+
+    from app.modules.screener.models import DailyRecommendation
+
+    today = date.today()
+    updated_1d = 0
+    updated_1w = 0
+    updated_1m = 0
+    errors: list[str] = []
+
+    # Get recommendations that need 1-day update (from yesterday)
+    yesterday = today - timedelta(days=1)
+    result = await db.execute(
+        select(DailyRecommendation).where(
+            and_(
+                DailyRecommendation.date >= datetime.combine(yesterday, datetime.min.time()),
+                DailyRecommendation.date < datetime.combine(today, datetime.min.time()),
+                DailyRecommendation.return_1d == None,  # noqa: E711
+            )
+        )
+    )
+    recs_1d = result.scalars().all()
+
+    # Get recommendations that need 1-week update (from 7 days ago)
+    one_week_ago = today - timedelta(days=7)
+    result = await db.execute(
+        select(DailyRecommendation).where(
+            and_(
+                DailyRecommendation.date >= datetime.combine(one_week_ago, datetime.min.time()),
+                DailyRecommendation.date < datetime.combine(one_week_ago + timedelta(days=1), datetime.min.time()),
+                DailyRecommendation.return_1w == None,  # noqa: E711
+            )
+        )
+    )
+    recs_1w = result.scalars().all()
+
+    # Get recommendations that need 1-month update (from 30 days ago)
+    one_month_ago = today - timedelta(days=30)
+    result = await db.execute(
+        select(DailyRecommendation).where(
+            and_(
+                DailyRecommendation.date >= datetime.combine(one_month_ago, datetime.min.time()),
+                DailyRecommendation.date < datetime.combine(one_month_ago + timedelta(days=1), datetime.min.time()),
+                DailyRecommendation.return_1m == None,  # noqa: E711
+            )
+        )
+    )
+    recs_1m = result.scalars().all()
+
+    # Get current prices for all symbols
+    symbols = set()
+    for rec in recs_1d + recs_1w + recs_1m:
+        symbols.add(rec.symbol)
+
+    if not symbols:
+        return UpdateReturnsResponse(status="success", updated_1d=0, updated_1w=0, updated_1m=0)
+
+    # Fetch current prices
+    nse_provider = NSEDataProvider()
+    try:
+        price_map: dict[str, float] = {}
+        for symbol in symbols:
+            try:
+                quote = await nse_provider.get_quote(symbol)
+                if quote and quote.get("lastPrice"):
+                    price_map[symbol] = float(quote["lastPrice"])
+            except Exception as e:
+                errors.append(f"{symbol}: {str(e)}")
+
+        # Update 1-day returns
+        for rec in recs_1d:
+            if rec.symbol in price_map:
+                current_price = price_map[rec.symbol]
+                rec.price_1d = current_price
+                rec.return_1d = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+                updated_1d += 1
+
+        # Update 1-week returns
+        for rec in recs_1w:
+            if rec.symbol in price_map:
+                current_price = price_map[rec.symbol]
+                rec.price_1w = current_price
+                rec.return_1w = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+                updated_1w += 1
+
+        # Update 1-month returns
+        for rec in recs_1m:
+            if rec.symbol in price_map:
+                current_price = price_map[rec.symbol]
+                rec.price_1m = current_price
+                rec.return_1m = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+                updated_1m += 1
+
+        await db.commit()
+
+        return UpdateReturnsResponse(
+            status="success",
+            updated_1d=updated_1d,
+            updated_1w=updated_1w,
+            updated_1m=updated_1m,
+            errors=errors[:10],  # Limit error list
+        )
+
+    finally:
+        await nse_provider.close()
+
+
+@router.get("/performance", response_model=OverallPerformanceStats)
+async def get_screener_performance(
+    db: DbSession,
+    current_user: CurrentUser,
+    days: int = 30,
+) -> OverallPerformanceStats:
+    """Get screener performance statistics.
+
+    Aggregates win rates and average returns across all recommendation categories.
+    """
+    from datetime import timedelta
+    from sqlalchemy import select, func, and_
+
+    from app.modules.screener.models import DailyRecommendation
+
+    cutoff_date = datetime.now() - timedelta(days=days)
+
+    # Get all recommendations in the date range
+    result = await db.execute(
+        select(DailyRecommendation).where(
+            DailyRecommendation.date >= cutoff_date
+        ).order_by(DailyRecommendation.date.desc())
+    )
+    recommendations = result.scalars().all()
+
+    if not recommendations:
+        return OverallPerformanceStats(
+            total_recommendations=0,
+            unique_symbols=0,
+            categories=[],
+        )
+
+    # Calculate overall stats
+    unique_symbols = set(r.symbol for r in recommendations)
+    date_range_start = min(r.date for r in recommendations)
+    date_range_end = max(r.date for r in recommendations)
+
+    # Group by category
+    categories_data: dict[str, list] = {}
+    for rec in recommendations:
+        if rec.category not in categories_data:
+            categories_data[rec.category] = []
+        categories_data[rec.category].append(rec)
+
+    category_stats = []
+    all_returns_1d = []
+    all_returns_1w = []
+    all_returns_1m = []
+
+    for category, recs in categories_data.items():
+        returns_1d = [r.return_1d for r in recs if r.return_1d is not None]
+        returns_1w = [r.return_1w for r in recs if r.return_1w is not None]
+        returns_1m = [r.return_1m for r in recs if r.return_1m is not None]
+
+        all_returns_1d.extend(returns_1d)
+        all_returns_1w.extend(returns_1w)
+        all_returns_1m.extend(returns_1m)
+
+        # Find best picks
+        best_1d = max(recs, key=lambda r: r.return_1d or -float('inf')) if returns_1d else None
+        best_1w = max(recs, key=lambda r: r.return_1w or -float('inf')) if returns_1w else None
+        best_1m = max(recs, key=lambda r: r.return_1m or -float('inf')) if returns_1m else None
+
+        stats = CategoryPerformanceStats(
+            category=category,
+            total_recommendations=len(recs),
+            win_rate_1d=len([r for r in returns_1d if r > 0]) / len(returns_1d) * 100 if returns_1d else None,
+            win_rate_1w=len([r for r in returns_1w if r > 0]) / len(returns_1w) * 100 if returns_1w else None,
+            win_rate_1m=len([r for r in returns_1m if r > 0]) / len(returns_1m) * 100 if returns_1m else None,
+            avg_return_1d=sum(returns_1d) / len(returns_1d) if returns_1d else None,
+            avg_return_1w=sum(returns_1w) / len(returns_1w) if returns_1w else None,
+            avg_return_1m=sum(returns_1m) / len(returns_1m) if returns_1m else None,
+            best_pick_1d=best_1d.symbol if best_1d and best_1d.return_1d else None,
+            best_pick_1w=best_1w.symbol if best_1w and best_1w.return_1w else None,
+            best_pick_1m=best_1m.symbol if best_1m and best_1m.return_1m else None,
+            best_return_1d=best_1d.return_1d if best_1d else None,
+            best_return_1w=best_1w.return_1w if best_1w else None,
+            best_return_1m=best_1m.return_1m if best_1m else None,
+        )
+        category_stats.append(stats)
+
+    return OverallPerformanceStats(
+        total_recommendations=len(recommendations),
+        unique_symbols=len(unique_symbols),
+        date_range_start=date_range_start,
+        date_range_end=date_range_end,
+        categories=category_stats,
+        overall_win_rate_1d=len([r for r in all_returns_1d if r > 0]) / len(all_returns_1d) * 100 if all_returns_1d else None,
+        overall_win_rate_1w=len([r for r in all_returns_1w if r > 0]) / len(all_returns_1w) * 100 if all_returns_1w else None,
+        overall_win_rate_1m=len([r for r in all_returns_1m if r > 0]) / len(all_returns_1m) * 100 if all_returns_1m else None,
+        overall_avg_return_1d=sum(all_returns_1d) / len(all_returns_1d) if all_returns_1d else None,
+        overall_avg_return_1w=sum(all_returns_1w) / len(all_returns_1w) if all_returns_1w else None,
+        overall_avg_return_1m=sum(all_returns_1m) / len(all_returns_1m) if all_returns_1m else None,
+    )
 
 
 # Helper functions

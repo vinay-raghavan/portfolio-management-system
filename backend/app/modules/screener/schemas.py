@@ -248,3 +248,67 @@ class ScreenerAlertResponse(BaseModel):
     created_at: datetime
     last_run_at: datetime | None
 
+
+# ============== Performance Tracking Schemas ==============
+
+
+class RecommendationPerformanceItem(BaseModel):
+    """Performance data for a single recommendation."""
+
+    symbol: str
+    category: str
+    date: datetime
+    score: float
+    price_at_rec: float
+    price_1d: float | None = None
+    price_1w: float | None = None
+    price_1m: float | None = None
+    return_1d: float | None = None
+    return_1w: float | None = None
+    return_1m: float | None = None
+
+
+class CategoryPerformanceStats(BaseModel):
+    """Aggregated performance stats for a category."""
+
+    category: str
+    total_recommendations: int
+    win_rate_1d: float | None = None  # % of picks with positive 1d return
+    win_rate_1w: float | None = None
+    win_rate_1m: float | None = None
+    avg_return_1d: float | None = None
+    avg_return_1w: float | None = None
+    avg_return_1m: float | None = None
+    best_pick_1d: str | None = None
+    best_pick_1w: str | None = None
+    best_pick_1m: str | None = None
+    best_return_1d: float | None = None
+    best_return_1w: float | None = None
+    best_return_1m: float | None = None
+
+
+class OverallPerformanceStats(BaseModel):
+    """Overall screener performance stats."""
+
+    total_recommendations: int
+    unique_symbols: int
+    date_range_start: datetime | None = None
+    date_range_end: datetime | None = None
+    categories: list[CategoryPerformanceStats]
+    overall_win_rate_1d: float | None = None
+    overall_win_rate_1w: float | None = None
+    overall_win_rate_1m: float | None = None
+    overall_avg_return_1d: float | None = None
+    overall_avg_return_1w: float | None = None
+    overall_avg_return_1m: float | None = None
+
+
+class UpdateReturnsResponse(BaseModel):
+    """Response for update returns endpoint."""
+
+    status: str
+    updated_1d: int = 0
+    updated_1w: int = 0
+    updated_1m: int = 0
+    errors: list[str] = []
+

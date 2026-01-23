@@ -124,4 +124,9 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.screener.generate_daily_recommendations",
         "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
     },
+    # Update recommendation returns - after market close 4:00 PM IST (10:30 UTC)
+    "update-recommendation-returns": {
+        "task": "worker.tasks.screener.update_recommendation_returns",
+        "schedule": crontab(hour=10, minute=35),  # 4:05 PM IST = 10:35 UTC
+    },
 }

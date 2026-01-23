@@ -269,3 +269,47 @@ def generate_daily_recommendations(self) -> dict:
     logger.info(f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories")
     return result
 
+
+@celery_app.task(bind=True, name="worker.tasks.screener.update_recommendation_returns")
+def update_recommendation_returns(self) -> dict:
+    """Update return metrics for past recommendations.
+
+    This task runs daily after market close (4:00 PM IST / 10:30 UTC) to:
+    - Update 1-day returns for recommendations from yesterday
+    - Update 1-week returns for recommendations from 1 week ago
+    - Update 1-month returns for recommendations from 1 month ago
+
+    Uses the internal API to fetch current prices and update the database.
+    """
+    logger.info("Starting recommendation returns update")
+
+    endpoint = f"{BACKEND_API_URL}/api/v1/screener/recommendations/update-returns"
+
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(
+                endpoint,
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Update returns error: {response.status_code} - {response.text}")
+                return {
+                    "status": "error",
+                    "message": f"API returned {response.status_code}",
+                }
+
+            result = response.json()
+            logger.info(
+                f"Returns update complete: {result.get('updated_1d', 0)} 1d, "
+                f"{result.get('updated_1w', 0)} 1w, {result.get('updated_1m', 0)} 1m"
+            )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout updating recommendation returns")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error updating recommendation returns: {e}")
+        return {"status": "error", "message": str(e)}
+
