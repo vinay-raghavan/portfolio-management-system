@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
+import { ErrorBoundary } from '@/components/shared';
 import {
   Tooltip,
   TooltipContent,
@@ -165,7 +166,11 @@ export default function DashboardLayout({
             <GlobalSearch />
             <NotificationBell />
           </header>
-          <div className="p-8">{children}</div>
+          <div className="p-8">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
     </TooltipProvider>
