@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  ShoppingCart,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ import {
 import { signalsApi, Signal } from '@/lib/api';
 import { formatPercent, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
+import { useTradingStore } from '@/store';
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -65,6 +67,21 @@ export default function SignalsPage() {
         next.add(signalId);
       }
       return next;
+    });
+  };
+
+  // Trade from signal - opens order form pre-filled with signal data
+  const handleTradeFromSignal = (signal: Signal, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row expansion
+    const { openModal } = useTradingStore.getState();
+    openModal({
+      symbol: signal.symbol,
+      side: signal.signal_type === 'BUY' ? 'BUY' : 'SELL',
+      orderType: signal.entry_price ? 'LIMIT' : 'MARKET',
+      price: signal.entry_price ?? null,
+      stopLoss: signal.stop_loss ?? null,
+      takeProfit: signal.take_profit ?? null,
+      quantity: 1,
     });
   };
 
@@ -246,6 +263,7 @@ export default function SignalsPage() {
                   <TableHead>Take Profit</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Generated</TableHead>
+                  <TableHead className="w-24">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -329,10 +347,28 @@ export default function SignalsPage() {
                             {formatDate(signal.generated_at)}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          {signal.status === 'ACTIVE' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className={cn(
+                                'h-7 text-xs',
+                                signal.signal_type === 'BUY'
+                                  ? 'border-profit text-profit hover:bg-profit hover:text-white'
+                                  : 'border-loss text-loss hover:bg-loss hover:text-white'
+                              )}
+                              onClick={(e) => handleTradeFromSignal(signal, e)}
+                            >
+                              <ShoppingCart className="h-3 w-3 mr-1" />
+                              Trade
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                       {isExpanded && (
                         <TableRow key={`${signal.id}-details`} className="bg-muted/30">
-                          <TableCell colSpan={10} className="p-4">
+                          <TableCell colSpan={11} className="p-4">
                             <div className="space-y-4">
                               {/* Notes Section */}
                               {signal.notes && (
@@ -385,6 +421,26 @@ export default function SignalsPage() {
                                       </div>
                                     ))}
                                   </div>
+                                </div>
+                              )}
+
+                              {/* Trade Action Button */}
+                              {signal.status === 'ACTIVE' && (
+                                <div className="flex items-center gap-4 pt-4 border-t">
+                                  <Button
+                                    className={cn(
+                                      signal.signal_type === 'BUY'
+                                        ? 'bg-profit hover:bg-profit/90'
+                                        : 'bg-loss hover:bg-loss/90'
+                                    )}
+                                    onClick={(e) => handleTradeFromSignal(signal, e)}
+                                  >
+                                    <ShoppingCart className="h-4 w-4 mr-2" />
+                                    Place {signal.signal_type} Order
+                                  </Button>
+                                  <span className="text-sm text-muted-foreground">
+                                    Opens order form pre-filled with signal data
+                                  </span>
                                 </div>
                               )}
                             </div>
