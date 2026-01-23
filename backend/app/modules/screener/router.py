@@ -5,6 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.celery_client import celery_client
+from app.core.redis import get_redis
 from app.modules.algo.universe_service import (
     DYNAMIC_UNIVERSES,
     PREDEFINED_UNIVERSES,
@@ -27,6 +29,9 @@ from shared.providers.data import NSEDataProvider
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Threshold for async execution (large universes)
+ASYNC_UNIVERSE_THRESHOLD = 500
 
 
 @router.get("/presets", response_model=ScreenerPresetsResponse)
@@ -51,10 +56,13 @@ async def run_screener(
             detail=f"No symbols found for universe: {data.universe}",
         )
 
+    # Get Redis client for caching
+    redis = await get_redis()
+
     # Create data provider
     nse_provider = NSEDataProvider()
     try:
-        service = ScreenerService(db)
+        service = ScreenerService(db, redis=redis)
         result = await service.run_screener(
             user_id=current_user.id,
             symbols=symbols,
@@ -68,6 +76,46 @@ async def run_screener(
         return result
     finally:
         await nse_provider.close()
+
+
+@router.post("/run/async")
+async def run_screener_async(
+    data: ScreenerRunRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Queue a screener to run asynchronously for large universes.
+
+    Returns a task_id that can be used to check the status.
+    """
+    # Validate universe exists
+    symbols = await _resolve_universe(data.universe, db)
+    if not symbols:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No symbols found for universe: {data.universe}",
+        )
+
+    # Queue the task
+    task = celery_client.send_task(
+        "worker.tasks.screener.run_screener_async",
+        args=[
+            current_user.id,
+            data.universe,
+            [f.model_dump() for f in data.filters],
+            data.min_score,
+            data.top_n,
+            None,  # preset
+        ],
+    )
+
+    return {
+        "status": "queued",
+        "task_id": task.id,
+        "universe": data.universe,
+        "symbol_count": len(symbols),
+        "message": f"Screener queued for {len(symbols)} symbols",
+    }
 
 
 @router.post("/run/preset", response_model=ScreenerRunResponse)
@@ -91,9 +139,12 @@ async def run_preset_screener(
             detail=f"No symbols found for universe: {data.universe}",
         )
 
+    # Get Redis client for caching
+    redis = await get_redis()
+
     nse_provider = NSEDataProvider()
     try:
-        service = ScreenerService(db)
+        service = ScreenerService(db, redis=redis)
         result = await service.run_screener(
             user_id=current_user.id,
             symbols=symbols,
@@ -237,7 +288,8 @@ async def run_custom_screener(
     current_user: CurrentUser,
 ) -> ScreenerRunResponse:
     """Run a saved custom screener."""
-    service = ScreenerService(db)
+    redis = await get_redis()
+    service = ScreenerService(db, redis=redis)
     screener = await service.get_custom_screener(current_user.id, screener_id)
     if not screener:
         raise HTTPException(

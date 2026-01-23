@@ -1,10 +1,13 @@
 """Screener service for business logic."""
 
+import hashlib
+import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +36,50 @@ if TYPE_CHECKING:
     from app.providers.data import DataProvider
 
 logger = logging.getLogger(__name__)
+
+
+# Cache utilities
+def _generate_cache_key(
+    universe: str,
+    filters: list[FilterConfig],
+    min_score: float,
+    top_n: int,
+) -> str:
+    """Generate a cache key for screener results."""
+    filter_str = json.dumps([f.model_dump() for f in filters], sort_keys=True)
+    config_str = f"{universe}:{filter_str}:{min_score}:{top_n}"
+    hash_val = hashlib.md5(config_str.encode()).hexdigest()[:12]
+    return f"screener:results:{universe}:{hash_val}"
+
+
+def _is_market_hours() -> bool:
+    """Check if we're in Indian market hours (9:15 AM - 3:30 PM IST)."""
+    now = datetime.now(timezone.utc)
+    # IST is UTC+5:30
+    ist_hour = (now.hour + 5) % 24
+    ist_minute = now.minute + 30
+    if ist_minute >= 60:
+        ist_hour = (ist_hour + 1) % 24
+        ist_minute -= 60
+
+    # Market open: 9:15, Market close: 15:30
+    market_open = 9 * 60 + 15  # 555 minutes
+    market_close = 15 * 60 + 30  # 930 minutes
+    current_time = ist_hour * 60 + ist_minute
+
+    # Check weekday (0=Monday, 6=Sunday)
+    weekday = now.weekday()
+    if weekday >= 5:  # Weekend
+        return False
+
+    return market_open <= current_time <= market_close
+
+
+def _get_cache_ttl() -> int:
+    """Get cache TTL based on market hours."""
+    if _is_market_hours():
+        return 300  # 5 minutes during market hours
+    return 3600  # 1 hour outside market hours
 
 
 # Preset screener definitions
@@ -126,8 +173,9 @@ def get_filter_class(filter_type: FilterTypeEnum):
 class ScreenerService:
     """Service for screener operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
         self.db = db
+        self.redis = redis
 
     def _build_screener(
         self, filters: list[FilterConfig], data_provider: "DataProvider | None" = None
@@ -139,6 +187,37 @@ class ScreenerService:
             if filter_cls:
                 screener.add_filter(filter_cls(weight=fc.weight, **fc.params))
         return screener
+
+    async def _get_cached_results(
+        self, cache_key: str
+    ) -> ScreenerRunResponse | None:
+        """Get cached screener results from Redis."""
+        if not self.redis:
+            return None
+        try:
+            cached = await self.redis.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                logger.info(f"Cache hit for screener: {cache_key}")
+                return ScreenerRunResponse(**data)
+        except Exception as e:
+            logger.warning(f"Redis cache get error: {e}")
+        return None
+
+    async def _cache_results(
+        self, cache_key: str, response: ScreenerRunResponse
+    ) -> None:
+        """Cache screener results to Redis."""
+        if not self.redis:
+            return
+        try:
+            ttl = _get_cache_ttl()
+            # Convert to JSON-serializable dict
+            data = response.model_dump(mode="json")
+            await self.redis.setex(cache_key, ttl, json.dumps(data))
+            logger.info(f"Cached screener results: {cache_key} (TTL: {ttl}s)")
+        except Exception as e:
+            logger.warning(f"Redis cache set error: {e}")
 
     async def get_custom_screeners(self, user_id: str) -> list[CustomScreener]:
         """Get all custom screeners for a user."""
@@ -223,8 +302,29 @@ class ScreenerService:
         data_provider: "DataProvider | None" = None,
         preset: str | None = None,
         custom_screener_id: str | None = None,
+        use_cache: bool = True,
     ) -> ScreenerRunResponse:
-        """Run a screener on a list of symbols."""
+        """Run a screener on a list of symbols.
+
+        Args:
+            user_id: User running the screener
+            symbols: List of stock symbols to screen
+            filters: List of filter configurations
+            universe: Universe identifier
+            min_score: Minimum score threshold (0-100)
+            top_n: Maximum results to return
+            data_provider: Data provider for OHLCV data
+            preset: Preset name if using a preset screener
+            custom_screener_id: ID of saved custom screener
+            use_cache: Whether to use Redis caching
+        """
+        # Check cache first (only for preset screeners or when use_cache is True)
+        cache_key = _generate_cache_key(universe, filters, min_score, top_n)
+        if use_cache:
+            cached = await self._get_cached_results(cache_key)
+            if cached:
+                return cached
+
         start_time = time.time()
 
         screener = self._build_screener(filters, data_provider)
@@ -278,7 +378,7 @@ class ScreenerService:
 
         await self.db.flush()
 
-        return ScreenerRunResponse(
+        response = ScreenerRunResponse(
             run_id=run.id,
             status="completed",
             universe=universe,
@@ -289,6 +389,12 @@ class ScreenerService:
             executed_at=run.executed_at,
             duration_ms=duration_ms,
         )
+
+        # Cache results
+        if use_cache:
+            await self._cache_results(cache_key, response)
+
+        return response
 
     async def get_screener_run(self, user_id: str, run_id: str) -> ScreenerRun | None:
         """Get a specific screener run with results."""

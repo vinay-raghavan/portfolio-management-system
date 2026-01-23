@@ -20,6 +20,7 @@ celery_app = Celery(
         "worker.tasks.signals",
         "worker.tasks.backtest",
         "worker.tasks.algo",
+        "worker.tasks.screener",
     ],
 )
 
