@@ -17,6 +17,7 @@ from app.modules.screener.filters import (
     ConsolidationFilter,
     MomentumFilter,
     MovingAverageFilter,
+    SectorPerformanceFilter,
     VolumeFilter,
 )
 from app.modules.screener.models import CustomScreener, ScreenerResultRecord, ScreenerRun
@@ -35,6 +36,7 @@ __all__ = [
     "BreakoutFilter",
     "ConsolidationFilter",
     "MovingAverageFilter",
+    "SectorPerformanceFilter",
     # Models
     "CustomScreener",
     "ScreenerRun",

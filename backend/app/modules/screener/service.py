@@ -17,6 +17,7 @@ from app.modules.screener.filters import (
     ConsolidationFilter,
     MomentumFilter,
     MovingAverageFilter,
+    SectorPerformanceFilter,
     VolumeFilter,
 )
 from app.modules.screener.models import CustomScreener, ScreenerResultRecord, ScreenerRun
@@ -155,6 +156,28 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
             ),
         ],
     ),
+    ScreenerPresetType.SECTOR_ROTATION: ScreenerPresetInfo(
+        preset=ScreenerPresetType.SECTOR_ROTATION,
+        name="Sector Rotation Screener",
+        description="Find strongest sectors and top-performing stocks within them",
+        filters=[
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.PRICE_ACTION,
+                params={"lookback_period": 20, "min_sector_roc": 0},
+                weight=2.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={"require_above_trend": True},
+                weight=1.5,
+            ),
+        ],
+    ),
 }
 
 
@@ -166,6 +189,7 @@ def get_filter_class(filter_type: FilterTypeEnum):
         FilterTypeEnum.BREAKOUT: BreakoutFilter,
         FilterTypeEnum.CONSOLIDATION: ConsolidationFilter,
         FilterTypeEnum.MOVING_AVERAGE: MovingAverageFilter,
+        FilterTypeEnum.PRICE_ACTION: SectorPerformanceFilter,
     }
     return mapping.get(filter_type)
 

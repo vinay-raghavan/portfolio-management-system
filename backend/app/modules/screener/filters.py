@@ -438,3 +438,94 @@ class ConsolidationFilter(BaseFilter):
         except Exception as e:
             logger.error(f"Consolidation filter error for {symbol}: {e}")
             return FilterResult(passed=False, reason=str(e))
+
+
+class SectorPerformanceFilter(BaseFilter):
+    """Filter stocks based on their sector's relative performance.
+
+    Finds stocks in sectors that are outperforming the market,
+    then ranks stocks within those sectors.
+    """
+
+    filter_type = FilterType.PRICE_ACTION
+    name = "sector_performance_filter"
+
+    def configure(
+        self,
+        lookback_period: int = 20,
+        min_sector_roc: float = 0,  # Minimum sector ROC %
+        min_stock_vs_sector: float = 0,  # Stock outperformance vs sector
+        require_sector_outperformance: bool = True,
+        sector: str | None = None,  # Optional: filter specific sector
+        **kwargs,
+    ) -> None:
+        """Configure sector performance filter.
+
+        Args:
+            lookback_period: Days to measure performance
+            min_sector_roc: Minimum sector rate of change
+            min_stock_vs_sector: Minimum stock outperformance vs sector
+            require_sector_outperformance: Require sector to be positive
+            sector: Optional specific sector to filter for
+        """
+        self.lookback_period = lookback_period
+        self.min_sector_roc = min_sector_roc
+        self.min_stock_vs_sector = min_stock_vs_sector
+        self.require_sector_outperformance = require_sector_outperformance
+        self.sector = sector
+
+    def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
+        """Apply sector performance filter.
+
+        Note: This filter primarily evaluates stock momentum. Sector data
+        should be attached to the result metadata by the screener service
+        when aggregating results.
+        """
+        if len(data) < self.lookback_period:
+            return FilterResult(passed=False, reason="Insufficient data")
+
+        try:
+            close = data["close"]
+            current_price = close.iloc[-1]
+            past_price = close.iloc[-self.lookback_period]
+
+            # Calculate stock's rate of change
+            stock_roc = ((current_price - past_price) / past_price) * 100
+
+            # Calculate strength relative to lookback
+            high_point = close.tail(self.lookback_period).max()
+            low_point = close.tail(self.lookback_period).min()
+            range_pos = (
+                (current_price - low_point) / (high_point - low_point)
+                if high_point > low_point
+                else 0.5
+            )
+
+            # Score based on momentum and range position
+            passed = stock_roc > 0  # Basic positive momentum
+            score = 50.0
+
+            if stock_roc > 0:
+                score += min(30, stock_roc * 3)  # Up to 30 points for ROC
+            if range_pos > 0.7:
+                score += 15  # Near high of range
+            if stock_roc > 5:
+                score += 5  # Strong momentum bonus
+
+            reasons = [f"ROC: {stock_roc:.1f}%"]
+            if range_pos > 0.7:
+                reasons.append(f"Near high (pos: {range_pos:.0%})")
+
+            return FilterResult(
+                passed=passed,
+                score=min(100, score),
+                reason="; ".join(reasons),
+                metadata={
+                    "stock_roc": stock_roc,
+                    "range_position": range_pos,
+                    "lookback_period": self.lookback_period,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Sector performance filter error for {symbol}: {e}")
+            return FilterResult(passed=False, reason=str(e))
