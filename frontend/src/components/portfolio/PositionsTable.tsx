@@ -2,11 +2,25 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUpDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowUpDown, TrendingUp, TrendingDown, X, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
 import { formatPercent, cn } from '@/lib/utils';
 import { useTradingStore, useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
+import { tradingApi } from '@/lib/api';
 import { ProfitBookingDialog } from './ProfitBookingDialog';
 import { TrailingStopDialog } from './TrailingStopDialog';
 import { PositionActionsMenu, toUnifiedPosition } from '@/components/shared';
@@ -25,10 +39,49 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [profitBookingPosition, setProfitBookingPosition] = useState<Position | null>(null);
   const [trailingStopPosition, setTrailingStopPosition] = useState<Position | null>(null);
+  const [squareOffPosition, setSquareOffPosition] = useState<Position | null>(null);
+  const [squareOffLoading, setSquareOffLoading] = useState<string | null>(null);
   const router = useRouter();
   const { quickBuy } = useTradingStore();
   const { setSelectedSymbol } = useUIStore();
   const { format: formatCurrency } = useCurrency();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Square off a single position
+  const squareOffMutation = useMutation({
+    mutationFn: async (position: Position) => {
+      return tradingApi.createOrder({
+        symbol: position.symbol,
+        order_type: 'MARKET',
+        side: 'SELL',
+        quantity: position.quantity,
+        product_type: 'DELIVERY',
+      });
+    },
+    onSuccess: (_, position) => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      toast({
+        title: 'Position Squared Off',
+        description: `Market sell order placed for ${position.quantity} shares of ${position.symbol}`,
+      });
+      setSquareOffPosition(null);
+      setSquareOffLoading(null);
+    },
+    onError: (error: any, position) => {
+      toast({
+        title: 'Failed to square off',
+        description: error?.response?.data?.detail || error?.message || 'Unknown error',
+        variant: 'destructive',
+      });
+      setSquareOffLoading(null);
+    },
+  });
+
+  const handleSquareOff = async (position: Position) => {
+    setSquareOffLoading(position.id);
+    await squareOffMutation.mutateAsync(position);
+  };
 
   const handleNavigateToAnalysis = (symbol: string) => {
     setSelectedSymbol(symbol);
@@ -172,7 +225,23 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
                         {formatPercent(pnlPct)}
                       </td>
                       <td className="text-right py-3 px-3">
-                        <div className="flex justify-end">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs border-loss text-loss hover:bg-loss hover:text-white"
+                            onClick={() => setSquareOffPosition(position)}
+                            disabled={squareOffLoading === position.id}
+                          >
+                            {squareOffLoading === position.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <>
+                                <X className="h-3 w-3 mr-1" />
+                                Square Off
+                              </>
+                            )}
+                          </Button>
                           <PositionActionsMenu
                             position={toUnifiedPosition(position)}
                             context="portfolio"
@@ -200,6 +269,38 @@ export function PositionsTable({ positions, isLoading }: PositionsTableProps) {
         open={!!trailingStopPosition}
         onOpenChange={(open) => !open && setTrailingStopPosition(null)}
       />
+
+      {/* Square Off Confirmation Dialog */}
+      <AlertDialog open={!!squareOffPosition} onOpenChange={(open) => !open && setSquareOffPosition(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Square Off Position?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will place a market sell order for {squareOffPosition?.quantity} shares of {squareOffPosition?.symbol}.
+              {squareOffPosition && (squareOffPosition.unrealized_pnl ?? 0) !== 0 && (
+                <span className={(squareOffPosition.unrealized_pnl ?? 0) >= 0 ? 'text-profit' : 'text-loss'}>
+                  {' '}Current unrealized P&L: {formatCurrency(squareOffPosition.unrealized_pnl ?? 0)}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!squareOffLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => squareOffPosition && handleSquareOff(squareOffPosition)}
+              disabled={!!squareOffLoading}
+              className="bg-loss text-white hover:bg-loss/90"
+            >
+              {squareOffLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <X className="mr-2 h-4 w-4" />
+              )}
+              Square Off
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
