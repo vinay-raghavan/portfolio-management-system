@@ -270,6 +270,22 @@ class PortfolioService:
                 unrealized_pnl_pct = Decimal("0")
                 total_value += cost
 
+            # Build trailing stop config if enabled
+            trailing_stop = None
+            if pos.trailing_stop_enabled:
+                trailing_stop = TrailingStopConfig(
+                    enabled=pos.trailing_stop_enabled,
+                    percentage=pos.trailing_stop_pct,
+                    current_stop_price=pos.trailing_stop_price,
+                    highest_price=pos.highest_price_since_entry,
+                    lowest_price=pos.lowest_price_since_entry,
+                )
+
+            # Build profit booking rules if present
+            profit_booking = None
+            if pos.profit_booking_rules:
+                profit_booking = ProfitBookingRules.model_validate(pos.profit_booking_rules)
+
             position_responses.append(
                 PositionResponse(
                     id=pos.id,
@@ -277,10 +293,16 @@ class PortfolioService:
                     symbol=pos.symbol,
                     quantity=pos.quantity,
                     avg_cost=pos.avg_cost,
+                    product_type=pos.product_type,
+                    realized_pnl=pos.realized_pnl,
                     current_price=current_price,
                     market_value=market_value,
                     unrealized_pnl=unrealized_pnl,
                     unrealized_pnl_pct=unrealized_pnl_pct,
+                    stop_loss=pos.stop_loss,
+                    take_profit=pos.take_profit,
+                    trailing_stop=trailing_stop,
+                    profit_booking_rules=profit_booking,
                 )
             )
 
