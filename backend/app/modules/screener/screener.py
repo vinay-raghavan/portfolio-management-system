@@ -61,18 +61,49 @@ class StockScreener(BaseScreener):
             return None
 
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=self.lookback_days)
+            # Convert lookback_days to appropriate period string
+            # Use 1y for 252 days (standard trading year)
+            if self.lookback_days >= 365:
+                period = "1y"
+            elif self.lookback_days >= 180:
+                period = "6mo"
+            elif self.lookback_days >= 90:
+                period = "3mo"
+            elif self.lookback_days >= 30:
+                period = "1mo"
+            else:
+                period = "1mo"
 
-            data = await self.data_provider.get_historical_data(
+            # Use the correct DataProvider API method: get_historical
+            ohlcv_list = await self.data_provider.get_historical(
                 symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
+                period=period,
                 interval="1d",
             )
 
-            if data is not None and not data.empty and self.cache_data:
-                self._data_cache[symbol] = data
+            if not ohlcv_list:
+                return None
+
+            # Convert list of OHLCV objects to pandas DataFrame
+            data = pd.DataFrame(
+                [
+                    {
+                        "Date": o.timestamp,
+                        "Open": float(o.open),
+                        "High": float(o.high),
+                        "Low": float(o.low),
+                        "Close": float(o.close),
+                        "Volume": int(o.volume),
+                    }
+                    for o in ohlcv_list
+                ]
+            )
+
+            if not data.empty:
+                data.set_index("Date", inplace=True)
+                data.sort_index(inplace=True)
+                if self.cache_data:
+                    self._data_cache[symbol] = data
 
             return data
         except Exception as e:

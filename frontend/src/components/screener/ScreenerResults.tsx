@@ -33,7 +33,8 @@ interface ScreenerResultsProps {
   duration?: number;
   screenerConfig?: {
     universe: string;
-    filters: FilterConfig[];
+    filters?: FilterConfig[];
+    preset?: string;
     min_score?: number;
     top_n?: number;
   };

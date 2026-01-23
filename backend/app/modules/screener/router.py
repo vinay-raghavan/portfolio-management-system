@@ -4,9 +4,10 @@ import logging
 from datetime import UTC
 
 from fastapi import APIRouter, HTTPException, status
-from shared.providers.data import NSEDataProvider
+from shared.providers.data import get_data_provider
 
 from app.api.deps import CurrentUser, DbSession
+from app.modules.data.service import get_user_data_provider
 from app.core.celery_client import celery_client
 from app.core.redis import get_redis
 from app.modules.algo.universe_service import (
@@ -69,23 +70,24 @@ async def run_screener(
     # Get Redis client for caching
     redis = await get_redis()
 
-    # Create data provider
-    nse_provider = NSEDataProvider()
-    try:
-        service = ScreenerService(db, redis=redis)
-        result = await service.run_screener(
-            user_id=current_user.id,
-            symbols=symbols,
-            filters=data.filters,
-            universe=data.universe,
-            min_score=data.min_score,
-            top_n=data.top_n,
-            data_provider=nse_provider,
-        )
-        await db.commit()
-        return result
-    finally:
-        await nse_provider.close()
+    # Get user's preferred data provider (Yahoo, Fyers, or NSE)
+    provider = await get_user_data_provider(db, current_user.id)
+    if provider is None:
+        # Default to Yahoo if no user preference
+        provider = get_data_provider("yahoo")
+
+    service = ScreenerService(db, redis=redis)
+    result = await service.run_screener(
+        user_id=current_user.id,
+        symbols=symbols,
+        filters=data.filters,
+        universe=data.universe,
+        min_score=data.min_score,
+        top_n=data.top_n,
+        data_provider=provider,
+    )
+    await db.commit()
+    return result
 
 
 @router.post("/run/async")
@@ -152,23 +154,24 @@ async def run_preset_screener(
     # Get Redis client for caching
     redis = await get_redis()
 
-    nse_provider = NSEDataProvider()
-    try:
-        service = ScreenerService(db, redis=redis)
-        result = await service.run_screener(
-            user_id=current_user.id,
-            symbols=symbols,
-            filters=preset.filters,
-            universe=data.universe,
-            min_score=data.min_score,
-            top_n=data.top_n,
-            data_provider=nse_provider,
-            preset=data.preset.value,
-        )
-        await db.commit()
-        return result
-    finally:
-        await nse_provider.close()
+    # Get user's preferred data provider (Yahoo, Fyers, or NSE)
+    provider = await get_user_data_provider(db, current_user.id)
+    if provider is None:
+        provider = get_data_provider("yahoo")
+
+    service = ScreenerService(db, redis=redis)
+    result = await service.run_screener(
+        user_id=current_user.id,
+        symbols=symbols,
+        filters=preset.filters,
+        universe=data.universe,
+        min_score=data.min_score,
+        top_n=data.top_n,
+        data_provider=provider,
+        preset=data.preset.value,
+    )
+    await db.commit()
+    return result
 
 
 @router.get("/results/{run_id}", response_model=ScreenerRunResponse)
@@ -313,22 +316,24 @@ async def run_custom_screener(
         )
 
     filters = [FilterConfig(**f) for f in screener.filters]
-    nse_provider = NSEDataProvider()
-    try:
-        result = await service.run_screener(
-            user_id=current_user.id,
-            symbols=symbols,
-            filters=filters,
-            universe=screener.universe,
-            min_score=screener.min_score,
-            top_n=screener.top_n,
-            data_provider=nse_provider,
-            custom_screener_id=screener.id,
-        )
-        await db.commit()
-        return result
-    finally:
-        await nse_provider.close()
+
+    # Get user's preferred data provider (Yahoo, Fyers, or NSE)
+    provider = await get_user_data_provider(db, current_user.id)
+    if provider is None:
+        provider = get_data_provider("yahoo")
+
+    result = await service.run_screener(
+        user_id=current_user.id,
+        symbols=symbols,
+        filters=filters,
+        universe=screener.universe,
+        min_score=screener.min_score,
+        top_n=screener.top_n,
+        data_provider=provider,
+        custom_screener_id=screener.id,
+    )
+    await db.commit()
+    return result
 
 
 # =============================================================================
@@ -616,6 +621,11 @@ async def refresh_screener_universe(
     redis = await get_redis()
     service = ScreenerService(db, redis)
 
+    # Get user's preferred data provider (Yahoo, Fyers, or NSE)
+    provider = await get_user_data_provider(db, current_user.id)
+    if provider is None:
+        provider = get_data_provider("yahoo")
+
     try:
         # Resolve the universe symbols
         universe_name = screener_config.get("universe", "NIFTY500")
@@ -638,6 +648,7 @@ async def refresh_screener_universe(
             top_n=screener_config.get("top_n"),
             user_id=str(current_user.id),
             use_cache=False,  # Force fresh results
+            data_provider=provider,
         )
 
         # Update universe symbols
@@ -735,54 +746,50 @@ async def update_recommendation_returns(
     if not symbols:
         return UpdateReturnsResponse(status="success", updated_1d=0, updated_1w=0, updated_1m=0)
 
-    # Fetch current prices
-    nse_provider = NSEDataProvider()
-    try:
-        price_map: dict[str, float] = {}
-        for symbol in symbols:
-            try:
-                quote = await nse_provider.get_quote(symbol)
-                if quote and quote.get("lastPrice"):
-                    price_map[symbol] = float(quote["lastPrice"])
-            except Exception as e:
-                errors.append(f"{symbol}: {str(e)}")
+    # Fetch current prices using default Yahoo provider (background task has no user context)
+    provider = get_data_provider("yahoo")
+    price_map: dict[str, float] = {}
+    for symbol in symbols:
+        try:
+            quote = await provider.get_quote(symbol)
+            if quote and quote.price:
+                price_map[symbol] = float(quote.price)
+        except Exception as e:
+            errors.append(f"{symbol}: {str(e)}")
 
-        # Update 1-day returns
-        for rec in recs_1d:
-            if rec.symbol in price_map:
-                current_price = price_map[rec.symbol]
-                rec.price_1d = current_price
-                rec.return_1d = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
-                updated_1d += 1
+    # Update 1-day returns
+    for rec in recs_1d:
+        if rec.symbol in price_map:
+            current_price = price_map[rec.symbol]
+            rec.price_1d = current_price
+            rec.return_1d = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+            updated_1d += 1
 
-        # Update 1-week returns
-        for rec in recs_1w:
-            if rec.symbol in price_map:
-                current_price = price_map[rec.symbol]
-                rec.price_1w = current_price
-                rec.return_1w = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
-                updated_1w += 1
+    # Update 1-week returns
+    for rec in recs_1w:
+        if rec.symbol in price_map:
+            current_price = price_map[rec.symbol]
+            rec.price_1w = current_price
+            rec.return_1w = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+            updated_1w += 1
 
-        # Update 1-month returns
-        for rec in recs_1m:
-            if rec.symbol in price_map:
-                current_price = price_map[rec.symbol]
-                rec.price_1m = current_price
-                rec.return_1m = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
-                updated_1m += 1
+    # Update 1-month returns
+    for rec in recs_1m:
+        if rec.symbol in price_map:
+            current_price = price_map[rec.symbol]
+            rec.price_1m = current_price
+            rec.return_1m = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
+            updated_1m += 1
 
-        await db.commit()
+    await db.commit()
 
-        return UpdateReturnsResponse(
-            status="success",
-            updated_1d=updated_1d,
-            updated_1w=updated_1w,
-            updated_1m=updated_1m,
-            errors=errors[:10],  # Limit error list
-        )
-
-    finally:
-        await nse_provider.close()
+    return UpdateReturnsResponse(
+        status="success",
+        updated_1d=updated_1d,
+        updated_1w=updated_1w,
+        updated_1m=updated_1m,
+        errors=errors[:10],  # Limit error list
+    )
 
 
 @router.get("/performance", response_model=OverallPerformanceStats)
@@ -921,13 +928,11 @@ async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
 
     # Check dynamic universes
     if universe_upper in DYNAMIC_UNIVERSES:
-        nse_provider = NSEDataProvider()
-        try:
-            universe_svc = UniverseService(db)
-            nse_index = DYNAMIC_UNIVERSES[universe_upper]["nse_index"]
-            return await universe_svc.fetch_index_symbols(nse_index, nse_provider)
-        finally:
-            await nse_provider.close()
+        # NSE provider is appropriate for fetching index constituents
+        nse_provider = get_data_provider("nse")
+        universe_svc = UniverseService(db)
+        nse_index = DYNAMIC_UNIVERSES[universe_upper]["nse_index"]
+        return await universe_svc.fetch_index_symbols(nse_index, nse_provider)
 
     # Handle special cases
     if universe_upper in ("ALL_NSE", "ALL"):

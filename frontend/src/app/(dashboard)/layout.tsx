@@ -15,6 +15,7 @@ import {
   FlaskConical,
   Bot,
   LayoutGrid,
+  Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
@@ -32,6 +33,7 @@ import {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
+  { name: 'Screener', href: '/screener', icon: Search, shortcut: 'G R' },
   { name: 'Analysis', href: '/analysis', icon: LineChart, shortcut: 'G A' },
   { name: 'Charts', href: '/charts', icon: LayoutGrid, shortcut: 'G C' },
   { name: 'Signals', href: '/signals', icon: Zap, shortcut: 'G S' },
