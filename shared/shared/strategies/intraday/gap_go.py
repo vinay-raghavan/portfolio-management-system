@@ -288,7 +288,7 @@ class GapAndGoStrategy(BaseStrategy):
                 "gap_pct": float(gap.gap_pct),
                 "prev_close": float(gap.prev_close),
                 "open_price": float(gap.open_price),
-                "is_full_gap": gap.is_full_gap,
+                "is_full_gap": bool(gap.is_full_gap),  # Convert to native bool for JSON
                 "atr": float(atr) if atr else None,
             },
             notes=reason,
