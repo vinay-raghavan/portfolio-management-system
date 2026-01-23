@@ -1,28 +1,47 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { cn, formatPercent } from '@/lib/utils';
-import type { ScreenerResultItem } from '@/lib/api';
+import type { ScreenerResultItem, FilterConfig } from '@/lib/api';
 
 interface ScreenerResultsProps {
   results: ScreenerResultItem[];
   isLoading?: boolean;
   totalScreened?: number;
   duration?: number;
+  screenerConfig?: {
+    universe: string;
+    filters: FilterConfig[];
+    min_score?: number;
+    top_n?: number;
+  };
   onAddToWatchlist?: (symbol: string) => void;
   onViewChart?: (symbol: string) => void;
   onCreateAlert?: (symbol: string) => void;
   onQuickTrade?: (symbol: string, side: 'buy' | 'sell') => void;
+  onCreateUniverse?: (data: { name: string; description?: string; symbols: string[]; screenerConfig?: object; isDynamic: boolean }) => void;
 }
 
 export function ScreenerResults({
@@ -30,14 +49,22 @@ export function ScreenerResults({
   isLoading,
   totalScreened,
   duration,
+  screenerConfig,
   onAddToWatchlist,
   onViewChart,
   onCreateAlert,
   onQuickTrade,
+  onCreateUniverse,
 }: ScreenerResultsProps) {
   const [sortField, setSortField] = useState<'rank' | 'score' | 'symbol'>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showUniverseDialog, setShowUniverseDialog] = useState(false);
+  const [universeName, setUniverseName] = useState('');
+  const [universeDescription, setUniverseDescription] = useState('');
+  const [isDynamic, setIsDynamic] = useState(false);
+
+  const passedSymbols = results.filter((r) => r.passed).map((r) => r.symbol);
 
   const sortedResults = [...results].sort((a, b) => {
     const mul = sortDir === 'asc' ? 1 : -1;
@@ -66,6 +93,21 @@ export function ScreenerResults({
     a.download = `screener-results-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleCreateUniverse = () => {
+    if (!universeName.trim() || passedSymbols.length === 0) return;
+    onCreateUniverse?.({
+      name: universeName.trim(),
+      description: universeDescription.trim() || undefined,
+      symbols: passedSymbols,
+      screenerConfig: isDynamic ? screenerConfig : undefined,
+      isDynamic,
+    });
+    setShowUniverseDialog(false);
+    setUniverseName('');
+    setUniverseDescription('');
+    setIsDynamic(false);
   };
 
   if (isLoading) {
@@ -100,10 +142,35 @@ export function ScreenerResults({
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={exportToCsv} disabled={results.length === 0}>
-          <Download className="h-4 w-4 mr-1" />
-          Export
-        </Button>
+        <div className="flex gap-2">
+          {onCreateUniverse && passedSymbols.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Zap className="h-4 w-4 mr-1" />
+                  Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowUniverseDialog(true)}>
+                  <Layers className="h-4 w-4 mr-2" />
+                  Create Universe ({passedSymbols.length} symbols)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={exportToCsv}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export to CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {!onCreateUniverse && (
+            <Button variant="outline" size="sm" onClick={exportToCsv} disabled={results.length === 0}>
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {results.length === 0 ? (
@@ -187,6 +254,66 @@ export function ScreenerResults({
           </div>
         )}
       </CardContent>
+
+      {/* Create Universe Dialog */}
+      <Dialog open={showUniverseDialog} onOpenChange={setShowUniverseDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Trading Universe</DialogTitle>
+            <DialogDescription>
+              Create a universe from {passedSymbols.length} screener results to use in algo strategies.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="universe-name">Universe Name</Label>
+              <Input
+                id="universe-name"
+                placeholder="e.g., Momentum Leaders Q1 2026"
+                value={universeName}
+                onChange={(e) => setUniverseName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="universe-description">Description (optional)</Label>
+              <Input
+                id="universe-description"
+                placeholder="Brief description of the universe"
+                value={universeDescription}
+                onChange={(e) => setUniverseDescription(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="dynamic-universe">Dynamic Universe</Label>
+                <p className="text-sm text-muted-foreground">
+                  Re-run screener to refresh symbols automatically
+                </p>
+              </div>
+              <Switch
+                id="dynamic-universe"
+                checked={isDynamic}
+                onCheckedChange={setIsDynamic}
+                disabled={!screenerConfig}
+              />
+            </div>
+            {!screenerConfig && isDynamic && (
+              <p className="text-sm text-warning">
+                Screener configuration not available for dynamic refresh
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUniverseDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUniverse} disabled={!universeName.trim()}>
+              <Layers className="h-4 w-4 mr-2" />
+              Create Universe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

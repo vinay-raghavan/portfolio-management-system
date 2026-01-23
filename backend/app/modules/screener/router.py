@@ -14,6 +14,8 @@ from app.modules.algo.universe_service import (
 )
 from app.modules.screener.schemas import (
     CategoryRecommendations,
+    CreateUniverseFromScreenerRequest,
+    CreateUniverseFromScreenerResponse,
     CustomScreenerCreate,
     CustomScreenerListResponse,
     CustomScreenerResponse,
@@ -510,6 +512,152 @@ async def store_recommendations(
         "category": category,
         "stored_count": stored_count,
     }
+
+
+# ============== Screener → Algo Integration ==============
+
+
+@router.post("/create-universe", response_model=CreateUniverseFromScreenerResponse)
+async def create_universe_from_screener(
+    data: CreateUniverseFromScreenerRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CreateUniverseFromScreenerResponse:
+    """Create a trading universe from screener results.
+
+    This allows users to save screener results as a universe that can be used
+    in algo strategies. If is_dynamic is True, the universe can be refreshed
+    by re-running the screener configuration.
+    """
+    from app.modules.algo.models import Universe
+    from app.modules.algo.schemas import UniverseCreate
+
+    universe_svc = UniverseService(db)
+
+    # Build filter_criteria for dynamic universes
+    filter_criteria = None
+    if data.is_dynamic and data.screener_config:
+        filter_criteria = {
+            "source": "screener",
+            "screener_config": data.screener_config,
+        }
+
+    # Create the universe
+    universe_data = UniverseCreate(
+        name=data.name,
+        description=data.description or f"Created from screener with {len(data.symbols)} symbols",
+        symbols=data.symbols,
+        filter_criteria=filter_criteria,
+        is_dynamic=data.is_dynamic,
+    )
+
+    universe = await universe_svc.create(str(current_user.id), universe_data)
+
+    return CreateUniverseFromScreenerResponse(
+        id=universe.id,
+        name=universe.name,
+        description=universe.description,
+        symbol_count=len(data.symbols),
+        is_dynamic=data.is_dynamic,
+        created_at=universe.created_at,
+    )
+
+
+@router.post("/refresh-universe/{universe_id}")
+async def refresh_screener_universe(
+    universe_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Refresh a screener-based dynamic universe by re-running the screener.
+
+    Only works for universes created from screeners with is_dynamic=True.
+    """
+    from sqlalchemy import select
+    from app.modules.algo.models import Universe
+
+    # Get the universe
+    result = await db.execute(
+        select(Universe).where(
+            Universe.id == universe_id,
+            Universe.user_id == str(current_user.id),
+        )
+    )
+    universe = result.scalar_one_or_none()
+
+    if not universe:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Universe not found",
+        )
+
+    if not universe.is_dynamic:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Universe is not dynamic and cannot be refreshed",
+        )
+
+    filter_criteria = universe.filter_criteria or {}
+    if filter_criteria.get("source") != "screener":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Universe was not created from a screener",
+        )
+
+    screener_config = filter_criteria.get("screener_config")
+    if not screener_config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Screener configuration not found in universe",
+        )
+
+    # Re-run the screener
+    redis = await get_redis()
+    service = ScreenerService(db, redis)
+
+    try:
+        # Resolve the universe symbols
+        universe_name = screener_config.get("universe", "NIFTY500")
+        symbols = await _resolve_universe(universe_name, db)
+
+        if not symbols:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not resolve universe: {universe_name}",
+            )
+
+        # Convert filter configs
+        filters = [FilterConfig(**f) for f in screener_config.get("filters", [])]
+
+        # Run the screener
+        run_result = await service.run_screener(
+            symbols=symbols,
+            filters=filters,
+            min_score=screener_config.get("min_score", 0.5),
+            top_n=screener_config.get("top_n"),
+            user_id=str(current_user.id),
+            use_cache=False,  # Force fresh results
+        )
+
+        # Update universe symbols
+        new_symbols = [r.symbol for r in run_result.results if r.passed]
+        old_count = len(universe.symbols or [])
+        universe.symbols = new_symbols
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "universe_id": universe_id,
+            "old_symbol_count": old_count,
+            "new_symbol_count": len(new_symbols),
+            "symbols_added": [s for s in new_symbols if s not in (universe.symbols or [])],
+            "symbols_removed": [s for s in (universe.symbols or []) if s not in new_symbols],
+        }
+
+    finally:
+        if redis:
+            await redis.close()
 
 
 # Helper functions

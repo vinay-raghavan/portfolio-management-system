@@ -195,3 +195,56 @@ class DailyRecommendationsResponse(BaseModel):
     generated_at: datetime
     categories: list[CategoryRecommendations]
 
+
+# ============== Screener → Algo Integration Schemas ==============
+
+
+class CreateUniverseFromScreenerRequest(BaseModel):
+    """Request to create a universe from screener results."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    symbols: list[str] = Field(..., min_length=1, description="Symbols from screener results")
+    screener_config: dict | None = Field(
+        default=None, description="Original screener configuration for dynamic refresh"
+    )
+    is_dynamic: bool = Field(
+        default=False,
+        description="If true, universe can be refreshed by re-running the screener",
+    )
+
+
+class CreateUniverseFromScreenerResponse(BaseModel):
+    """Response after creating universe from screener."""
+
+    id: str
+    name: str
+    description: str | None
+    symbol_count: int
+    is_dynamic: bool
+    created_at: datetime
+
+
+class ScreenerAlertConfig(BaseModel):
+    """Configuration for screener alerts."""
+
+    screener_id: str = Field(..., description="ID of custom screener to monitor")
+    alert_on_new_symbols: bool = Field(default=True, description="Alert when new symbols match")
+    alert_on_removed_symbols: bool = Field(default=False, description="Alert when symbols no longer match")
+    min_score_change: float | None = Field(default=None, ge=0.1, description="Alert on score change threshold")
+    enabled: bool = Field(default=True)
+
+
+class ScreenerAlertResponse(BaseModel):
+    """Response for screener alert configuration."""
+
+    id: str
+    screener_id: str
+    screener_name: str
+    alert_on_new_symbols: bool
+    alert_on_removed_symbols: bool
+    min_score_change: float | None
+    enabled: bool
+    created_at: datetime
+    last_run_at: datetime | None
+

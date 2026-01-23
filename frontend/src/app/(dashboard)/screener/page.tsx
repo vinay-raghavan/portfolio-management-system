@@ -135,6 +135,41 @@ export default function ScreenerPage() {
     }
   };
 
+  // Create universe mutation
+  const createUniverseMutation = useMutation({
+    mutationFn: (data: { name: string; description?: string; symbols: string[]; screenerConfig?: object; isDynamic: boolean }) =>
+      screenerApi.createUniverse({
+        name: data.name,
+        description: data.description,
+        symbols: data.symbols,
+        screener_config: data.screenerConfig,
+        is_dynamic: data.isDynamic,
+      }),
+    onSuccess: (res) => {
+      addNotification({
+        type: 'success',
+        title: 'Universe Created',
+        message: `Created universe "${res.data.name}" with ${res.data.symbol_count} symbols`,
+      });
+    },
+    onError: (error: any) => {
+      addNotification({
+        type: 'error',
+        title: 'Failed to Create Universe',
+        message: error.response?.data?.detail || 'Could not create universe',
+      });
+    },
+  });
+
+  const handleCreateUniverse = (data: { name: string; description?: string; symbols: string[]; screenerConfig?: object; isDynamic: boolean }) => {
+    createUniverseMutation.mutate(data);
+  };
+
+  // Build current screener config for dynamic universe support
+  const currentScreenerConfig = activeTab === 'preset' && selectedPreset
+    ? { universe, preset: selectedPreset, min_score: 0.5, top_n: 50 }
+    : { universe, filters, min_score: 0.5, top_n: 50 };
+
   const isLoading = runCustomMutation.isPending || runPresetMutation.isPending;
 
   return (
@@ -187,9 +222,11 @@ export default function ScreenerPage() {
             isLoading={isLoading}
             totalScreened={totalScreened}
             duration={duration}
+            screenerConfig={currentScreenerConfig}
             onAddToWatchlist={handleAddToWatchlist}
             onViewChart={handleViewChart}
             onQuickTrade={handleQuickTrade}
+            onCreateUniverse={handleCreateUniverse}
           />
         </div>
       </div>

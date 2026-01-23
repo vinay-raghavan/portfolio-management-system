@@ -755,6 +755,15 @@ export interface DailyRecommendationsResponse {
   categories: CategoryRecommendations[];
 }
 
+export interface CreateUniverseFromScreenerResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  symbol_count: number;
+  is_dynamic: boolean;
+  created_at: string;
+}
+
 export const screenerApi = {
   // Presets
   getPresets: () =>
@@ -781,4 +790,18 @@ export const screenerApi = {
   // Recommendations
   getRecommendations: (date?: string) =>
     api.get<DailyRecommendationsResponse>('/screener/recommendations', { params: { date } }),
+
+  // Universe integration
+  createUniverse: (data: {
+    name: string;
+    description?: string;
+    symbols: string[];
+    screener_config?: object;
+    is_dynamic: boolean;
+  }) =>
+    api.post<CreateUniverseFromScreenerResponse>('/screener/create-universe', data),
+  refreshUniverse: (universeId: string) =>
+    api.post<{ status: string; universe_id: string; old_symbol_count: number; new_symbol_count: number }>(
+      `/screener/refresh-universe/${universeId}`
+    ),
 };
