@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
-import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef } from '@/components/shared';
+import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef, SkipLink } from '@/components/shared';
 import { useKeyboardShortcuts } from '@/hooks';
 import {
   Tooltip,
@@ -58,10 +58,15 @@ export default function DashboardLayout({
 
   return (
     <TooltipProvider delayDuration={0}>
+      {/* Skip link for accessibility */}
+      <SkipLink />
       <KeyboardShortcutsHelp ref={helpModalRef} />
       <div className="flex h-screen">
         {/* Sidebar */}
         <aside
+          id="main-navigation"
+          role="navigation"
+          aria-label="Main navigation"
           className={cn(
             'border-r bg-card transition-all duration-300 ease-in-out relative flex flex-col',
             isExpanded ? 'w-64' : 'w-16'
@@ -74,7 +79,7 @@ export default function DashboardLayout({
               'flex items-center',
               isExpanded ? 'px-6' : 'px-4 justify-center w-full'
             )}>
-              <LayoutDashboard className={cn('h-6 w-6 shrink-0', isExpanded && 'hidden')} />
+              <LayoutDashboard className={cn('h-6 w-6 shrink-0', isExpanded && 'hidden')} aria-hidden="true" />
               <span className={cn(
                 'font-bold text-xl whitespace-nowrap transition-opacity duration-300',
                 isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
@@ -83,7 +88,7 @@ export default function DashboardLayout({
               </span>
             </div>
           </div>
-          <nav className={cn('p-2 space-y-1 flex-1', isExpanded && 'p-4 space-y-2')}>
+          <nav className={cn('p-2 space-y-1 flex-1', isExpanded && 'p-4 space-y-2')} role="menubar" aria-label="Primary">
             {navigation.map((item) => {
               const linkContent = (
                 <Link
@@ -172,9 +177,9 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" className="flex-1 overflow-auto" role="main" aria-label="Main content">
           {/* Header */}
-          <header className="h-16 border-b bg-card flex items-center justify-between px-8">
+          <header className="h-16 border-b bg-card flex items-center justify-between px-8" role="banner">
             <GlobalSearch />
             <NotificationBell />
           </header>
