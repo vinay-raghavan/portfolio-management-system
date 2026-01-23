@@ -3,8 +3,10 @@
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 from sqlalchemy import select
@@ -15,6 +17,30 @@ from app.modules.signals.models import Signal, SignalStatus, SignalType
 from app.modules.signals.strategies import SignalData, StrategyRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(v) for v in value]
+    return value
+
+
+def _sanitize_indicators(indicators: dict | None) -> dict | None:
+    """Sanitize indicators dict for JSON serialization."""
+    if indicators is None:
+        return None
+    return _sanitize_for_json(indicators)
 
 
 class SignalService:
@@ -167,7 +193,7 @@ class SignalService:
             stop_loss=data.stop_loss,
             take_profit=data.take_profit,
             risk_reward_ratio=data.risk_reward_ratio,
-            indicators=data.indicators,
+            indicators=_sanitize_indicators(data.indicators),
             notes=data.notes,
             status=SignalStatus.PENDING,
         )
