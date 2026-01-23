@@ -227,7 +227,9 @@ async def update_trailing_stop_price(
 # ============== Order Template Endpoints ==============
 
 
-@router.post("/templates", response_model=OrderTemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/templates", response_model=OrderTemplateResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_template(
     template_data: OrderTemplateCreate,
     db: DbSession,
