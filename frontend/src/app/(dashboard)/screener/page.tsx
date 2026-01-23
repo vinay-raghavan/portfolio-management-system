@@ -11,6 +11,7 @@ import {
   ScreenerResults,
   PresetSelector,
   SavedScreenersList,
+  PerformanceWidget,
   type UniverseType,
 } from '@/components/screener';
 import {
@@ -194,6 +195,7 @@ export default function ScreenerPage() {
             onRunScreener={handleRunSavedScreener}
             onLoadScreener={handleLoadScreener}
           />
+          <PerformanceWidget days={30} compact />
         </div>
 
         {/* Main Content */}

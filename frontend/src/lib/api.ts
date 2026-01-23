@@ -804,4 +804,41 @@ export const screenerApi = {
     api.post<{ status: string; universe_id: string; old_symbol_count: number; new_symbol_count: number }>(
       `/screener/refresh-universe/${universeId}`
     ),
+
+  // Performance tracking
+  getPerformance: (days: number = 30) =>
+    api.get<ScreenerPerformanceStats>('/screener/performance', { params: { days } }),
 };
+
+// ============== Performance Tracking Types ==============
+
+export interface CategoryPerformanceStats {
+  category: string;
+  total_recommendations: number;
+  win_rate_1d: number | null;
+  win_rate_1w: number | null;
+  win_rate_1m: number | null;
+  avg_return_1d: number | null;
+  avg_return_1w: number | null;
+  avg_return_1m: number | null;
+  best_pick_1d: string | null;
+  best_pick_1w: string | null;
+  best_pick_1m: string | null;
+  best_return_1d: number | null;
+  best_return_1w: number | null;
+  best_return_1m: number | null;
+}
+
+export interface ScreenerPerformanceStats {
+  total_recommendations: number;
+  unique_symbols: number;
+  date_range_start: string | null;
+  date_range_end: string | null;
+  categories: CategoryPerformanceStats[];
+  overall_win_rate_1d: number | null;
+  overall_win_rate_1w: number | null;
+  overall_win_rate_1m: number | null;
+  overall_avg_return_1d: number | null;
+  overall_avg_return_1w: number | null;
+  overall_avg_return_1m: number | null;
+}
