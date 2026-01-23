@@ -82,3 +82,69 @@ class OrderListResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+# ============== Order Template Schemas ==============
+
+
+class OrderTemplateCreate(BaseModel):
+    """Schema for creating an order template."""
+
+    name: str = Field(min_length=1, max_length=100)
+    symbol: str = Field(min_length=1, max_length=20)
+    side: OrderSide
+    order_type: OrderType = OrderType.MARKET
+    quantity: int | None = Field(None, gt=0)
+    quantity_pct: Decimal | None = Field(None, gt=0, le=100)
+    stop_loss_pct: Decimal | None = Field(None, gt=0, le=100)
+    take_profit_pct: Decimal | None = Field(None, gt=0, le=1000)
+    is_favorite: bool = False
+
+
+class OrderTemplateUpdate(BaseModel):
+    """Schema for updating an order template."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    symbol: str | None = Field(None, min_length=1, max_length=20)
+    side: OrderSide | None = None
+    order_type: OrderType | None = None
+    quantity: int | None = Field(None, gt=0)
+    quantity_pct: Decimal | None = Field(None, gt=0, le=100)
+    stop_loss_pct: Decimal | None = Field(None, gt=0, le=100)
+    take_profit_pct: Decimal | None = Field(None, gt=0, le=1000)
+    is_favorite: bool | None = None
+
+
+class OrderTemplateResponse(BaseModel):
+    """Schema for order template response."""
+
+    id: str
+    name: str
+    symbol: str
+    side: str
+    order_type: str
+    quantity: int | None
+    quantity_pct: Decimal | None
+    stop_loss_pct: Decimal | None
+    take_profit_pct: Decimal | None
+    is_favorite: bool
+    use_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrderTemplateListResponse(BaseModel):
+    """Schema for order template list response."""
+
+    templates: list[OrderTemplateResponse]
+    total_count: int
+
+
+class OrderFromTemplateCreate(BaseModel):
+    """Schema for creating an order from a template."""
+
+    current_price: Decimal = Field(gt=0, description="Current market price for calculating SL/TP")
+    quantity_override: int | None = Field(None, gt=0, description="Override template quantity")
+    confirm: bool = Field(default=True, description="Execute immediately if True")

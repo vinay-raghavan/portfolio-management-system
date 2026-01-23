@@ -229,6 +229,60 @@ export interface OrderCreate {
   is_amo?: boolean;
 }
 
+// ============== Order Template Types ==============
+
+export interface OrderTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  symbol: string;
+  side: OrderSide;
+  order_type: OrderType;
+  quantity: number | null;
+  quantity_pct: number | null;
+  stop_loss_pct: number | null;
+  take_profit_pct: number | null;
+  is_favorite: boolean;
+  use_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderTemplateCreate {
+  name: string;
+  symbol: string;
+  side: OrderSide;
+  order_type?: OrderType;
+  quantity?: number | null;
+  quantity_pct?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  is_favorite?: boolean;
+}
+
+export interface OrderTemplateUpdate {
+  name?: string;
+  symbol?: string;
+  side?: OrderSide;
+  order_type?: OrderType;
+  quantity?: number | null;
+  quantity_pct?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  is_favorite?: boolean;
+}
+
+export interface OrderTemplateListResponse {
+  templates: OrderTemplate[];
+  total_count: number;
+}
+
+export interface OrderFromTemplateExecute {
+  current_price: number;
+  quantity_override?: number | null;
+  confirm?: boolean;
+}
+
 // ============== Market Data Types ==============
 
 export type MarketSession = 'pre_market' | 'regular' | 'post_market' | 'closed';

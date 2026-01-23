@@ -107,3 +107,45 @@ class Order(Base):
 
     def __repr__(self) -> str:
         return f"<Order {self.side} {self.quantity} {self.symbol} @ {self.price} [{self.status}]>"
+
+
+class OrderTemplate(Base):
+    """Order template model for quick repeat orders."""
+
+    __tablename__ = "order_templates"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Quick RELIANCE Buy"
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)  # BUY/SELL
+    order_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MARKET")
+    quantity: Mapped[int | None] = mapped_column(nullable=True)  # Fixed quantity
+    quantity_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )  # % of available funds
+    stop_loss_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )  # Stop loss as % below entry
+    take_profit_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )  # Take profit as % above entry
+    is_favorite: Mapped[bool] = mapped_column(nullable=False, default=False)
+    use_count: Mapped[int] = mapped_column(nullable=False, default=0)  # Track usage for "recent"
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_order_templates_user", "user_id"),
+        Index("ix_order_templates_user_favorite", "user_id", "is_favorite"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<OrderTemplate {self.name} ({self.side} {self.symbol})>"

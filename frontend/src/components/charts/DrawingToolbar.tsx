@@ -60,6 +60,8 @@ export function DrawingToolbar({ symbol, onClearDrawings }: DrawingToolbarProps)
           className={cn('h-8 w-8', activeTool === tool.type && 'bg-primary/20')}
           onClick={() => setActiveTool(tool.type)}
           title={tool.label}
+          aria-label={tool.label}
+          aria-pressed={activeTool === tool.type}
         >
           {tool.icon}
         </Button>
@@ -70,10 +72,11 @@ export function DrawingToolbar({ symbol, onClearDrawings }: DrawingToolbarProps)
       {/* Color Picker */}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="Line Color">
+          <Button variant="ghost" size="icon" className="h-8 w-8" title="Line Color" aria-label="Select line color">
             <div
               className="h-4 w-4 rounded-full border border-border"
               style={{ backgroundColor: drawingColor }}
+              aria-hidden="true"
             />
           </Button>
         </PopoverTrigger>

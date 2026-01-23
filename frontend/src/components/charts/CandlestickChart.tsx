@@ -343,6 +343,21 @@ export function CandlestickChart({
     }
   }, [enableDrawing, activeTool]);
 
-  return <div ref={containerRef} className="w-full" />;
+  // Generate chart description for screen readers
+  const chartDescription = symbol
+    ? `Candlestick chart for ${symbol}. This chart shows price movements over time with candlestick patterns${showVolume ? ' and volume' : ''}.`
+    : 'Candlestick chart showing price movements over time.';
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full"
+      role="img"
+      aria-label={chartDescription}
+      tabIndex={0}
+    >
+      <span className="sr-only">{chartDescription}</span>
+    </div>
+  );
 }
 

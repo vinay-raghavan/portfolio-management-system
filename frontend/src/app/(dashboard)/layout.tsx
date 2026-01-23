@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -14,11 +14,14 @@ import {
   Zap,
   FlaskConical,
   Bot,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
+import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef, SkipLink } from '@/components/shared';
+import { useKeyboardShortcuts } from '@/hooks';
 import {
   Tooltip,
   TooltipContent,
@@ -27,15 +30,16 @@ import {
 } from '@/components/ui/tooltip';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
-  { name: 'Analysis', href: '/analysis', icon: LineChart },
-  { name: 'Signals', href: '/signals', icon: Zap },
-  { name: 'Algo Trading', href: '/algo', icon: Bot },
-  { name: 'Backtest', href: '/backtest', icon: FlaskConical },
-  { name: 'Orders', href: '/orders', icon: ListOrdered },
-  { name: 'Watchlist', href: '/watchlist', icon: Star },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
+  { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
+  { name: 'Analysis', href: '/analysis', icon: LineChart, shortcut: 'G A' },
+  { name: 'Charts', href: '/charts', icon: LayoutGrid, shortcut: 'G C' },
+  { name: 'Signals', href: '/signals', icon: Zap, shortcut: 'G S' },
+  { name: 'Algo Trading', href: '/algo', icon: Bot, shortcut: 'G T' },
+  { name: 'Backtest', href: '/backtest', icon: FlaskConical, shortcut: 'G B' },
+  { name: 'Orders', href: '/orders', icon: ListOrdered, shortcut: 'G O' },
+  { name: 'Watchlist', href: '/watchlist', icon: Star, shortcut: 'G W' },
+  { name: 'Settings', href: '/settings', icon: Settings, shortcut: 'G ,' },
 ];
 
 export default function DashboardLayout({
@@ -46,12 +50,25 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const [isExpanded, setIsExpanded] = useState(false);
+  const helpModalRef = useRef<KeyboardShortcutsHelpRef>(null);
+  const { registerHelpModal } = useKeyboardShortcuts(true);
+
+  // Register the help modal with the keyboard shortcuts hook
+  useEffect(() => {
+    registerHelpModal(helpModalRef.current);
+  }, [registerHelpModal]);
 
   return (
     <TooltipProvider delayDuration={0}>
+      {/* Skip link for accessibility */}
+      <SkipLink />
+      <KeyboardShortcutsHelp ref={helpModalRef} />
       <div className="flex h-screen">
         {/* Sidebar */}
         <aside
+          id="main-navigation"
+          role="navigation"
+          aria-label="Main navigation"
           className={cn(
             'border-r bg-card transition-all duration-300 ease-in-out relative flex flex-col',
             isExpanded ? 'w-64' : 'w-16'
@@ -64,7 +81,7 @@ export default function DashboardLayout({
               'flex items-center',
               isExpanded ? 'px-6' : 'px-4 justify-center w-full'
             )}>
-              <LayoutDashboard className={cn('h-6 w-6 shrink-0', isExpanded && 'hidden')} />
+              <LayoutDashboard className={cn('h-6 w-6 shrink-0', isExpanded && 'hidden')} aria-hidden="true" />
               <span className={cn(
                 'font-bold text-xl whitespace-nowrap transition-opacity duration-300',
                 isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
@@ -73,7 +90,7 @@ export default function DashboardLayout({
               </span>
             </div>
           </div>
-          <nav className={cn('p-2 space-y-1 flex-1', isExpanded && 'p-4 space-y-2')}>
+          <nav className={cn('p-2 space-y-1 flex-1', isExpanded && 'p-4 space-y-2')} role="menubar" aria-label="Primary">
             {navigation.map((item) => {
               const linkContent = (
                 <Link
@@ -103,8 +120,11 @@ export default function DashboardLayout({
                     <TooltipTrigger asChild>
                       {linkContent}
                     </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {item.name}
+                    <TooltipContent side="right" className="flex items-center gap-2">
+                      <span>{item.name}</span>
+                      <kbd className="ml-1 inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                        {item.shortcut}
+                      </kbd>
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -159,13 +179,17 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" className="flex-1 overflow-auto" role="main" aria-label="Main content">
           {/* Header */}
-          <header className="h-16 border-b bg-card flex items-center justify-between px-8">
+          <header className="h-16 border-b bg-card flex items-center justify-between px-8" role="banner">
             <GlobalSearch />
             <NotificationBell />
           </header>
-          <div className="p-8">{children}</div>
+          <div className="p-8">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
     </TooltipProvider>

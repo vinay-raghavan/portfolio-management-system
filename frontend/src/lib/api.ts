@@ -20,6 +20,11 @@ import type {
   Order,
   OrderListResponse,
   OrderCreate,
+  OrderTemplate,
+  OrderTemplateCreate,
+  OrderTemplateUpdate,
+  OrderTemplateListResponse,
+  OrderFromTemplateExecute,
   StockQuote,
   StockInfo,
   HistoricalDataResponse,
@@ -138,6 +143,22 @@ export const tradingApi = {
     api.delete<{ message: string }>(`/orders/${orderId}`),
 };
 
+// Order Templates API
+export const templateApi = {
+  getTemplates: (favoritesOnly?: boolean) =>
+    api.get<OrderTemplateListResponse>('/orders/templates', { params: { favorites_only: favoritesOnly } }),
+  getTemplate: (id: string) =>
+    api.get<OrderTemplate>(`/orders/templates/${id}`),
+  createTemplate: (data: OrderTemplateCreate) =>
+    api.post<OrderTemplate>('/orders/templates', data),
+  updateTemplate: (id: string, data: OrderTemplateUpdate) =>
+    api.put<OrderTemplate>(`/orders/templates/${id}`, data),
+  deleteTemplate: (id: string) =>
+    api.delete<{ message: string }>(`/orders/templates/${id}`),
+  executeTemplate: (id: string, data: OrderFromTemplateExecute) =>
+    api.post<Order>(`/orders/templates/${id}/execute`, data),
+};
+
 // Market Data API
 export const marketDataApi = {
   getQuote: (symbol: string) =>
@@ -242,6 +263,13 @@ export interface SignalGenerateRequest {
   timeframe?: string;
 }
 
+export interface SignalUpdate {
+  status?: 'ACTIVE' | 'PENDING' | 'EXECUTED' | 'EXPIRED' | 'CANCELLED';
+  is_executed?: boolean;
+  executed_order_id?: string;
+  notes?: string;
+}
+
 export const signalsApi = {
   getSignals: (status?: string, symbol?: string, limit = 50, offset = 0) =>
     api.get<{ signals: Signal[]; total: number }>('/signals', {
@@ -251,6 +279,12 @@ export const signalsApi = {
     api.get<Signal>(`/signals/${id}`),
   generateSignals: (data: SignalGenerateRequest) =>
     api.post<{ signals: Signal[]; signals_generated: number }>('/signals/generate', data),
+  updateSignal: (id: string, data: SignalUpdate) =>
+    api.patch<Signal>(`/signals/${id}`, data),
+  cancelSignal: (id: string) =>
+    api.post<Signal>(`/signals/${id}/cancel`),
+  expireSignals: () =>
+    api.post<{ expired_count: number; message: string }>('/signals/expire'),
   getStrategies: () =>
     api.get<{ strategies: { name: string; description: string; default_timeframe: string; parameters: Record<string, unknown> }[] }>('/signals/strategies'),
 };

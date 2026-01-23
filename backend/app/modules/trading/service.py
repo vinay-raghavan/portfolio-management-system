@@ -10,8 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.portfolio.funds_service import FundsService
 from app.modules.portfolio.models import Trade
 from app.modules.portfolio.service import PortfolioService
-from app.modules.trading.models import Order, OrderStatus
-from app.modules.trading.schemas import OrderCreate, OrderSide
+from app.modules.trading.models import Order, OrderStatus, OrderTemplate
+from app.modules.trading.schemas import (
+    OrderCreate,
+    OrderSide,
+    OrderTemplateCreate,
+    OrderTemplateUpdate,
+)
 from app.modules.trading.validator import (
     OrderValidator,
     ValidationResult,
@@ -503,3 +508,167 @@ class TradingService:
             "failed": failed,
             "total": len(amo_orders),
         }
+
+    # ============== Order Template Methods ==============
+
+    async def create_template(
+        self, user_id: str, template_data: OrderTemplateCreate
+    ) -> OrderTemplate:
+        """Create a new order template."""
+        template = OrderTemplate(
+            user_id=user_id,
+            name=template_data.name,
+            symbol=template_data.symbol.upper(),
+            side=template_data.side.value,
+            order_type=template_data.order_type.value,
+            quantity=template_data.quantity,
+            quantity_pct=template_data.quantity_pct,
+            stop_loss_pct=template_data.stop_loss_pct,
+            take_profit_pct=template_data.take_profit_pct,
+            is_favorite=template_data.is_favorite,
+        )
+        self.db.add(template)
+        await self.db.flush()
+        await self.db.refresh(template)
+        return template
+
+    async def get_template(self, user_id: str, template_id: str) -> OrderTemplate | None:
+        """Get a single template by ID."""
+        result = await self.db.execute(
+            select(OrderTemplate).where(
+                OrderTemplate.id == template_id,
+                OrderTemplate.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_templates(
+        self, user_id: str, favorites_only: bool = False
+    ) -> tuple[list[OrderTemplate], int]:
+        """Get all templates for a user."""
+        query = select(OrderTemplate).where(OrderTemplate.user_id == user_id)
+
+        if favorites_only:
+            query = query.where(OrderTemplate.is_favorite == True)  # noqa: E712
+
+        # Order by favorites first, then by use count (most used), then by name
+        query = query.order_by(
+            OrderTemplate.is_favorite.desc(),
+            OrderTemplate.use_count.desc(),
+            OrderTemplate.name,
+        )
+
+        result = await self.db.execute(query)
+        templates = list(result.scalars().all())
+
+        return templates, len(templates)
+
+    async def update_template(
+        self, user_id: str, template_id: str, template_data: OrderTemplateUpdate
+    ) -> OrderTemplate | None:
+        """Update an existing template."""
+        template = await self.get_template(user_id, template_id)
+        if template is None:
+            return None
+
+        update_data = template_data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if field == "symbol" and value:
+                value = value.upper()
+            elif field in ("side", "order_type") and value:
+                value = value.value
+            setattr(template, field, value)
+
+        await self.db.flush()
+        await self.db.refresh(template)
+        return template
+
+    async def delete_template(self, user_id: str, template_id: str) -> bool:
+        """Delete a template."""
+        template = await self.get_template(user_id, template_id)
+        if template is None:
+            return False
+
+        await self.db.delete(template)
+        await self.db.flush()
+        return True
+
+    async def execute_template(
+        self,
+        user_id: str,
+        template_id: str,
+        current_price: Decimal,
+        quantity_override: int | None = None,
+    ) -> Order:
+        """Execute an order from a template.
+
+        Args:
+            user_id: User ID
+            template_id: Template ID to execute
+            current_price: Current market price for SL/TP calculation
+            quantity_override: Optional quantity override
+
+        Returns:
+            Created Order
+
+        Raises:
+            ValueError: If template not found
+            OrderValidationError: If order validation fails
+        """
+        template = await self.get_template(user_id, template_id)
+        if template is None:
+            raise ValueError("Template not found")
+
+        # Determine quantity
+        quantity = quantity_override or template.quantity
+        if quantity is None:
+            # Calculate from percentage if set
+            if template.quantity_pct:
+                # Get available funds
+                funds_data = await self.funds_service.get_funds(user_id)
+                available = funds_data.available_funds
+                # Calculate quantity based on percentage of available funds
+                investment = available * (template.quantity_pct / Decimal("100"))
+                quantity = int(investment / current_price)
+            else:
+                raise ValueError("Template has no quantity or quantity_pct set")
+
+        if quantity <= 0:
+            raise ValueError("Calculated quantity is zero or negative")
+
+        # Calculate SL/TP prices from percentages
+        stop_loss = None
+        take_profit = None
+
+        if template.stop_loss_pct:
+            if template.side == "BUY":
+                stop_loss = current_price * (1 - template.stop_loss_pct / Decimal("100"))
+            else:
+                stop_loss = current_price * (1 + template.stop_loss_pct / Decimal("100"))
+
+        if template.take_profit_pct:
+            if template.side == "BUY":
+                take_profit = current_price * (1 + template.take_profit_pct / Decimal("100"))
+            else:
+                take_profit = current_price * (1 - template.take_profit_pct / Decimal("100"))
+
+        # Create order from template
+        from app.modules.trading.schemas import OrderType as SchemaOrderType
+
+        order_data = OrderCreate(
+            symbol=template.symbol,
+            side=OrderSide(template.side),
+            order_type=SchemaOrderType(template.order_type),
+            quantity=Decimal(str(quantity)),
+            price=None if template.order_type == "MARKET" else current_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            notes=f"Created from template: {template.name}",
+        )
+
+        # Increment template use count
+        template.use_count += 1
+        await self.db.flush()
+
+        # Create and execute the order
+        return await self.create_order(user_id, order_data)

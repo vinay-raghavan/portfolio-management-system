@@ -56,5 +56,51 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Accessible focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Remove default focus outline and use custom */
+  :focus:not(:focus-visible) {
+    @apply outline-none;
+  }
+
+  /* High contrast focus for links and buttons */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background rounded-sm;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Utility class for respecting reduced motion preference */
+@layer utilities {
+  .motion-safe {
+    @media (prefers-reduced-motion: reduce) {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+  .motion-reduce {
+    @media (prefers-reduced-motion: no-preference) {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
 }
 
