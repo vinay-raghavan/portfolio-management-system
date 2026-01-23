@@ -11,6 +11,7 @@ from app.modules.data.router import router as data_router
 from app.modules.instruments.router import router as instruments_router
 from app.modules.portfolio.router import router as portfolio_router
 from app.modules.risk.router import router as risk_router
+from app.modules.screener.router import router as screener_router
 from app.modules.settings.router import router as settings_router
 from app.modules.signals.router import router as signals_router
 from app.modules.trading.router import router as trading_router
@@ -31,4 +32,5 @@ api_router.include_router(watchlist_router, prefix="/watchlist", tags=["Watchlis
 api_router.include_router(instruments_router, prefix="/instruments", tags=["Instruments"])
 api_router.include_router(risk_router, prefix="/risk", tags=["Risk Management"])
 api_router.include_router(algo_router, prefix="/algo", tags=["Algo Trading"])
+api_router.include_router(screener_router, prefix="/screener", tags=["Stock Screener"])
 api_router.include_router(settings_router, prefix="/settings", tags=["User Settings"])
