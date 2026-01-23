@@ -646,3 +646,139 @@ export const settingsApi = {
   getProviders: () =>
     api.get<AvailableProvidersResponse>('/settings/providers'),
 };
+
+// ============================================================================
+// Screener API
+// ============================================================================
+
+export type FilterType = 'volume' | 'momentum' | 'breakout' | 'consolidation' | 'moving_average' | 'price_action';
+export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation';
+export type RecommendationCategory = 'momentum' | 'breakout' | 'pullback' | 'sector';
+
+export interface FilterConfig {
+  filter_type: FilterType;
+  params: Record<string, unknown>;
+  weight: number;
+}
+
+export interface ScreenerRunRequest {
+  universe: string;
+  filters: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface ScreenerPresetRunRequest {
+  preset: ScreenerPresetType;
+  universe?: string;
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface ScreenerResultItem {
+  symbol: string;
+  rank: number;
+  score: number;
+  passed: boolean;
+  filter_scores: Record<string, number>;
+  reasons: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface ScreenerRunResponse {
+  run_id: string;
+  status: string;
+  universe: string;
+  total_screened: number;
+  passed_count: number;
+  min_score: number;
+  results: ScreenerResultItem[];
+  executed_at: string;
+  duration_ms: number;
+}
+
+export interface ScreenerPresetInfo {
+  preset: ScreenerPresetType;
+  name: string;
+  description: string;
+  filters: FilterConfig[];
+}
+
+export interface ScreenerPresetsResponse {
+  presets: ScreenerPresetInfo[];
+}
+
+export interface CustomScreenerCreate {
+  name: string;
+  description?: string;
+  universe?: string;
+  filters: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface CustomScreener {
+  id: string;
+  name: string;
+  description: string | null;
+  universe: string;
+  filters: FilterConfig[];
+  min_score: number;
+  top_n: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecommendationItem {
+  symbol: string;
+  rank: number;
+  score: number;
+  price_at_rec: number;
+  filter_scores: Record<string, number>;
+  reasons: string[];
+  metadata: Record<string, unknown>;
+  return_1d?: number | null;
+  return_1w?: number | null;
+  return_1m?: number | null;
+}
+
+export interface CategoryRecommendations {
+  category: RecommendationCategory;
+  title: string;
+  description: string;
+  recommendations: RecommendationItem[];
+}
+
+export interface DailyRecommendationsResponse {
+  date: string;
+  generated_at: string;
+  categories: CategoryRecommendations[];
+}
+
+export const screenerApi = {
+  // Presets
+  getPresets: () =>
+    api.get<ScreenerPresetsResponse>('/screener/presets'),
+
+  // Run screeners
+  runScreener: (data: ScreenerRunRequest) =>
+    api.post<ScreenerRunResponse>('/screener/run', data),
+  runPreset: (data: ScreenerPresetRunRequest) =>
+    api.post<ScreenerRunResponse>('/screener/run/preset', data),
+
+  // Custom screeners
+  getCustomScreeners: () =>
+    api.get<{ screeners: CustomScreener[] }>('/screener/custom'),
+  createCustomScreener: (data: CustomScreenerCreate) =>
+    api.post<CustomScreener>('/screener/custom', data),
+  updateCustomScreener: (id: string, data: Partial<CustomScreenerCreate>) =>
+    api.patch<CustomScreener>(`/screener/custom/${id}`, data),
+  deleteCustomScreener: (id: string) =>
+    api.delete(`/screener/custom/${id}`),
+  runCustomScreener: (id: string) =>
+    api.post<ScreenerRunResponse>(`/screener/custom/${id}/run`),
+
+  // Recommendations
+  getRecommendations: (date?: string) =>
+    api.get<DailyRecommendationsResponse>('/screener/recommendations', { params: { date } }),
+};
