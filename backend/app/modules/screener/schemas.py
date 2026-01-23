@@ -153,3 +153,45 @@ class ScreenerPresetsResponse(BaseModel):
 
     presets: list[ScreenerPresetInfo]
 
+
+class RecommendationCategory(str, Enum):
+    """Categories for daily recommendations."""
+
+    MOMENTUM = "momentum"
+    BREAKOUT = "breakout"
+    PULLBACK = "pullback"
+    SECTOR = "sector"
+
+
+class RecommendationItem(BaseModel):
+    """Single recommendation item."""
+
+    symbol: str
+    rank: int
+    score: float
+    price_at_rec: float
+    filter_scores: dict[str, float] = Field(default_factory=dict)
+    reasons: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    # Performance (if available)
+    return_1d: float | None = None
+    return_1w: float | None = None
+    return_1m: float | None = None
+
+
+class CategoryRecommendations(BaseModel):
+    """Recommendations for a single category."""
+
+    category: RecommendationCategory
+    title: str
+    description: str
+    recommendations: list[RecommendationItem]
+
+
+class DailyRecommendationsResponse(BaseModel):
+    """Response for daily recommendations endpoint."""
+
+    date: datetime
+    generated_at: datetime
+    categories: list[CategoryRecommendations]
+

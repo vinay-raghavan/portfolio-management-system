@@ -20,7 +20,12 @@ from app.modules.screener.filters import (
     SectorPerformanceFilter,
     VolumeFilter,
 )
-from app.modules.screener.models import CustomScreener, ScreenerResultRecord, ScreenerRun
+from app.modules.screener.models import (
+    CustomScreener,
+    DailyRecommendation,
+    ScreenerResultRecord,
+    ScreenerRun,
+)
 from app.modules.screener.router import router
 from app.modules.screener.screener import StockScreener
 from app.modules.screener.service import ScreenerService
@@ -41,6 +46,7 @@ __all__ = [
     "CustomScreener",
     "ScreenerRun",
     "ScreenerResultRecord",
+    "DailyRecommendation",
     # Service
     "ScreenerService",
     # Router

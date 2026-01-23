@@ -13,11 +13,15 @@ from app.modules.algo.universe_service import (
     UniverseService,
 )
 from app.modules.screener.schemas import (
+    CategoryRecommendations,
     CustomScreenerCreate,
     CustomScreenerListResponse,
     CustomScreenerResponse,
     CustomScreenerUpdate,
+    DailyRecommendationsResponse,
     FilterConfig,
+    RecommendationCategory,
+    RecommendationItem,
     ScreenerPresetRunRequest,
     ScreenerPresetsResponse,
     ScreenerRunRequest,
@@ -321,6 +325,191 @@ async def run_custom_screener(
         return result
     finally:
         await nse_provider.close()
+
+
+# =============================================================================
+# Recommendations Endpoints
+# =============================================================================
+
+
+# Category metadata for display
+CATEGORY_METADATA = {
+    RecommendationCategory.MOMENTUM: {
+        "title": "Top Momentum",
+        "description": "Stocks with strong upward momentum and volume",
+    },
+    RecommendationCategory.BREAKOUT: {
+        "title": "Potential Breakouts",
+        "description": "Stocks breaking out of consolidation patterns",
+    },
+    RecommendationCategory.PULLBACK: {
+        "title": "Pullback Opportunities",
+        "description": "Strong stocks with temporary pullbacks",
+    },
+    RecommendationCategory.SECTOR: {
+        "title": "Strong Sectors",
+        "description": "Leaders in the strongest performing sectors",
+    },
+}
+
+
+@router.get("/recommendations", response_model=DailyRecommendationsResponse)
+async def get_recommendations(
+    db: DbSession,
+    current_user: CurrentUser,
+    date: str | None = None,
+) -> DailyRecommendationsResponse:
+    """Get daily stock recommendations.
+
+    Returns recommendations across all categories (momentum, breakout, pullback, sector).
+    By default returns today's recommendations.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import select, func
+
+    from app.modules.screener.models import DailyRecommendation
+
+    # Parse date or use today
+    if date:
+        try:
+            target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Use ISO format: YYYY-MM-DD",
+            )
+    else:
+        target_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Get the most recent recommendation date up to target_date
+    latest_date_result = await db.execute(
+        select(func.max(DailyRecommendation.date)).where(
+            DailyRecommendation.date <= target_date
+        )
+    )
+    latest_date = latest_date_result.scalar_one_or_none()
+
+    if not latest_date:
+        return DailyRecommendationsResponse(
+            date=target_date,
+            generated_at=target_date,
+            categories=[],
+        )
+
+    # Fetch all recommendations for that date
+    result = await db.execute(
+        select(DailyRecommendation)
+        .where(func.date(DailyRecommendation.date) == func.date(latest_date))
+        .order_by(DailyRecommendation.category, DailyRecommendation.rank)
+    )
+    recommendations = list(result.scalars().all())
+
+    # Group by category
+    categories_data: dict[str, list[DailyRecommendation]] = {}
+    for rec in recommendations:
+        if rec.category not in categories_data:
+            categories_data[rec.category] = []
+        categories_data[rec.category].append(rec)
+
+    # Build response
+    categories = []
+    for cat_str, recs in categories_data.items():
+        try:
+            cat_enum = RecommendationCategory(cat_str)
+        except ValueError:
+            continue  # Skip unknown categories
+
+        metadata = CATEGORY_METADATA.get(cat_enum, {"title": cat_str, "description": ""})
+
+        items = [
+            RecommendationItem(
+                symbol=r.symbol,
+                rank=r.rank,
+                score=r.score,
+                price_at_rec=r.price_at_rec,
+                filter_scores=r.filter_scores or {},
+                reasons=r.reasons or [],
+                metadata=r.metadata or {},
+                return_1d=r.return_1d,
+                return_1w=r.return_1w,
+                return_1m=r.return_1m,
+            )
+            for r in recs
+        ]
+
+        categories.append(
+            CategoryRecommendations(
+                category=cat_enum,
+                title=metadata["title"],
+                description=metadata["description"],
+                recommendations=items,
+            )
+        )
+
+    return DailyRecommendationsResponse(
+        date=latest_date,
+        generated_at=recommendations[0].created_at if recommendations else latest_date,
+        categories=categories,
+    )
+
+
+@router.post("/recommendations/store")
+async def store_recommendations(
+    db: DbSession,
+    date: str,
+    category: str,
+    results: list[dict],
+) -> dict:
+    """Internal endpoint to store daily recommendations.
+
+    Called by the Celery task to persist recommendations.
+    Requires internal API key authentication.
+    """
+    from datetime import datetime, timezone
+
+    from app.modules.screener.models import DailyRecommendation
+
+    # Parse date
+    try:
+        rec_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    except ValueError:
+        rec_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Delete existing recommendations for this date/category (replace on re-run)
+    from sqlalchemy import delete, func
+
+    await db.execute(
+        delete(DailyRecommendation).where(
+            func.date(DailyRecommendation.date) == func.date(rec_date),
+            DailyRecommendation.category == category,
+        )
+    )
+
+    # Store new recommendations
+    stored_count = 0
+    for i, result in enumerate(results):
+        rec = DailyRecommendation(
+            date=rec_date,
+            category=category,
+            symbol=result.get("symbol", ""),
+            rank=i + 1,
+            score=result.get("score", 0.0),
+            price_at_rec=result.get("metadata", {}).get("current_price", 0.0),
+            filter_scores=result.get("filter_scores", {}),
+            reasons=result.get("reasons", []),
+            metadata=result.get("metadata", {}),
+        )
+        db.add(rec)
+        stored_count += 1
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "date": date,
+        "category": category,
+        "stored_count": stored_count,
+    }
 
 
 # Helper functions

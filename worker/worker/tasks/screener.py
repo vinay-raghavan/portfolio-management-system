@@ -144,10 +144,10 @@ def run_screener_async(
     preset: str | None = None,
 ) -> dict:
     """Run a screener asynchronously for large universes.
-    
+
     This task is queued when screening large universes (2200+ stocks)
     that would otherwise timeout in a synchronous API call.
-    
+
     Args:
         user_id: User ID making the request
         universe: Universe identifier
@@ -158,4 +158,114 @@ def run_screener_async(
     """
     logger.info(f"Starting async screener: user={user_id}, universe={universe}")
     return _run_screener_sync(user_id, universe, filters, min_score, top_n, preset)
+
+
+# Preset to category mapping for recommendations
+PRESET_TO_CATEGORY = {
+    "momentum": "momentum",
+    "breakout": "breakout",
+    "value": "pullback",
+    "sector_rotation": "sector",
+}
+
+
+def _store_recommendations(date: str, category: str, results: list[dict]) -> dict:
+    """Store recommendations in the database via API."""
+    endpoint = f"{BACKEND_API_URL}/api/v1/screener/recommendations/store"
+    payload = {
+        "date": date,
+        "category": category,
+        "results": results,
+    }
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                endpoint,
+                json=payload,
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Store recommendations error: {response.status_code} - {response.text}")
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+            return {"status": "success", **response.json()}
+    except Exception as e:
+        logger.exception(f"Error storing recommendations: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.generate_daily_recommendations")
+def generate_daily_recommendations(self) -> dict:
+    """Generate daily stock recommendations by running all preset screeners.
+
+    This task runs at market open (9:15 AM IST / 3:45 UTC) to generate
+    daily stock picks across all categories:
+    - Momentum: Top momentum stocks
+    - Breakout: Potential breakout candidates
+    - Pullback: Value/oversold entry points
+    - Sector: Strong sector leaders
+
+    Results are stored in the daily_recommendations table for the dashboard widget.
+    """
+    logger.info("Starting daily recommendations generation")
+
+    from datetime import date
+    today = date.today().isoformat()
+
+    categories_generated = []
+    errors = []
+
+    # Run each preset screener and store results
+    presets = ["momentum", "breakout", "value", "sector_rotation"]
+    universe = "nifty500"  # Use Nifty 500 for daily recommendations
+
+    for preset in presets:
+        category = PRESET_TO_CATEGORY.get(preset, preset)
+        logger.info(f"Running {preset} screener for {category} category")
+
+        try:
+            # Run the screener
+            result = _run_screener_sync(
+                user_id="system",  # System-generated recommendations
+                universe=universe,
+                filters=[],  # Preset handles filters
+                min_score=50.0,
+                top_n=10,  # Top 10 per category
+                preset=preset,
+            )
+
+            if result.get("status") == "error":
+                errors.append(f"{preset}: {result.get('message')}")
+                continue
+
+            # Store the recommendations
+            recommendations = result.get("results", [])
+            if recommendations:
+                store_result = _store_recommendations(today, category, recommendations)
+                if store_result.get("status") == "success":
+                    categories_generated.append(category)
+                    logger.info(f"Stored {len(recommendations)} {category} recommendations")
+                else:
+                    errors.append(f"{category}: {store_result.get('message')}")
+            else:
+                logger.warning(f"No results for {preset} screener")
+
+        except Exception as e:
+            logger.exception(f"Error running {preset} screener: {e}")
+            errors.append(f"{preset}: {str(e)}")
+
+    result = {
+        "status": "completed" if categories_generated else "failed",
+        "date": today,
+        "categories_generated": categories_generated,
+        "total_categories": len(presets),
+    }
+
+    if errors:
+        result["errors"] = errors
+
+    logger.info(f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories")
+    return result
 
