@@ -9,7 +9,7 @@ Flow: Celery Worker → Backend API :8000/api/v1/screener
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -49,21 +49,21 @@ def _generate_cache_key(
 
 def _is_market_hours() -> bool:
     """Check if we're in Indian market hours (9:15 AM - 3:30 PM IST)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Convert to IST (UTC+5:30)
     ist_hour = (now.hour + 5) % 24 + (1 if now.minute >= 30 else 0)
     ist_minute = (now.minute + 30) % 60
-    
+
     # Market open: 9:15, Market close: 15:30
     market_open = 9 * 60 + 15  # 555 minutes
     market_close = 15 * 60 + 30  # 930 minutes
     current_time = ist_hour * 60 + ist_minute
-    
+
     # Check weekday (0=Monday, 6=Sunday)
     weekday = now.weekday()
     if weekday >= 5:  # Weekend
         return False
-    
+
     return market_open <= current_time <= market_close
 
 
@@ -84,7 +84,7 @@ def _run_screener_sync(
 ) -> dict:
     """Synchronous implementation of screener execution."""
     logger.info(f"Running screener for user {user_id}, universe: {universe}")
-    
+
     try:
         # Determine endpoint based on preset or custom
         if preset:
@@ -103,28 +103,28 @@ def _run_screener_sync(
                 "min_score": min_score,
                 "top_n": top_n,
             }
-        
+
         with httpx.Client(timeout=300.0) as client:  # 5 min timeout for large universes
             response = client.post(
                 endpoint,
                 json=payload,
                 headers=_get_internal_headers(user_id),
             )
-            
+
             if response.status_code != 200:
                 logger.error(f"Screener API error: {response.status_code} - {response.text}")
                 return {
                     "status": "error",
                     "message": f"API returned {response.status_code}",
                 }
-            
+
             result = response.json()
             logger.info(
                 f"Screener complete: {result.get('passed_count', 0)} stocks passed "
                 f"out of {result.get('total_screened', 0)}"
             )
             return {"status": "success", **result}
-    
+
     except httpx.TimeoutException:
         logger.error("Timeout running screener")
         return {"status": "error", "message": "Request timeout"}
@@ -187,7 +187,9 @@ def _store_recommendations(date: str, category: str, results: list[dict]) -> dic
             )
 
             if response.status_code != 200:
-                logger.error(f"Store recommendations error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Store recommendations error: {response.status_code} - {response.text}"
+                )
                 return {"status": "error", "message": f"API returned {response.status_code}"}
 
             return {"status": "success", **response.json()}
@@ -212,6 +214,7 @@ def generate_daily_recommendations(self) -> dict:
     logger.info("Starting daily recommendations generation")
 
     from datetime import date
+
     today = date.today().isoformat()
 
     categories_generated = []
@@ -266,7 +269,9 @@ def generate_daily_recommendations(self) -> dict:
     if errors:
         result["errors"] = errors
 
-    logger.info(f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories")
+    logger.info(
+        f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories"
+    )
     return result
 
 
@@ -312,4 +317,3 @@ def update_recommendation_returns(self) -> dict:
     except Exception as e:
         logger.exception(f"Error updating recommendation returns: {e}")
         return {"status": "error", "message": str(e)}
-

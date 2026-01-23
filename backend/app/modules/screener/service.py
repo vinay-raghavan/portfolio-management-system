@@ -4,14 +4,13 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.screener.base import FilterType
 from app.modules.screener.filters import (
     BreakoutFilter,
     ConsolidationFilter,
@@ -55,7 +54,7 @@ def _generate_cache_key(
 
 def _is_market_hours() -> bool:
     """Check if we're in Indian market hours (9:15 AM - 3:30 PM IST)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # IST is UTC+5:30
     ist_hour = (now.hour + 5) % 24
     ist_minute = now.minute + 30
@@ -90,7 +89,9 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         name="Momentum Screener",
         description="Stocks with strong upward momentum: high volume, bullish RSI, near 52-week high",
         filters=[
-            FilterConfig(filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 100000}, weight=1.0),
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 100000}, weight=1.0
+            ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
                 params={"momentum_mode": "bullish", "min_roc": 5, "near_52w_high_pct": 15},
@@ -110,7 +111,11 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         filters=[
             FilterConfig(
                 filter_type=FilterTypeEnum.VOLUME,
-                params={"min_avg_volume": 50000, "require_spike": True, "volume_spike_threshold": 1.5},
+                params={
+                    "min_avg_volume": 50000,
+                    "require_spike": True,
+                    "volume_spike_threshold": 1.5,
+                },
                 weight=1.5,
             ),
             FilterConfig(
@@ -125,7 +130,9 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         name="Consolidation Screener",
         description="Pre-breakout candidates in tight trading ranges with declining volume",
         filters=[
-            FilterConfig(filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0),
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0
+            ),
             FilterConfig(
                 filter_type=FilterTypeEnum.CONSOLIDATION,
                 params={"max_range_pct": 10, "declining_volume": True},
@@ -143,7 +150,9 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         name="Value/Pullback Screener",
         description="Pullback to support: near 50-day MA, oversold RSI, still in uptrend",
         filters=[
-            FilterConfig(filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0),
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0
+            ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
                 params={"momentum_mode": "bearish", "rsi_oversold": 40},
@@ -212,9 +221,7 @@ class ScreenerService:
                 screener.add_filter(filter_cls(weight=fc.weight, **fc.params))
         return screener
 
-    async def _get_cached_results(
-        self, cache_key: str
-    ) -> ScreenerRunResponse | None:
+    async def _get_cached_results(self, cache_key: str) -> ScreenerRunResponse | None:
         """Get cached screener results from Redis."""
         if not self.redis:
             return None
@@ -228,9 +235,7 @@ class ScreenerService:
             logger.warning(f"Redis cache get error: {e}")
         return None
 
-    async def _cache_results(
-        self, cache_key: str, response: ScreenerRunResponse
-    ) -> None:
+    async def _cache_results(self, cache_key: str, response: ScreenerRunResponse) -> None:
         """Cache screener results to Redis."""
         if not self.redis:
             return
@@ -352,9 +357,7 @@ class ScreenerService:
         start_time = time.time()
 
         screener = self._build_screener(filters, data_provider)
-        results = await screener.screen_universe(
-            symbols=symbols, min_score=min_score, top_n=top_n
-        )
+        results = await screener.screen_universe(symbols=symbols, min_score=min_score, top_n=top_n)
 
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -385,7 +388,7 @@ class ScreenerService:
                 passed=r.passed,
                 filter_scores=r.filter_scores,
                 reasons=r.reasons,
-                metadata=r.metadata,
+                extra_data=r.metadata,
             )
             self.db.add(result_record)
             result_items.append(
@@ -439,4 +442,3 @@ class ScreenerService:
     def get_preset(preset: ScreenerPresetType) -> ScreenerPresetInfo | None:
         """Get a specific preset definition."""
         return PRESET_DEFINITIONS.get(preset)
-

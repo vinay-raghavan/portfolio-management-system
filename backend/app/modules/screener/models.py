@@ -3,12 +3,16 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+
+# Use JSONB for PostgreSQL (production), JSON for SQLite (testing)
+# This allows tests to run with SQLite while production uses PostgreSQL's optimized JSONB
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 
 class CustomScreener(Base):
@@ -25,7 +29,7 @@ class CustomScreener(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     universe: Mapped[str] = mapped_column(String(50), nullable=False, default="nifty500")
-    filters: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    filters: Mapped[dict] = mapped_column(JSONType, nullable=False)
     min_score: Mapped[float] = mapped_column(Float, nullable=False, default=50.0)
     top_n: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -66,13 +70,15 @@ class ScreenerRun(Base):
     )
     preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
     universe: Mapped[str] = mapped_column(String(50), nullable=False)
-    filters: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    filters: Mapped[dict] = mapped_column(JSONType, nullable=False)
     min_score: Mapped[float] = mapped_column(Float, nullable=False)
     top_n: Mapped[int] = mapped_column(Integer, nullable=False)
     total_screened: Mapped[int] = mapped_column(Integer, nullable=False)
     passed_count: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
-    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # Relationships
     custom_screener: Mapped["CustomScreener | None"] = relationship(
@@ -106,9 +112,9 @@ class ScreenerResultRecord(Base):
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    filter_scores: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    reasons: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    filter_scores: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    reasons: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
+    extra_data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
 
     # Relationships
     run: Mapped["ScreenerRun"] = relationship("ScreenerRun", back_populates="results")
@@ -154,10 +160,10 @@ class DailyRecommendation(Base):
     return_1w: Mapped[float | None] = mapped_column(Float, nullable=True)
     return_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    # Screener metadata
-    filter_scores: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    reasons: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # Screener data
+    filter_scores: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
+    reasons: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
+    extra_data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -169,4 +175,3 @@ class DailyRecommendation(Base):
 
     def __repr__(self) -> str:
         return f"<DailyRecommendation {self.symbol} {self.category}>"
-

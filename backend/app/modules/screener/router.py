@@ -1,8 +1,10 @@
 """Screener API routes."""
 
 import logging
+from datetime import UTC
 
 from fastapi import APIRouter, HTTPException, status
+from shared.providers.data import NSEDataProvider
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.celery_client import celery_client
@@ -33,7 +35,6 @@ from app.modules.screener.schemas import (
     UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
-from shared.providers.data import NSEDataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -219,9 +220,7 @@ async def get_custom_screeners(
     """Get all custom screeners for the current user."""
     service = ScreenerService(db)
     screeners = await service.get_custom_screeners(current_user.id)
-    return CustomScreenerListResponse(
-        screeners=[_screener_to_response(s) for s in screeners]
-    )
+    return CustomScreenerListResponse(screeners=[_screener_to_response(s) for s in screeners])
 
 
 @router.post("/custom", response_model=CustomScreenerResponse, status_code=status.HTTP_201_CREATED)
@@ -369,28 +368,27 @@ async def get_recommendations(
     Returns recommendations across all categories (momentum, breakout, pullback, sector).
     By default returns today's recommendations.
     """
-    from datetime import datetime, timezone
-    from sqlalchemy import select, func
+    from datetime import datetime
+
+    from sqlalchemy import func, select
 
     from app.modules.screener.models import DailyRecommendation
 
     # Parse date or use today
     if date:
         try:
-            target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+            target_date = datetime.fromisoformat(date).replace(tzinfo=UTC)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid date format. Use ISO format: YYYY-MM-DD",
             )
     else:
-        target_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        target_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Get the most recent recommendation date up to target_date
     latest_date_result = await db.execute(
-        select(func.max(DailyRecommendation.date)).where(
-            DailyRecommendation.date <= target_date
-        )
+        select(func.max(DailyRecommendation.date)).where(DailyRecommendation.date <= target_date)
     )
     latest_date = latest_date_result.scalar_one_or_none()
 
@@ -470,15 +468,15 @@ async def store_recommendations(
     Called by the Celery task to persist recommendations.
     Requires internal API key authentication.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from app.modules.screener.models import DailyRecommendation
 
     # Parse date
     try:
-        rec_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        rec_date = datetime.fromisoformat(date).replace(tzinfo=UTC)
     except ValueError:
-        rec_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        rec_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Delete existing recommendations for this date/category (replace on re-run)
     from sqlalchemy import delete, func
@@ -502,7 +500,7 @@ async def store_recommendations(
             price_at_rec=result.get("metadata", {}).get("current_price", 0.0),
             filter_scores=result.get("filter_scores", {}),
             reasons=result.get("reasons", []),
-            metadata=result.get("metadata", {}),
+            extra_data=result.get("metadata", {}),
         )
         db.add(rec)
         stored_count += 1
@@ -532,7 +530,6 @@ async def create_universe_from_screener(
     in algo strategies. If is_dynamic is True, the universe can be refreshed
     by re-running the screener configuration.
     """
-    from app.modules.algo.models import Universe
     from app.modules.algo.schemas import UniverseCreate
 
     universe_svc = UniverseService(db)
@@ -577,6 +574,7 @@ async def refresh_screener_universe(
     Only works for universes created from screeners with is_dynamic=True.
     """
     from sqlalchemy import select
+
     from app.modules.algo.models import Universe
 
     # Get the universe
@@ -677,8 +675,10 @@ async def update_recommendation_returns(
     - Update 1-week returns for 1-week-old recommendations
     - Update 1-month returns for 1-month-old recommendations
     """
-    from datetime import date, timedelta
-    from sqlalchemy import select, and_
+    from datetime import date, time, timedelta
+    from datetime import datetime as dt
+
+    from sqlalchemy import and_, select
 
     from app.modules.screener.models import DailyRecommendation
 
@@ -693,8 +693,8 @@ async def update_recommendation_returns(
     result = await db.execute(
         select(DailyRecommendation).where(
             and_(
-                DailyRecommendation.date >= datetime.combine(yesterday, datetime.min.time()),
-                DailyRecommendation.date < datetime.combine(today, datetime.min.time()),
+                DailyRecommendation.date >= dt.combine(yesterday, time.min),
+                DailyRecommendation.date < dt.combine(today, time.min),
                 DailyRecommendation.return_1d == None,  # noqa: E711
             )
         )
@@ -706,8 +706,8 @@ async def update_recommendation_returns(
     result = await db.execute(
         select(DailyRecommendation).where(
             and_(
-                DailyRecommendation.date >= datetime.combine(one_week_ago, datetime.min.time()),
-                DailyRecommendation.date < datetime.combine(one_week_ago + timedelta(days=1), datetime.min.time()),
+                DailyRecommendation.date >= dt.combine(one_week_ago, time.min),
+                DailyRecommendation.date < dt.combine(one_week_ago + timedelta(days=1), time.min),
                 DailyRecommendation.return_1w == None,  # noqa: E711
             )
         )
@@ -719,8 +719,8 @@ async def update_recommendation_returns(
     result = await db.execute(
         select(DailyRecommendation).where(
             and_(
-                DailyRecommendation.date >= datetime.combine(one_month_ago, datetime.min.time()),
-                DailyRecommendation.date < datetime.combine(one_month_ago + timedelta(days=1), datetime.min.time()),
+                DailyRecommendation.date >= dt.combine(one_month_ago, time.min),
+                DailyRecommendation.date < dt.combine(one_month_ago + timedelta(days=1), time.min),
                 DailyRecommendation.return_1m == None,  # noqa: E711
             )
         )
@@ -795,18 +795,20 @@ async def get_screener_performance(
 
     Aggregates win rates and average returns across all recommendation categories.
     """
+    from datetime import datetime as dt
     from datetime import timedelta
-    from sqlalchemy import select, func, and_
+
+    from sqlalchemy import select
 
     from app.modules.screener.models import DailyRecommendation
 
-    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_date = dt.now() - timedelta(days=days)
 
     # Get all recommendations in the date range
     result = await db.execute(
-        select(DailyRecommendation).where(
-            DailyRecommendation.date >= cutoff_date
-        ).order_by(DailyRecommendation.date.desc())
+        select(DailyRecommendation)
+        .where(DailyRecommendation.date >= cutoff_date)
+        .order_by(DailyRecommendation.date.desc())
     )
     recommendations = result.scalars().all()
 
@@ -818,7 +820,7 @@ async def get_screener_performance(
         )
 
     # Calculate overall stats
-    unique_symbols = set(r.symbol for r in recommendations)
+    unique_symbols = {r.symbol for r in recommendations}
     date_range_start = min(r.date for r in recommendations)
     date_range_end = max(r.date for r in recommendations)
 
@@ -844,16 +846,22 @@ async def get_screener_performance(
         all_returns_1m.extend(returns_1m)
 
         # Find best picks
-        best_1d = max(recs, key=lambda r: r.return_1d or -float('inf')) if returns_1d else None
-        best_1w = max(recs, key=lambda r: r.return_1w or -float('inf')) if returns_1w else None
-        best_1m = max(recs, key=lambda r: r.return_1m or -float('inf')) if returns_1m else None
+        best_1d = max(recs, key=lambda r: r.return_1d or -float("inf")) if returns_1d else None
+        best_1w = max(recs, key=lambda r: r.return_1w or -float("inf")) if returns_1w else None
+        best_1m = max(recs, key=lambda r: r.return_1m or -float("inf")) if returns_1m else None
 
         stats = CategoryPerformanceStats(
             category=category,
             total_recommendations=len(recs),
-            win_rate_1d=len([r for r in returns_1d if r > 0]) / len(returns_1d) * 100 if returns_1d else None,
-            win_rate_1w=len([r for r in returns_1w if r > 0]) / len(returns_1w) * 100 if returns_1w else None,
-            win_rate_1m=len([r for r in returns_1m if r > 0]) / len(returns_1m) * 100 if returns_1m else None,
+            win_rate_1d=len([r for r in returns_1d if r > 0]) / len(returns_1d) * 100
+            if returns_1d
+            else None,
+            win_rate_1w=len([r for r in returns_1w if r > 0]) / len(returns_1w) * 100
+            if returns_1w
+            else None,
+            win_rate_1m=len([r for r in returns_1m if r > 0]) / len(returns_1m) * 100
+            if returns_1m
+            else None,
             avg_return_1d=sum(returns_1d) / len(returns_1d) if returns_1d else None,
             avg_return_1w=sum(returns_1w) / len(returns_1w) if returns_1w else None,
             avg_return_1m=sum(returns_1m) / len(returns_1m) if returns_1m else None,
@@ -872,9 +880,15 @@ async def get_screener_performance(
         date_range_start=date_range_start,
         date_range_end=date_range_end,
         categories=category_stats,
-        overall_win_rate_1d=len([r for r in all_returns_1d if r > 0]) / len(all_returns_1d) * 100 if all_returns_1d else None,
-        overall_win_rate_1w=len([r for r in all_returns_1w if r > 0]) / len(all_returns_1w) * 100 if all_returns_1w else None,
-        overall_win_rate_1m=len([r for r in all_returns_1m if r > 0]) / len(all_returns_1m) * 100 if all_returns_1m else None,
+        overall_win_rate_1d=len([r for r in all_returns_1d if r > 0]) / len(all_returns_1d) * 100
+        if all_returns_1d
+        else None,
+        overall_win_rate_1w=len([r for r in all_returns_1w if r > 0]) / len(all_returns_1w) * 100
+        if all_returns_1w
+        else None,
+        overall_win_rate_1m=len([r for r in all_returns_1m if r > 0]) / len(all_returns_1m) * 100
+        if all_returns_1m
+        else None,
         overall_avg_return_1d=sum(all_returns_1d) / len(all_returns_1d) if all_returns_1d else None,
         overall_avg_return_1w=sum(all_returns_1w) / len(all_returns_1w) if all_returns_1w else None,
         overall_avg_return_1m=sum(all_returns_1m) / len(all_returns_1m) if all_returns_1m else None,
@@ -926,6 +940,7 @@ async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
 
     # Try to find by UUID (custom universe)
     from sqlalchemy import select
+
     from app.modules.algo.models import Universe
 
     result = await db.execute(select(Universe).where(Universe.id == universe))
@@ -934,4 +949,3 @@ async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
         return custom_universe.symbols or []
 
     return []
-

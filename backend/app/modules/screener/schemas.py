@@ -230,8 +230,12 @@ class ScreenerAlertConfig(BaseModel):
 
     screener_id: str = Field(..., description="ID of custom screener to monitor")
     alert_on_new_symbols: bool = Field(default=True, description="Alert when new symbols match")
-    alert_on_removed_symbols: bool = Field(default=False, description="Alert when symbols no longer match")
-    min_score_change: float | None = Field(default=None, ge=0.1, description="Alert on score change threshold")
+    alert_on_removed_symbols: bool = Field(
+        default=False, description="Alert when symbols no longer match"
+    )
+    min_score_change: float | None = Field(
+        default=None, ge=0.1, description="Alert on score change threshold"
+    )
     enabled: bool = Field(default=True)
 
 
@@ -311,4 +315,3 @@ class UpdateReturnsResponse(BaseModel):
     updated_1w: int = 0
     updated_1m: int = 0
     errors: list[str] = []
-
