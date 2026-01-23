@@ -2084,10 +2084,12 @@ Expose research functionality via REST API.
 
 ---
 
-### 1.12 UX Improvements (Week 8-9)
+### 1.12 UX Improvements (Week 8-9) ✅
 > 🌿 **Branch:** `phase-1/ux-improvements`
 
 **Goal**: Address UX gaps identified in comprehensive UX review to improve trading workflow efficiency, accessibility, and user feedback.
+
+**Status**: All priority 1 and 2 tasks completed (1.12.1-1.12.10).
 
 #### UX Improvement Categories
 
@@ -2124,27 +2126,27 @@ flowchart TB
     style Priority3 fill:#e8f5e9,stroke:#4caf50
 ```
 
-#### 1.12.1 Trade from Analysis Page
+#### 1.12.1 Trade from Analysis Page ✅
 Reduce trading friction by allowing order placement directly from the Analysis page.
 
 **Tasks:**
-- [ ] Add collapsible order panel to Analysis page
+- [x] Add collapsible order panel to Analysis page
   - Side panel or bottom drawer
   - Pre-fill symbol from current chart
   - Show real-time quote in order form
-- [ ] Quick trade buttons on chart
+- [x] Quick trade buttons on chart
   - Buy/Sell buttons near price display
   - Right-click context menu on chart
-- [ ] Price level selection from chart
+- [x] Price level selection from chart
   - Click on chart to set limit price
   - Drag to set stop loss / take profit levels
-- [ ] Order confirmation inline (no page navigation)
+- [x] Order confirmation inline (no page navigation)
 
-#### 1.12.2 Keyboard Shortcuts
+#### 1.12.2 Keyboard Shortcuts ✅
 Essential for active traders who need fast execution.
 
 **Tasks:**
-- [ ] Create keyboard shortcut system
+- [x] Create keyboard shortcut system
   ```typescript
   // Global navigation shortcuts
   G + D → Dashboard
@@ -2170,65 +2172,65 @@ Essential for active traders who need fast execution.
   I → Toggle indicators panel
   D → Toggle drawing tools
   ```
-- [ ] Create `useKeyboardShortcuts` hook
-- [ ] Add shortcut hints in UI (tooltips, menu items)
-- [ ] Settings page to customize shortcuts
-- [ ] Shortcut help modal (`?` key to open)
-- [ ] Prevent shortcuts when typing in inputs
+- [x] Create `useKeyboardShortcuts` hook
+- [x] Add shortcut hints in UI (tooltips, menu items)
+- [x] Settings page to customize shortcuts
+- [x] Shortcut help modal (`?` key to open)
+- [x] Prevent shortcuts when typing in inputs
 
-#### 1.12.3 Error Boundary & Error Handling
+#### 1.12.3 Error Boundary & Error Handling ✅
 Prevent app crashes and provide graceful error recovery.
 
 **Tasks:**
-- [ ] Create React Error Boundary component
+- [x] Create React Error Boundary component
   - Catch rendering errors
   - Display friendly error message
   - "Reload" and "Report Issue" buttons
   - Log errors to backend/monitoring
-- [ ] Add error boundaries at page level
-- [ ] Add error boundaries around critical widgets
-- [ ] Global error handler for API failures
+- [x] Add error boundaries at page level
+- [x] Add error boundaries around critical widgets
+- [x] Global error handler for API failures
   - Retry logic with exponential backoff
   - Offline detection and indicator
   - Queue failed mutations for retry
-- [ ] Error state components for each widget
+- [x] Error state components for each widget
   - Consistent error UI across app
   - "Try Again" button
 
-#### 1.12.4 Accessibility: Skip Links & Focus States
+#### 1.12.4 Accessibility: Skip Links & Focus States ✅
 Basic WCAG 2.1 AA compliance for accessibility.
 
 **Tasks:**
-- [ ] Add skip link ("Skip to main content")
+- [x] Add skip link ("Skip to main content")
   - Visible on focus at top of page
   - Links to main content area
-- [ ] Implement visible focus indicators
+- [x] Implement visible focus indicators
   - Focus ring on all interactive elements
   - High contrast focus styles
   - Respect `prefers-reduced-motion`
-- [ ] Keyboard navigation for sidebar
+- [x] Keyboard navigation for sidebar
   - Tab through navigation items
   - Enter to navigate, Space to expand
   - Arrow keys for menu items
-- [ ] Screen reader improvements
+- [x] Screen reader improvements
   - ARIA labels on icon-only buttons
   - ARIA live regions for dynamic content
   - Proper heading hierarchy (h1 → h2 → h3)
-- [ ] Add `prefers-reduced-motion` support
+- [x] Add `prefers-reduced-motion` support
   - Disable animations when preferred
   - Alternative transitions
 
-#### 1.12.5 Toast Notification System
+#### 1.12.5 Toast Notification System ✅
 Consistent feedback for user actions.
 
 **Tasks:**
-- [ ] Create Toast component (or use shadcn/ui Sonner)
+- [x] Create Toast component (or use shadcn/ui Sonner)
   - Success, Error, Warning, Info variants
   - Auto-dismiss with configurable duration
   - Dismiss button
   - Action button support ("Undo", "View")
-- [ ] Create `useToast` hook for triggering toasts
-- [ ] Add toasts for:
+- [x] Create `useToast` hook for triggering toasts
+- [x] Add toasts for:
   - Order placed/filled/cancelled/rejected
   - Watchlist symbol added/removed
   - Portfolio created/deleted
@@ -2236,87 +2238,87 @@ Consistent feedback for user actions.
   - Strategy enabled/disabled
   - Kill switch activated
   - Alert triggered
-- [ ] Toast queue management (prevent stacking too many)
-- [ ] Position configuration (top-right, bottom-right, etc.)
+- [x] Toast queue management (prevent stacking too many)
+- [x] Position configuration (top-right, bottom-right, etc.)
 
-#### 1.12.6 Multi-Chart Layout
+#### 1.12.6 Multi-Chart Layout ✅
 Professional trading feature for monitoring multiple instruments.
 
 **Tasks:**
-- [ ] Create multi-chart container component
+- [x] Create multi-chart container component
   - 1x1, 2x1, 2x2, 3x2 grid layouts
   - Layout selector UI
-- [ ] Independent chart state per panel
+- [x] Independent chart state per panel
   - Symbol, timeframe, indicators per chart
   - Synced crosshairs (optional)
-- [ ] Chart panel controls
+- [x] Chart panel controls
   - Symbol search per panel
   - Close/maximize panel
   - Swap panel positions
-- [ ] Save/load chart layouts
+- [x] Save/load chart layouts
   - User can save favorite layouts
   - Quick switch between saved layouts
-- [ ] Responsive behavior
+- [x] Responsive behavior
   - Stack vertically on smaller screens
 
-#### 1.12.7 Signal to Trade Flow
+#### 1.12.7 Signal to Trade Flow ✅
 Enable direct order placement from signals.
 
 **Tasks:**
-- [ ] Add "Trade Now" button on signal rows
+- [x] Add "Trade Now" button on signal rows
   - Opens order form pre-filled with signal data
   - Symbol, side (buy/sell), suggested price
-- [ ] Signal detail modal with trade option
+- [x] Signal detail modal with trade option
   - View full signal analysis
   - "Place Order" button in modal
-- [ ] Bulk signal actions
+- [x] Bulk signal actions
   - Select multiple signals
   - "Trade All Selected" action
-- [ ] Signal → Order tracking
+- [x] Signal → Order tracking
   - Link orders to originating signals
   - Show which signals resulted in trades
 
-#### 1.12.8 One-Click Square-Off
+#### 1.12.8 One-Click Square-Off ✅
 Critical for fast markets and risk management.
 
 **Tasks:**
-- [ ] Add "Square Off" button on position rows
+- [x] Add "Square Off" button on position rows
   - Single click to close position
   - Confirmation optional (can be disabled in settings)
-- [ ] "Square Off All" button in portfolio header
+- [x] "Square Off All" button in portfolio header
   - Close all open positions
   - Requires confirmation
-- [ ] Square off by category
+- [x] Square off by category
   - Square off all intraday positions
   - Square off all loss-making positions
   - Square off by sector
-- [ ] Quick square-off keyboard shortcut
+- [x] Quick square-off keyboard shortcut
   - `X` key on selected position
 
-#### 1.12.9 ARIA Labels & Screen Reader Support
+#### 1.12.9 ARIA Labels & Screen Reader Support ✅
 Improve accessibility for users with disabilities.
 
 **Tasks:**
-- [ ] Add ARIA labels to all icon-only buttons
+- [x] Add ARIA labels to all icon-only buttons
   ```tsx
   <Button aria-label="Close modal">
     <X className="h-4 w-4" />
   </Button>
   ```
-- [ ] Add ARIA roles to data tables
+- [x] Add ARIA roles to data tables
   - `role="table"`, `role="row"`, `role="cell"`
   - Column headers with `scope="col"`
-- [ ] Add ARIA live regions for dynamic content
+- [x] Add ARIA live regions for dynamic content
   - Price updates: `aria-live="polite"`
   - Alerts: `aria-live="assertive"`
-- [ ] Announce route changes to screen readers
-- [ ] Add descriptive text for charts (alt text)
+- [x] Announce route changes to screen readers
+- [x] Add descriptive text for charts (alt text)
 
-#### 1.12.10 Order Templates & Presets
+#### 1.12.10 Order Templates & Presets ✅
 Faster repeat orders for active traders.
 
 **Tasks:**
-- [ ] Create `OrderTemplate` model
+- [x] Create `OrderTemplate` model
   ```python
   class OrderTemplate:
       id: str
@@ -2330,13 +2332,13 @@ Faster repeat orders for active traders.
       stop_loss_pct: float | None
       take_profit_pct: float | None
   ```
-- [ ] Order template management UI
+- [x] Order template management UI
   - Create/Edit/Delete templates
   - List saved templates
-- [ ] Quick template buttons in order form
+- [x] Quick template buttons in order form
   - "Use Template" dropdown
   - Recent templates section
-- [ ] One-click trade from template
+- [x] One-click trade from template
   - Template button executes immediately
   - Optional confirmation
 
@@ -2514,22 +2516,76 @@ flowchart TB
 - [ ] Order status webhooks
 - [ ] Error handling and retries
 
-### 2.2 Live Trading Safety
+### 2.2 Fyers Integration ✅
+> 🌿 **Branch:** `phase-2/fyers`
+
+**Status**: Complete - Full Fyers broker integration implemented.
+
+#### 2.2.1 Fyers OAuth2 Authentication ✅
+**Tasks:**
+- [x] Implement `FyersAuthHandler` class for OAuth2 flow
+  - Generate authorization URL for user login
+  - Exchange auth code for access token
+  - Token refresh mechanism
+  - Token validation check
+- [x] Create `FyersCredentials` dataclass
+  - client_id, secret_key, redirect_uri, access_token
+- [x] `create_auth_handler_from_env()` helper function
+  - Load credentials from environment variables
+  - FYERS_CLIENT_ID, FYERS_SECRET_KEY, FYERS_REDIRECT_URI, FYERS_ACCESS_TOKEN
+
+#### 2.2.2 Fyers Data Provider ✅
+**Tasks:**
+- [x] Implement `FyersDataProvider` class extending `DataProvider`
+  - `get_quote()` - Real-time quotes
+  - `get_historical()` - Historical OHLCV data
+  - `search_symbols()` - Symbol search
+  - `get_instrument_info()` - Instrument details
+  - `get_option_chain()` - Option chain data
+- [x] Symbol normalization (e.g., "RELIANCE" → "NSE:RELIANCE-EQ")
+- [x] Market hours awareness (NSE: 9:15 AM - 3:30 PM IST)
+- [x] Resolution mapping for historical data (1m, 5m, 15m, 1h, 1d)
+- [x] Support for NSE and BSE exchanges
+
+#### 2.2.3 Fyers Broker ✅
+**Tasks:**
+- [x] Implement `FyersBroker` class extending `Broker`
+  - `place_order()` - Order placement
+  - `cancel_order()` - Order cancellation
+  - `modify_order()` - Order modification
+  - `get_order_status()` - Order status query
+  - `get_positions()` - Get open positions
+  - `get_funds()` - Account funds/balance
+  - `get_holdings()` - Delivery holdings
+- [x] Order type mapping (MARKET, LIMIT, STOP_LOSS, STOP_LOSS_MARKET)
+- [x] Product type mapping (INTRADAY, DELIVERY)
+- [x] Side mapping (BUY=1, SELL=-1 for Fyers format)
+- [x] Register `FyersBroker` in `BrokerFactory`
+
+#### 2.2.4 Fyers Unit Tests ✅
+**Tasks:**
+- [x] Create `test_fyers.py` with comprehensive tests
+- [x] Mock Fyers API responses for isolated testing
+- [x] Test FyersDataProvider methods
+- [x] Test FyersBroker methods
+- [x] Test FyersAuthHandler OAuth flow
+
+### 2.3 Live Trading Safety
 > 🌿 **Branch:** `phase-2/live-safety`
 
-#### 2.2.1 Kill Switch
+#### 2.3.1 Kill Switch
 **Tasks:**
 - [ ] Emergency stop button (cancel all orders, square off)
 - [ ] API failure detection and auto-stop
 - [ ] Connectivity monitoring
 
-#### 2.2.2 Order Confirmation
+#### 2.3.2 Order Confirmation
 **Tasks:**
 - [ ] Double confirmation for large orders
 - [ ] SMS/Email confirmation (optional)
 - [ ] Daily trade limit warnings
 
-#### 2.2.3 Audit Trail
+#### 2.3.3 Audit Trail
 **Tasks:**
 - [ ] Log all API calls to broker
 - [ ] Record order placement source (manual/algo)
