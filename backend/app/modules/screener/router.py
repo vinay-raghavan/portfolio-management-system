@@ -6,7 +6,7 @@ from datetime import UTC
 from fastapi import APIRouter, HTTPException, status
 from shared.providers.data import get_data_provider
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, InternalOrCurrentUser
 from app.core.celery_client import celery_client
 from app.core.redis import get_redis
 from app.modules.algo.universe_service import (
@@ -33,6 +33,7 @@ from app.modules.screener.schemas import (
     ScreenerPresetsResponse,
     ScreenerRunRequest,
     ScreenerRunResponse,
+    StoreRecommendationsRequest,
     UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
@@ -134,9 +135,14 @@ async def run_screener_async(
 async def run_preset_screener(
     data: ScreenerPresetRunRequest,
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: InternalOrCurrentUser,
 ) -> ScreenerRunResponse:
-    """Run a preset screener on a universe of stocks."""
+    """Run a preset screener on a universe of stocks.
+
+    Supports both user authentication (JWT) and internal service calls (X-Internal-Key).
+    """
+    from app.modules.screener.service import apply_strictness_to_filters
+
     preset = ScreenerService.get_preset(data.preset)
     if not preset:
         raise HTTPException(
@@ -151,6 +157,9 @@ async def run_preset_screener(
             detail=f"No symbols found for universe: {data.universe}",
         )
 
+    # Apply strictness level to filter parameters
+    adjusted_filters = apply_strictness_to_filters(preset.filters, data.strictness)
+
     # Get Redis client for caching
     redis = await get_redis()
 
@@ -163,12 +172,12 @@ async def run_preset_screener(
     result = await service.run_screener(
         user_id=current_user.id,
         symbols=symbols,
-        filters=preset.filters,
+        filters=adjusted_filters,
         universe=data.universe,
         min_score=data.min_score,
         top_n=data.top_n,
         data_provider=provider,
-        preset=data.preset.value,
+        preset=f"{data.preset.value}:{data.strictness.value}",
     )
     await db.commit()
     return result
@@ -365,7 +374,7 @@ CATEGORY_METADATA = {
 @router.get("/recommendations", response_model=DailyRecommendationsResponse)
 async def get_recommendations(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: InternalOrCurrentUser,
     date: str | None = None,
 ) -> DailyRecommendationsResponse:
     """Get daily stock recommendations.
@@ -437,7 +446,7 @@ async def get_recommendations(
                 price_at_rec=r.price_at_rec,
                 filter_scores=r.filter_scores or {},
                 reasons=r.reasons or [],
-                metadata=r.metadata or {},
+                metadata=r.extra_data or {},
                 return_1d=r.return_1d,
                 return_1w=r.return_1w,
                 return_1m=r.return_1m,
@@ -464,14 +473,12 @@ async def get_recommendations(
 @router.post("/recommendations/store")
 async def store_recommendations(
     db: DbSession,
-    date: str,
-    category: str,
-    results: list[dict],
+    data: StoreRecommendationsRequest,
 ) -> dict:
     """Internal endpoint to store daily recommendations.
 
     Called by the Celery task to persist recommendations.
-    Requires internal API key authentication.
+    Accepts JSON body with date, category, and results.
     """
     from datetime import datetime
 
@@ -479,7 +486,7 @@ async def store_recommendations(
 
     # Parse date
     try:
-        rec_date = datetime.fromisoformat(date).replace(tzinfo=UTC)
+        rec_date = datetime.fromisoformat(data.date).replace(tzinfo=UTC)
     except ValueError:
         rec_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -489,16 +496,16 @@ async def store_recommendations(
     await db.execute(
         delete(DailyRecommendation).where(
             func.date(DailyRecommendation.date) == func.date(rec_date),
-            DailyRecommendation.category == category,
+            DailyRecommendation.category == data.category,
         )
     )
 
     # Store new recommendations
     stored_count = 0
-    for i, result in enumerate(results):
+    for i, result in enumerate(data.results):
         rec = DailyRecommendation(
             date=rec_date,
-            category=category,
+            category=data.category,
             symbol=result.get("symbol", ""),
             rank=i + 1,
             score=result.get("score", 0.0),
@@ -514,8 +521,8 @@ async def store_recommendations(
 
     return {
         "status": "success",
-        "date": date,
-        "category": category,
+        "date": data.date,
+        "category": data.category,
         "stored_count": stored_count,
     }
 
@@ -919,38 +926,50 @@ def _screener_to_response(screener) -> CustomScreenerResponse:
 
 
 async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
-    """Resolve a universe identifier to a list of symbols."""
-    universe_upper = universe.upper()
+    """Resolve a universe identifier to a list of symbols.
 
-    # Check predefined static universes
-    if universe_upper in PREDEFINED_UNIVERSES:
-        return PREDEFINED_UNIVERSES[universe_upper]["symbols"]
-
-    # Check dynamic universes
-    if universe_upper in DYNAMIC_UNIVERSES:
-        # NSE provider is appropriate for fetching index constituents
-        nse_provider = get_data_provider("nse")
-        universe_svc = UniverseService(db)
-        nse_index = DYNAMIC_UNIVERSES[universe_upper]["nse_index"]
-        return await universe_svc.fetch_index_symbols(nse_index, nse_provider)
-
-    # Handle special cases
-    if universe_upper in ("ALL_NSE", "ALL"):
-        universe_svc = UniverseService(db)
-        return await universe_svc.get_all_nse_stocks()
-
-    if universe_upper == "FO_STOCKS":
-        universe_svc = UniverseService(db)
-        return await universe_svc.get_fo_stocks()
-
-    # Try to find by UUID (custom universe)
+    First checks the database for a universe by name (same as algo trading),
+    then falls back to predefined universes for backward compatibility.
+    """
     from sqlalchemy import select
 
     from app.modules.algo.models import Universe
 
+    # First, try to find universe by name in the database (same as algo trading)
+    result = await db.execute(select(Universe).where(Universe.name == universe))
+    db_universe = result.scalar_one_or_none()
+    if db_universe and db_universe.symbols:
+        logger.info(
+            f"Resolved universe '{universe}' from database with {len(db_universe.symbols)} symbols"
+        )
+        return db_universe.symbols
+
+    # Fallback: Check predefined static universes by key (uppercase)
+    universe_upper = universe.upper().replace(" ", "")  # "Nifty 50" -> "NIFTY50"
+    if universe_upper in PREDEFINED_UNIVERSES:
+        return PREDEFINED_UNIVERSES[universe_upper]["symbols"]
+
+    # For dynamic universes (e.g., NIFTY500), fallback to NIFTY50
+    if universe_upper in DYNAMIC_UNIVERSES:
+        logger.warning(
+            f"Dynamic universe {universe_upper} requested, falling back to NIFTY50"
+        )
+        return PREDEFINED_UNIVERSES["NIFTY50"]["symbols"]
+
+    # Handle special cases
+    if universe_upper in ("ALL_NSE", "ALL", "ALLNSE"):
+        universe_svc = UniverseService(db)
+        return await universe_svc.get_all_nse_stocks()
+
+    if universe_upper in ("FO_STOCKS", "FOSTOCKS", "F&OSTOCKS"):
+        universe_svc = UniverseService(db)
+        return await universe_svc.get_fo_stocks()
+
+    # Try to find by UUID (custom universe ID)
     result = await db.execute(select(Universe).where(Universe.id == universe))
     custom_universe = result.scalar_one_or_none()
-    if custom_universe:
-        return custom_universe.symbols or []
+    if custom_universe and custom_universe.symbols:
+        return custom_universe.symbols
 
+    logger.warning(f"Universe '{universe}' not found, returning empty list")
     return []

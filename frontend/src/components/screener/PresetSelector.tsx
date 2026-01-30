@@ -1,10 +1,17 @@
 'use client';
 
-import { Zap, TrendingUp, Target, BarChart3, Layers } from 'lucide-react';
+import { Zap, TrendingUp, Target, BarChart3, Layers, Award, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { ScreenerPresetType } from '@/lib/api';
+import type { ScreenerPresetType, StrictnessLevel } from '@/lib/api';
 
 interface PresetInfo {
   type: ScreenerPresetType;
@@ -14,7 +21,27 @@ interface PresetInfo {
   color: string;
 }
 
+interface StrictnessInfo {
+  level: StrictnessLevel;
+  name: string;
+  description: string;
+}
+
+const STRICTNESS_LEVELS: StrictnessInfo[] = [
+  { level: 'strict', name: 'Strict', description: 'Professional criteria (few results)' },
+  { level: 'moderate', name: 'Moderate', description: 'Balanced criteria (default)' },
+  { level: 'relaxed', name: 'Relaxed', description: 'Looser criteria (more results)' },
+  { level: 'exploratory', name: 'Exploratory', description: 'Very loose (idea generation)' },
+];
+
 const PRESETS: PresetInfo[] = [
+  {
+    type: 'minervini',
+    name: 'Minervini',
+    description: 'Stage 2 uptrend template (50>150>200 MA)',
+    icon: <Award className="h-5 w-5" />,
+    color: 'text-yellow-500',
+  },
   {
     type: 'momentum',
     name: 'Momentum',
@@ -31,15 +58,15 @@ const PRESETS: PresetInfo[] = [
   },
   {
     type: 'consolidation',
-    name: 'Consolidation',
-    description: 'Tight range before potential move',
+    name: 'VCP',
+    description: 'Volatility contraction pattern',
     icon: <Target className="h-5 w-5" />,
     color: 'text-orange-500',
   },
   {
     type: 'value',
-    name: 'Value',
-    description: 'Pullback opportunities in strong stocks',
+    name: 'Pullback',
+    description: 'Oversold pullback in uptrend',
     icon: <BarChart3 className="h-5 w-5" />,
     color: 'text-purple-500',
   },
@@ -54,18 +81,45 @@ const PRESETS: PresetInfo[] = [
 
 interface PresetSelectorProps {
   selectedPreset: ScreenerPresetType | null;
-  onSelect: (preset: ScreenerPresetType) => void;
+  strictness: StrictnessLevel;
+  onSelectPreset: (preset: ScreenerPresetType) => void;
+  onStrictnessChange: (level: StrictnessLevel) => void;
   isLoading?: boolean;
 }
 
-export function PresetSelector({ selectedPreset, onSelect, isLoading }: PresetSelectorProps) {
+export function PresetSelector({
+  selectedPreset,
+  strictness,
+  onSelectPreset,
+  onStrictnessChange,
+  isLoading,
+}: PresetSelectorProps) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Quick Presets</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Quick Presets</CardTitle>
+          <div className="flex items-center gap-2">
+            <Settings2 className="h-4 w-4 text-muted-foreground" />
+            <Select value={strictness} onValueChange={(v) => onStrictnessChange(v as StrictnessLevel)}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="Strictness" />
+              </SelectTrigger>
+              <SelectContent>
+                {STRICTNESS_LEVELS.map((level) => (
+                  <SelectItem key={level.level} value={level.level}>
+                    <div className="flex flex-col">
+                      <span>{level.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
           {PRESETS.map((preset) => (
             <Button
               key={preset.type}
@@ -74,7 +128,7 @@ export function PresetSelector({ selectedPreset, onSelect, isLoading }: PresetSe
                 'h-auto py-3 px-3 flex flex-col items-center gap-1 whitespace-normal',
                 selectedPreset !== preset.type && preset.color
               )}
-              onClick={() => onSelect(preset.type)}
+              onClick={() => onSelectPreset(preset.type)}
               disabled={isLoading}
             >
               {preset.icon}
@@ -82,6 +136,9 @@ export function PresetSelector({ selectedPreset, onSelect, isLoading }: PresetSe
             </Button>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          {STRICTNESS_LEVELS.find((l) => l.level === strictness)?.description}
+        </p>
       </CardContent>
     </Card>
   );

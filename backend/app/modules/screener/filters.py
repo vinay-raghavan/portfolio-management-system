@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from app.modules.screener.base import BaseFilter, FilterResult, FilterType
+from app.modules.screener.base import BaseFilter, FilterResult, FilterType, sanitize_for_json
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class VolumeFilter(BaseFilter):
                 passed=True,
                 score=total_score,
                 reason=f"Volume OK (avg: {avg_volume:,.0f}, ratio: {volume_ratio:.2f}x)",
-                metadata={"avg_volume": avg_volume, "volume_ratio": volume_ratio},
+                metadata=sanitize_for_json({"avg_volume": avg_volume, "volume_ratio": volume_ratio}),
             )
         except Exception as e:
             logger.error(f"Volume filter error for {symbol}: {e}")
@@ -90,6 +90,7 @@ class MomentumFilter(BaseFilter):
     """Filter stocks by momentum criteria.
 
     Checks RSI, rate of change, and proximity to 52-week high/low.
+    Supports Minervini Trend Template criteria.
     """
 
     filter_type = FilterType.MOMENTUM
@@ -101,17 +102,30 @@ class MomentumFilter(BaseFilter):
         rsi_oversold: float = 30,
         rsi_overbought: float = 70,
         momentum_mode: str = "bullish",  # bullish, bearish, neutral
-        near_52w_high_pct: float = 10,  # Within X% of 52-week high
+        near_52w_high_pct: float = 25,  # Within X% of 52-week high (Minervini: 25%)
+        min_pct_above_52w_low: float = 0,  # Min % above 52-week low (Minervini: 30%)
         min_roc: float = 0,  # Minimum rate of change
         roc_period: int = 20,
         **kwargs,
     ) -> None:
-        """Configure momentum filter."""
+        """Configure momentum filter.
+
+        Args:
+            rsi_period: RSI calculation period
+            rsi_oversold: RSI level considered oversold
+            rsi_overbought: RSI level considered overbought
+            momentum_mode: 'bullish', 'bearish', or 'neutral'
+            near_52w_high_pct: Max % below 52-week high (Minervini uses 25%)
+            min_pct_above_52w_low: Min % above 52-week low (Minervini uses 30%)
+            min_roc: Minimum rate of change percentage
+            roc_period: Period for ROC calculation
+        """
         self.rsi_period = rsi_period
         self.rsi_oversold = rsi_oversold
         self.rsi_overbought = rsi_overbought
         self.momentum_mode = momentum_mode
         self.near_52w_high_pct = near_52w_high_pct
+        self.min_pct_above_52w_low = min_pct_above_52w_low
         self.min_roc = min_roc
         self.roc_period = roc_period
 
@@ -127,8 +141,10 @@ class MomentumFilter(BaseFilter):
 
     def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
         """Apply momentum filter."""
-        if len(data) < max(self.rsi_period, self.roc_period, 252):
-            return FilterResult(passed=False, reason="Insufficient data for momentum")
+        # Need at least 200 days for reasonable 52-week calculations
+        min_required = max(self.rsi_period, self.roc_period, 200)
+        if len(data) < min_required:
+            return FilterResult(passed=False, reason=f"Insufficient data for momentum ({len(data)} < {min_required})")
 
         try:
             close = data["close"]
@@ -142,11 +158,12 @@ class MomentumFilter(BaseFilter):
                 (current_price - close.iloc[-self.roc_period]) / close.iloc[-self.roc_period]
             ) * 100
 
-            # 52-week high/low
-            high_52w = data["high"].tail(252).max()
-            low_52w = data["low"].tail(252).min()
+            # 52-week high/low (use all available data, up to 252 days)
+            lookback_days = min(252, len(data))
+            high_52w = data["high"].tail(lookback_days).max()
+            low_52w = data["low"].tail(lookback_days).min()
             pct_from_high = ((high_52w - current_price) / high_52w) * 100
-            pct_from_low = ((current_price - low_52w) / low_52w) * 100
+            pct_above_low = ((current_price - low_52w) / low_52w) * 100
 
             # Evaluate based on momentum mode
             passed = False
@@ -155,19 +172,42 @@ class MomentumFilter(BaseFilter):
 
             if self.momentum_mode == "bullish":
                 # For bullish: prefer high RSI, near 52w high, positive ROC
-                if roc >= self.min_roc:
-                    passed = True
-                    reasons.append(f"ROC {roc:.1f}% >= {self.min_roc}%")
-                    score += 20
+                checks_passed = 0
+                total_checks = 0
+
+                # Check ROC
+                if self.min_roc > 0:
+                    total_checks += 1
+                    if roc >= self.min_roc:
+                        checks_passed += 1
+                        reasons.append(f"ROC {roc:.1f}%")
+                        score += 15
+
+                # Check near 52-week high
+                total_checks += 1
                 if pct_from_high <= self.near_52w_high_pct:
-                    passed = True
+                    checks_passed += 1
                     reasons.append(f"Near 52w high ({pct_from_high:.1f}% away)")
-                    score += 20
+                    score += 15
+
+                # Check above 52-week low (Minervini criteria)
+                if self.min_pct_above_52w_low > 0:
+                    total_checks += 1
+                    if pct_above_low >= self.min_pct_above_52w_low:
+                        checks_passed += 1
+                        reasons.append(f"{pct_above_low:.0f}% above 52w low")
+                        score += 10
+
+                # RSI bonus
                 if rsi > 50:
                     score += 10
-                    reasons.append(f"RSI {rsi:.0f} bullish")
+                    reasons.append(f"RSI {rsi:.0f}")
+
+                # Pass if at least one key check passes
+                passed = checks_passed > 0
+
             elif self.momentum_mode == "bearish":
-                # For bearish: prefer low RSI, near 52w low
+                # For bearish/pullback: prefer low RSI (oversold)
                 if rsi < self.rsi_oversold:
                     passed = True
                     reasons.append(f"RSI {rsi:.0f} oversold")
@@ -180,12 +220,12 @@ class MomentumFilter(BaseFilter):
                 passed=passed,
                 score=min(100, score),
                 reason="; ".join(reasons) if reasons else "No momentum signal",
-                metadata={
+                metadata=sanitize_for_json({
                     "rsi": rsi,
                     "roc": roc,
                     "pct_from_52w_high": pct_from_high,
-                    "pct_from_52w_low": pct_from_low,
-                },
+                    "pct_above_52w_low": pct_above_low,
+                }),
             )
         except Exception as e:
             logger.error(f"Momentum filter error for {symbol}: {e}")
@@ -196,6 +236,7 @@ class MovingAverageFilter(BaseFilter):
     """Filter stocks by moving average position.
 
     Checks if price is above/below key moving averages.
+    Supports Minervini Trend Template with stacked MA verification.
     """
 
     filter_type = FilterType.MOVING_AVERAGE
@@ -203,58 +244,107 @@ class MovingAverageFilter(BaseFilter):
 
     def configure(
         self,
-        short_ma: int = 20,
-        long_ma: int = 50,
+        short_ma: int = 50,
+        mid_ma: int = 150,
         trend_ma: int = 200,
         require_above_trend: bool = True,
+        require_stacked_ma: bool = False,
+        require_trend_up: bool = False,
+        trend_up_days: int = 22,
         require_ma_crossover: bool = False,
         **kwargs,
     ) -> None:
-        """Configure moving average filter."""
+        """Configure moving average filter.
+
+        Args:
+            short_ma: Short-term MA period (default 50 for Minervini)
+            mid_ma: Mid-term MA period (default 150 for Minervini)
+            trend_ma: Long-term trend MA period (default 200)
+            require_above_trend: Price must be above trend MA
+            require_stacked_ma: Require 50 > 150 > 200 SMA stacking (Minervini)
+            require_trend_up: Require 200 SMA to be trending upward
+            trend_up_days: Days to check for 200 SMA uptrend (default ~1 month)
+            require_ma_crossover: Require recent bullish crossover
+        """
         self.short_ma = short_ma
-        self.long_ma = long_ma
+        self.mid_ma = mid_ma
         self.trend_ma = trend_ma
         self.require_above_trend = require_above_trend
+        self.require_stacked_ma = require_stacked_ma
+        self.require_trend_up = require_trend_up
+        self.trend_up_days = trend_up_days
         self.require_ma_crossover = require_ma_crossover
 
     def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
         """Apply moving average filter."""
-        if len(data) < self.trend_ma + 5:
+        min_data_needed = max(self.trend_ma, self.mid_ma) + self.trend_up_days + 5
+        if len(data) < min_data_needed:
             return FilterResult(passed=False, reason="Insufficient data for MAs")
 
         try:
             close = data["close"]
             current_price = close.iloc[-1]
 
+            # Calculate all MAs
             ma_short = close.rolling(self.short_ma).mean().iloc[-1]
-            ma_long = close.rolling(self.long_ma).mean().iloc[-1]
+            ma_mid = close.rolling(self.mid_ma).mean().iloc[-1]
             ma_trend = close.rolling(self.trend_ma).mean().iloc[-1]
 
+            # Check price above all MAs
+            above_short = current_price > ma_short
+            above_mid = current_price > ma_mid
             above_trend = current_price > ma_trend
-            ma_bullish = ma_short > ma_long
 
-            # Check crossover (short MA crossed above long MA recently)
+            # Check stacked MAs (Minervini: 50 > 150 > 200)
+            stacked_ma = ma_short > ma_mid > ma_trend
+
+            # Check 200 SMA trend direction
+            ma_trend_series = close.rolling(self.trend_ma).mean()
+            ma_trend_now = ma_trend_series.iloc[-1]
+            ma_trend_past = ma_trend_series.iloc[-self.trend_up_days]
+            trend_up = ma_trend_now > ma_trend_past
+
+            # Check crossover (short MA crossed above mid MA recently)
             ma_short_series = close.rolling(self.short_ma).mean()
-            ma_long_series = close.rolling(self.long_ma).mean()
-            prev_diff = ma_short_series.iloc[-2] - ma_long_series.iloc[-2]
-            curr_diff = ma_short_series.iloc[-1] - ma_long_series.iloc[-1]
+            ma_mid_series = close.rolling(self.mid_ma).mean()
+            prev_diff = ma_short_series.iloc[-2] - ma_mid_series.iloc[-2]
+            curr_diff = ma_short_series.iloc[-1] - ma_mid_series.iloc[-1]
             crossover = prev_diff < 0 and curr_diff > 0
 
             passed = True
             score = 50.0
             reasons = []
 
+            # Check required conditions
             if self.require_above_trend:
                 if above_trend:
-                    score += 25
+                    score += 15
                     reasons.append(f"Above {self.trend_ma}MA")
                 else:
                     passed = False
                     reasons.append(f"Below {self.trend_ma}MA")
 
-            if ma_bullish:
-                score += 15
-                reasons.append(f"{self.short_ma}MA > {self.long_ma}MA")
+            if self.require_stacked_ma:
+                if stacked_ma:
+                    score += 20
+                    reasons.append(f"{self.short_ma}>{self.mid_ma}>{self.trend_ma} stacked")
+                else:
+                    passed = False
+                    reasons.append("MAs not stacked")
+
+            if self.require_trend_up:
+                if trend_up:
+                    score += 15
+                    reasons.append(f"{self.trend_ma}MA trending up")
+                else:
+                    passed = False
+                    reasons.append(f"{self.trend_ma}MA not trending up")
+
+            # Bonus points for additional bullish signals
+            if above_short and above_mid and above_trend:
+                score += 10
+                if f"Above {self.trend_ma}MA" not in reasons:
+                    reasons.append("Above all MAs")
 
             if self.require_ma_crossover and not crossover:
                 passed = False
@@ -266,14 +356,18 @@ class MovingAverageFilter(BaseFilter):
             return FilterResult(
                 passed=passed,
                 score=min(100, score),
-                reason="; ".join(reasons),
-                metadata={
+                reason="; ".join(reasons) if reasons else "MA check passed",
+                metadata=sanitize_for_json({
                     "ma_short": ma_short,
-                    "ma_long": ma_long,
+                    "ma_mid": ma_mid,
                     "ma_trend": ma_trend,
+                    "above_short": above_short,
+                    "above_mid": above_mid,
                     "above_trend": above_trend,
+                    "stacked_ma": stacked_ma,
+                    "trend_up": trend_up,
                     "crossover": crossover,
-                },
+                }),
             )
         except Exception as e:
             logger.error(f"MA filter error for {symbol}: {e}")
@@ -330,7 +424,7 @@ class BreakoutFilter(BaseFilter):
                     passed=False,
                     score=max(0, 50 - pct_to_breakout * 10),
                     reason=f"No breakout ({pct_to_breakout:.1f}% to level)",
-                    metadata={"range_high": range_high, "breakout_level": breakout_level},
+                    metadata=sanitize_for_json({"range_high": range_high, "breakout_level": breakout_level}),
                 )
 
             score = 60.0
@@ -347,12 +441,12 @@ class BreakoutFilter(BaseFilter):
                 passed=True,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata={
+                metadata=sanitize_for_json({
                     "range_high": range_high,
                     "range_low": range_low,
                     "breakout_level": breakout_level,
                     "volume_ratio": volume_ratio,
-                },
+                }),
             )
         except Exception as e:
             logger.error(f"Breakout filter error for {symbol}: {e}")
@@ -427,13 +521,13 @@ class ConsolidationFilter(BaseFilter):
                 passed=True,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata={
+                metadata=sanitize_for_json({
                     "range_high": range_high,
                     "range_low": range_low,
                     "range_pct": range_pct,
                     "range_position": range_position,
                     "volume_declining": vol_declining,
-                },
+                }),
             )
         except Exception as e:
             logger.error(f"Consolidation filter error for {symbol}: {e}")
@@ -520,11 +614,11 @@ class SectorPerformanceFilter(BaseFilter):
                 passed=passed,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata={
+                metadata=sanitize_for_json({
                     "stock_roc": stock_roc,
                     "range_position": range_pos,
                     "lookback_period": self.lookback_period,
-                },
+                }),
             )
         except Exception as e:
             logger.error(f"Sector performance filter error for {symbol}: {e}")

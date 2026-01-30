@@ -2,14 +2,10 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Search, Play } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search } from 'lucide-react';
 import {
-  UniverseSelector,
-  FilterBuilder,
+  ScreenerConfig,
   ScreenerResults,
-  PresetSelector,
   SavedScreenersList,
   PerformanceWidget,
   type UniverseType,
@@ -20,6 +16,7 @@ import {
   type ScreenerPresetType,
   type ScreenerResultItem,
   type CustomScreener,
+  type StrictnessLevel,
 } from '@/lib/api';
 import { useNotificationStore, useTradingStore } from '@/store';
 import { useRouter } from 'next/navigation';
@@ -29,14 +26,15 @@ export default function ScreenerPage() {
   const { addNotification } = useNotificationStore();
   const { quickBuy, quickSell } = useTradingStore();
 
-  // State
-  const [universe, setUniverse] = useState<UniverseType>('NIFTY500');
+  // State - Default to 'Nifty 50' which is the seeded universe name
+  const [universe, setUniverse] = useState<UniverseType>('Nifty 50');
   const [filters, setFilters] = useState<FilterConfig[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<ScreenerPresetType | null>(null);
+  const [strictness, setStrictness] = useState<StrictnessLevel>('moderate');
   const [results, setResults] = useState<ScreenerResultItem[]>([]);
   const [totalScreened, setTotalScreened] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
-  const [activeTab, setActiveTab] = useState<'custom' | 'preset'>('preset');
+  const [mode, setMode] = useState<'preset' | 'custom'>('preset');
 
   // Run custom screener
   const runCustomMutation = useMutation({
@@ -62,12 +60,13 @@ export default function ScreenerPage() {
     },
   });
 
-  // Run preset screener
+  // Run preset screener with strictness
   const runPresetMutation = useMutation({
-    mutationFn: (preset: ScreenerPresetType) =>
+    mutationFn: ({ preset, level }: { preset: ScreenerPresetType; level: StrictnessLevel }) =>
       screenerApi.runPreset({
         preset,
         universe,
+        strictness: level,
         min_score: 0.5,
         top_n: 50,
       }),
@@ -88,7 +87,15 @@ export default function ScreenerPage() {
 
   const handlePresetSelect = (preset: ScreenerPresetType) => {
     setSelectedPreset(preset);
-    runPresetMutation.mutate(preset);
+    runPresetMutation.mutate({ preset, level: strictness });
+  };
+
+  const handleStrictnessChange = (level: StrictnessLevel) => {
+    setStrictness(level);
+    // Re-run with new strictness if a preset is already selected
+    if (selectedPreset) {
+      runPresetMutation.mutate({ preset: selectedPreset, level });
+    }
   };
 
   const handleRunCustom = () => {
@@ -116,7 +123,7 @@ export default function ScreenerPage() {
   const handleLoadScreener = (screener: CustomScreener) => {
     setFilters(screener.filters);
     setUniverse(screener.universe as UniverseType);
-    setActiveTab('custom');
+    setMode('custom');
     addNotification({ type: 'info', title: 'Screener Loaded', message: `Loaded "${screener.name}"` });
   };
 
@@ -167,7 +174,7 @@ export default function ScreenerPage() {
   };
 
   // Build current screener config for dynamic universe support
-  const currentScreenerConfig = activeTab === 'preset' && selectedPreset
+  const currentScreenerConfig = mode === 'preset' && selectedPreset
     ? { universe, preset: selectedPreset, min_score: 0.5, top_n: 50 }
     : { universe, filters, min_score: 0.5, top_n: 50 };
 
@@ -175,49 +182,33 @@ export default function ScreenerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Search className="h-8 w-8" />
-            Stock Screener
-          </h1>
-          <p className="text-muted-foreground">Discover stocks matching your criteria</p>
-        </div>
-        <UniverseSelector value={universe} onChange={setUniverse} disabled={isLoading} />
+      {/* Page Header */}
+      <div>
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Search className="h-8 w-8" />
+          Stock Screener
+        </h1>
+        <p className="text-muted-foreground">Discover stocks matching your criteria</p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        {/* Sidebar */}
-        <div className="space-y-4">
-          <SavedScreenersList
-            currentFilters={filters}
-            currentUniverse={universe}
-            onRunScreener={handleRunSavedScreener}
-            onLoadScreener={handleLoadScreener}
-          />
-          <PerformanceWidget days={30} compact />
-        </div>
-
+      {/* Main Layout */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         {/* Main Content */}
         <div className="space-y-4">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'custom' | 'preset')}>
-            <TabsList>
-              <TabsTrigger value="preset">Quick Presets</TabsTrigger>
-              <TabsTrigger value="custom">Custom Filters</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="preset" className="mt-4">
-              <PresetSelector selectedPreset={selectedPreset} onSelect={handlePresetSelect} isLoading={isLoading} />
-            </TabsContent>
-
-            <TabsContent value="custom" className="mt-4 space-y-4">
-              <FilterBuilder filters={filters} onChange={setFilters} disabled={isLoading} />
-              <Button onClick={handleRunCustom} disabled={isLoading || filters.length === 0} className="w-full">
-                <Play className="h-4 w-4 mr-2" />
-                {isLoading ? 'Running...' : 'Run Screener'}
-              </Button>
-            </TabsContent>
-          </Tabs>
+          <ScreenerConfig
+            universe={universe}
+            onUniverseChange={setUniverse}
+            mode={mode}
+            onModeChange={setMode}
+            selectedPreset={selectedPreset}
+            onSelectPreset={handlePresetSelect}
+            strictness={strictness}
+            onStrictnessChange={handleStrictnessChange}
+            filters={filters}
+            onFiltersChange={setFilters}
+            onRunCustom={handleRunCustom}
+            isLoading={isLoading}
+          />
 
           <ScreenerResults
             results={results}
@@ -230,6 +221,17 @@ export default function ScreenerPage() {
             onQuickTrade={handleQuickTrade}
             onCreateUniverse={handleCreateUniverse}
           />
+        </div>
+
+        {/* Sidebar - moved to right */}
+        <div className="space-y-4 lg:order-last">
+          <SavedScreenersList
+            currentFilters={filters}
+            currentUniverse={universe}
+            onRunScreener={handleRunSavedScreener}
+            onLoadScreener={handleLoadScreener}
+          />
+          <PerformanceWidget days={30} compact />
         </div>
       </div>
     </div>

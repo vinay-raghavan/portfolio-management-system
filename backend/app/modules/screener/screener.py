@@ -61,15 +61,13 @@ class StockScreener(BaseScreener):
 
         try:
             # Convert lookback_days to appropriate period string
-            # Use 1y for 252 days (standard trading year)
-            if self.lookback_days >= 365:
+            # Use 1y for 200+ days (covers 52-week calculations which need ~252 trading days)
+            if self.lookback_days >= 200:
                 period = "1y"
-            elif self.lookback_days >= 180:
-                period = "6mo"
             elif self.lookback_days >= 90:
-                period = "3mo"
+                period = "6mo"
             elif self.lookback_days >= 30:
-                period = "1mo"
+                period = "3mo"
             else:
                 period = "1mo"
 
@@ -84,22 +82,23 @@ class StockScreener(BaseScreener):
                 return None
 
             # Convert list of OHLCV objects to pandas DataFrame
+            # Use lowercase column names to match filter expectations
             data = pd.DataFrame(
                 [
                     {
-                        "Date": o.timestamp,
-                        "Open": float(o.open),
-                        "High": float(o.high),
-                        "Low": float(o.low),
-                        "Close": float(o.close),
-                        "Volume": int(o.volume),
+                        "date": o.timestamp,
+                        "open": float(o.open),
+                        "high": float(o.high),
+                        "low": float(o.low),
+                        "close": float(o.close),
+                        "volume": int(o.volume),
                     }
                     for o in ohlcv_list
                 ]
             )
 
             if not data.empty:
-                data.set_index("Date", inplace=True)
+                data.set_index("date", inplace=True)
                 data.sort_index(inplace=True)
                 if self.cache_data:
                     self._data_cache[symbol] = data

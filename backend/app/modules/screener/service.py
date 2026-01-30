@@ -29,8 +29,222 @@ from app.modules.screener.schemas import (
     ScreenerPresetType,
     ScreenerResultItem,
     ScreenerRunResponse,
+    StrictnessLevel,
+    get_score_description,
+    get_score_grade,
 )
 from app.modules.screener.screener import StockScreener
+
+
+# Strictness level multipliers for filter parameters
+# Format: {param_name: {strictness: multiplier}}
+# For boolean params, strictness determines if they're required
+STRICTNESS_MODIFIERS = {
+    # Momentum filter params
+    "near_52w_high_pct": {
+        StrictnessLevel.STRICT: 1.0,  # 25% stays 25%
+        StrictnessLevel.MODERATE: 1.5,  # 25% becomes 37.5%
+        StrictnessLevel.RELAXED: 2.0,  # 25% becomes 50%
+        StrictnessLevel.EXPLORATORY: 3.0,  # 25% becomes 75%
+    },
+    "min_pct_above_52w_low": {
+        StrictnessLevel.STRICT: 1.0,  # 30% stays 30%
+        StrictnessLevel.MODERATE: 0.7,  # 30% becomes 21%
+        StrictnessLevel.RELAXED: 0.5,  # 30% becomes 15%
+        StrictnessLevel.EXPLORATORY: 0.0,  # disabled
+    },
+    "min_roc": {
+        StrictnessLevel.STRICT: 1.0,
+        StrictnessLevel.MODERATE: 0.5,
+        StrictnessLevel.RELAXED: 0.25,
+        StrictnessLevel.EXPLORATORY: 0.0,
+    },
+    # Volume filter params
+    "min_avg_volume": {
+        StrictnessLevel.STRICT: 1.0,  # 50000 stays 50000
+        StrictnessLevel.MODERATE: 0.5,  # becomes 25000
+        StrictnessLevel.RELAXED: 0.2,  # becomes 10000
+        StrictnessLevel.EXPLORATORY: 0.02,  # becomes 1000
+    },
+    "volume_spike_threshold": {
+        StrictnessLevel.STRICT: 1.0,  # 2.0x stays 2.0x
+        StrictnessLevel.MODERATE: 0.75,  # becomes 1.5x
+        StrictnessLevel.RELAXED: 0.625,  # becomes 1.25x
+        StrictnessLevel.EXPLORATORY: 0.5,  # becomes 1.0x
+    },
+    # Consolidation filter params
+    "max_range_pct": {
+        StrictnessLevel.STRICT: 1.0,  # 15% stays 15%
+        StrictnessLevel.MODERATE: 1.5,  # becomes 22.5%
+        StrictnessLevel.RELAXED: 2.0,  # becomes 30%
+        StrictnessLevel.EXPLORATORY: 3.0,  # becomes 45%
+    },
+    # Breakout filter params
+    "breakout_pct": {
+        StrictnessLevel.STRICT: 1.0,  # 2% stays 2%
+        StrictnessLevel.MODERATE: 0.5,  # becomes 1%
+        StrictnessLevel.RELAXED: 0.25,  # becomes 0.5%
+        StrictnessLevel.EXPLORATORY: 0.0,  # disabled
+    },
+}
+
+# Boolean params that should be disabled at certain strictness levels
+STRICTNESS_BOOL_OVERRIDES = {
+    "require_stacked_ma": {
+        StrictnessLevel.STRICT: True,
+        StrictnessLevel.MODERATE: True,
+        StrictnessLevel.RELAXED: False,
+        StrictnessLevel.EXPLORATORY: False,
+    },
+    "require_trend_up": {
+        StrictnessLevel.STRICT: True,
+        StrictnessLevel.MODERATE: True,
+        StrictnessLevel.RELAXED: False,
+        StrictnessLevel.EXPLORATORY: False,
+    },
+    "require_spike": {
+        StrictnessLevel.STRICT: True,
+        StrictnessLevel.MODERATE: True,
+        StrictnessLevel.RELAXED: False,
+        StrictnessLevel.EXPLORATORY: False,
+    },
+    "require_volume_decline": {
+        StrictnessLevel.STRICT: True,
+        StrictnessLevel.MODERATE: False,
+        StrictnessLevel.RELAXED: False,
+        StrictnessLevel.EXPLORATORY: False,
+    },
+}
+
+
+def apply_strictness_to_filters(
+    filters: list[FilterConfig], strictness: StrictnessLevel
+) -> list[FilterConfig]:
+    """Apply strictness level modifiers to filter parameters."""
+    if strictness == StrictnessLevel.STRICT:
+        return filters  # No modifications needed
+
+    modified_filters = []
+    for fc in filters:
+        new_params = dict(fc.params)
+
+        for param_name, value in fc.params.items():
+            # Apply numeric multipliers
+            if param_name in STRICTNESS_MODIFIERS and isinstance(value, (int, float)):
+                multiplier = STRICTNESS_MODIFIERS[param_name].get(strictness, 1.0)
+                new_params[param_name] = type(value)(value * multiplier)
+
+            # Apply boolean overrides
+            if param_name in STRICTNESS_BOOL_OVERRIDES and isinstance(value, bool):
+                new_params[param_name] = STRICTNESS_BOOL_OVERRIDES[param_name].get(
+                    strictness, value
+                )
+
+        modified_filters.append(
+            FilterConfig(
+                filter_type=fc.filter_type,
+                params=new_params,
+                weight=fc.weight,
+            )
+        )
+
+    return modified_filters
+
+
+def _generate_detailed_reasons(
+    metadata: dict, filter_scores: dict[str, float]
+) -> list[str]:
+    """Generate detailed reason strings with actual values from filter metadata."""
+    detailed = []
+
+    # Extract momentum filter data
+    momentum_data = metadata.get("momentum_filter", {})
+    if momentum_data:
+        if "rsi" in momentum_data:
+            rsi = momentum_data["rsi"]
+            if rsi is not None:
+                if rsi >= 70:
+                    detailed.append(f"RSI at {rsi:.0f} (overbought zone)")
+                elif rsi >= 50:
+                    detailed.append(f"RSI at {rsi:.0f} (bullish momentum)")
+                elif rsi >= 30:
+                    detailed.append(f"RSI at {rsi:.0f} (neutral zone)")
+                else:
+                    detailed.append(f"RSI at {rsi:.0f} (oversold zone)")
+
+        if "pct_from_52w_high" in momentum_data:
+            pct = momentum_data["pct_from_52w_high"]
+            if pct is not None:
+                if pct <= 10:
+                    detailed.append(f"Within {pct:.1f}% of 52-week high (very strong)")
+                elif pct <= 25:
+                    detailed.append(f"{pct:.1f}% below 52-week high (strong)")
+                else:
+                    detailed.append(f"{pct:.1f}% below 52-week high")
+
+        if "pct_above_52w_low" in momentum_data:
+            pct = momentum_data["pct_above_52w_low"]
+            if pct is not None and pct > 0:
+                if pct >= 50:
+                    detailed.append(f"{pct:.0f}% above 52-week low (well recovered)")
+                elif pct >= 30:
+                    detailed.append(f"{pct:.0f}% above 52-week low (good base)")
+                else:
+                    detailed.append(f"{pct:.0f}% above 52-week low")
+
+        if "roc" in momentum_data:
+            roc = momentum_data["roc"]
+            if roc is not None:
+                detailed.append(f"Rate of change: {roc:+.1f}%")
+
+    # Extract moving average filter data
+    ma_data = metadata.get("moving_average_filter", {})
+    if ma_data:
+        if ma_data.get("stacked_ma"):
+            detailed.append("MAs properly stacked (50 > 150 > 200)")
+        if ma_data.get("trend_up"):
+            detailed.append("200-day MA trending upward")
+        if "pct_above_ma" in ma_data:
+            pct = ma_data["pct_above_ma"]
+            if pct is not None:
+                detailed.append(f"Price {pct:.1f}% above trend MA")
+
+    # Extract volume filter data
+    volume_data = metadata.get("volume_filter", {})
+    if volume_data:
+        if "avg_volume" in volume_data:
+            vol = volume_data["avg_volume"]
+            if vol is not None:
+                if vol >= 1_000_000:
+                    detailed.append(f"Avg volume: {vol/1e6:.1f}M (very liquid)")
+                elif vol >= 100_000:
+                    detailed.append(f"Avg volume: {vol/1e3:.0f}K (liquid)")
+                else:
+                    detailed.append(f"Avg volume: {vol/1e3:.0f}K")
+
+        if "volume_ratio" in volume_data:
+            ratio = volume_data["volume_ratio"]
+            if ratio is not None and ratio > 1.5:
+                detailed.append(f"Volume spike: {ratio:.1f}x average")
+
+    # Extract breakout filter data
+    breakout_data = metadata.get("breakout_filter", {})
+    if breakout_data:
+        if "breakout_pct" in breakout_data:
+            pct = breakout_data["breakout_pct"]
+            if pct is not None and pct > 0:
+                detailed.append(f"Breaking out {pct:.1f}% above resistance")
+
+    # Extract consolidation filter data
+    consol_data = metadata.get("consolidation_filter", {})
+    if consol_data:
+        if "range_pct" in consol_data:
+            pct = consol_data["range_pct"]
+            if pct is not None:
+                detailed.append(f"Consolidating in {pct:.1f}% range")
+
+    return detailed
+
 
 if TYPE_CHECKING:
     from app.providers.data import DataProvider
@@ -82,39 +296,85 @@ def _get_cache_ttl() -> int:
     return 3600  # 1 hour outside market hours
 
 
-# Preset screener definitions
+# Preset screener definitions - aligned with professional trading standards
 PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
+    # Minervini Trend Template - Professional Stage 2 Uptrend Screener
+    ScreenerPresetType.MINERVINI: ScreenerPresetInfo(
+        preset=ScreenerPresetType.MINERVINI,
+        name="Minervini Trend Template",
+        description=(
+            "Mark Minervini's Stage 2 uptrend criteria: Price above stacked MAs "
+            "(50>150>200), within 25% of 52w high, 30%+ above 52w low, 200MA trending up"
+        ),
+        filters=[
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={
+                    "short_ma": 50,
+                    "mid_ma": 150,
+                    "trend_ma": 200,
+                    "require_above_trend": True,
+                    "require_stacked_ma": True,
+                    "require_trend_up": True,
+                    "trend_up_days": 22,
+                },
+                weight=2.5,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOMENTUM,
+                params={
+                    "momentum_mode": "bullish",
+                    "near_52w_high_pct": 25,
+                    "min_pct_above_52w_low": 30,
+                },
+                weight=2.0,
+            ),
+        ],
+    ),
+    # Momentum Screener - Relaxed thresholds for more results
     ScreenerPresetType.MOMENTUM: ScreenerPresetInfo(
         preset=ScreenerPresetType.MOMENTUM,
         name="Momentum Screener",
         description="Stocks with strong upward momentum: high volume, bullish RSI, near 52-week high",
         filters=[
             FilterConfig(
-                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 100000}, weight=1.0
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
-                params={"momentum_mode": "bullish", "min_roc": 5, "near_52w_high_pct": 15},
+                params={
+                    "momentum_mode": "bullish",
+                    "min_roc": 2,  # Relaxed from 5%
+                    "near_52w_high_pct": 25,  # Relaxed from 15% (Minervini standard)
+                },
                 weight=2.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                params={"require_above_trend": True},
+                params={"require_above_trend": True, "trend_ma": 200},
                 weight=1.5,
             ),
         ],
     ),
+    # Breakout Screener - Stronger volume confirmation
     ScreenerPresetType.BREAKOUT: ScreenerPresetInfo(
         preset=ScreenerPresetType.BREAKOUT,
         name="Breakout Screener",
-        description="Stocks breaking out of consolidation with volume confirmation",
+        description="Stocks breaking out of consolidation with strong volume confirmation",
         filters=[
             FilterConfig(
                 filter_type=FilterTypeEnum.VOLUME,
                 params={
                     "min_avg_volume": 50000,
                     "require_spike": True,
-                    "volume_spike_threshold": 1.5,
+                    "volume_spike_threshold": 2.0,  # Increased from 1.5x for stronger signal
                 },
                 weight=1.5,
             ),
@@ -123,39 +383,56 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
                 params={"lookback_period": 20, "breakout_pct": 2.0},
                 weight=2.0,
             ),
-        ],
-    ),
-    ScreenerPresetType.CONSOLIDATION: ScreenerPresetInfo(
-        preset=ScreenerPresetType.CONSOLIDATION,
-        name="Consolidation Screener",
-        description="Pre-breakout candidates in tight trading ranges with declining volume",
-        filters=[
-            FilterConfig(
-                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0
-            ),
-            FilterConfig(
-                filter_type=FilterTypeEnum.CONSOLIDATION,
-                params={"max_range_pct": 10, "declining_volume": True},
-                weight=2.0,
-            ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                params={"require_above_trend": True},
+                params={"require_above_trend": True, "trend_ma": 200},
                 weight=1.0,
             ),
         ],
     ),
-    ScreenerPresetType.VALUE: ScreenerPresetInfo(
-        preset=ScreenerPresetType.VALUE,
-        name="Value/Pullback Screener",
-        description="Pullback to support: near 50-day MA, oversold RSI, still in uptrend",
+    # Consolidation Screener - VCP-style pre-breakout candidates
+    ScreenerPresetType.CONSOLIDATION: ScreenerPresetInfo(
+        preset=ScreenerPresetType.CONSOLIDATION,
+        name="Consolidation / VCP Screener",
+        description="Pre-breakout candidates in tight trading ranges with declining volume (VCP pattern)",
         filters=[
             FilterConfig(
-                filter_type=FilterTypeEnum.VOLUME, params={"min_avg_volume": 50000}, weight=1.0
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.CONSOLIDATION,
+                params={
+                    "max_range_pct": 15,  # Relaxed from 10%
+                    "declining_volume": True,
+                },
+                weight=2.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={"require_above_trend": True, "trend_ma": 200},
+                weight=1.5,
+            ),
+        ],
+    ),
+    # Value/Pullback Screener - Fixed RSI threshold
+    ScreenerPresetType.VALUE: ScreenerPresetInfo(
+        preset=ScreenerPresetType.VALUE,
+        name="Pullback to Support Screener",
+        description="Pullback to support: oversold RSI (<30), still in long-term uptrend above 200MA",
+        filters=[
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
-                params={"momentum_mode": "bearish", "rsi_oversold": 40},
+                params={
+                    "momentum_mode": "bearish",
+                    "rsi_oversold": 30,  # Fixed from 40 (standard oversold level)
+                },
                 weight=1.5,
             ),
             FilterConfig(
@@ -165,10 +442,11 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
             ),
         ],
     ),
+    # Sector Rotation Screener - Enhanced with momentum
     ScreenerPresetType.SECTOR_ROTATION: ScreenerPresetInfo(
         preset=ScreenerPresetType.SECTOR_ROTATION,
         name="Sector Rotation Screener",
-        description="Find strongest sectors and top-performing stocks within them",
+        description="Find top-performing stocks with strong relative momentum",
         filters=[
             FilterConfig(
                 filter_type=FilterTypeEnum.VOLUME,
@@ -177,12 +455,12 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.PRICE_ACTION,
-                params={"lookback_period": 20, "min_sector_roc": 0},
+                params={"lookback_period": 50, "min_sector_roc": 0},  # 50-day performance
                 weight=2.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                params={"require_above_trend": True},
+                params={"require_above_trend": True, "trend_ma": 200},
                 weight=1.5,
             ),
         ],
@@ -391,14 +669,24 @@ class ScreenerService:
                 extra_data=r.metadata,
             )
             self.db.add(result_record)
+
+            # Generate grade and detailed reasons
+            score = round(r.score, 2)
+            grade = get_score_grade(score).value
+            grade_description = get_score_description(score)
+            reasons_detailed = _generate_detailed_reasons(r.metadata, r.filter_scores)
+
             result_items.append(
                 ScreenerResultItem(
                     symbol=r.symbol,
                     rank=rank,
-                    score=round(r.score, 2),
+                    score=score,
+                    grade=grade,
+                    grade_description=grade_description,
                     passed=r.passed,
                     filter_scores=r.filter_scores,
                     reasons=r.reasons,
+                    reasons_detailed=reasons_detailed,
                     metadata=r.metadata,
                 )
             )

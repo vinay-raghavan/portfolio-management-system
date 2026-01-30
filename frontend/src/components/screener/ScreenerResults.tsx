@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap, BarChart3, Activity, Target, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -205,11 +205,27 @@ export function ScreenerResults({
                       </td>
                       <td className="py-3 px-2 font-medium">{result.symbol}</td>
                       <td className="text-right py-3 px-2">
-                        <span className={cn('font-medium', result.score >= 0.7 ? 'text-profit' : result.score >= 0.5 ? 'text-warning' : 'text-muted-foreground')}>
-                          {formatPercent(result.score * 100)}
-                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                          {result.grade && (
+                            <Badge
+                              variant={result.grade.startsWith('A') ? 'default' : result.grade === 'B' ? 'secondary' : 'outline'}
+                              className={cn(
+                                result.grade === 'A+' && 'bg-green-500',
+                                result.grade === 'A' && 'bg-emerald-500',
+                                result.grade === 'B' && 'bg-blue-500',
+                              )}
+                            >
+                              {result.grade}
+                            </Badge>
+                          )}
+                          <span className={cn('font-medium', result.score >= 70 ? 'text-profit' : result.score >= 50 ? 'text-warning' : 'text-muted-foreground')}>
+                            {result.score.toFixed(0)}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-3 px-2 max-w-[200px] truncate text-sm text-muted-foreground">{result.reasons[0]}</td>
+                      <td className="py-3 px-2 max-w-[200px] truncate text-sm text-muted-foreground" title={result.grade_description || ''}>
+                        {result.grade_description || result.reasons[0]}
+                      </td>
                       <td className="text-right py-3 px-2">
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onAddToWatchlist?.(result.symbol); }} title="Add to Watchlist">
@@ -231,18 +247,77 @@ export function ScreenerResults({
                       </td>
                     </tr>
                     {expandedRow === result.symbol && (
-                      <tr className="bg-muted/20">
-                        <td colSpan={5} className="px-4 py-3">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="font-medium mb-1">Filter Scores</p>
-                              {Object.entries(result.filter_scores).map(([k, v]) => (
-                                <p key={k} className="text-muted-foreground">{k}: {(v as number * 100).toFixed(0)}%</p>
-                              ))}
+                      <tr className="bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30">
+                        <td colSpan={5} className="px-4 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Filter Scores Card */}
+                            <div className="rounded-lg border bg-card p-3 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <BarChart3 className="h-4 w-4 text-blue-500" />
+                                <h4 className="font-semibold text-sm">Filter Scores</h4>
+                              </div>
+                              <div className="space-y-2">
+                                {Object.entries(result.filter_scores).map(([k, v]) => {
+                                  const score = v as number;
+                                  const colorClass = score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-emerald-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                                  return (
+                                    <div key={k} className="flex items-center justify-between gap-2">
+                                      <span className="text-xs text-muted-foreground capitalize">{k.replace(/_/g, ' ')}</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                                          <div className={cn('h-full rounded-full', colorClass)} style={{ width: `${Math.min(score, 100)}%` }} />
+                                        </div>
+                                        <span className={cn('text-xs font-medium w-8 text-right', score >= 70 ? 'text-green-600 dark:text-green-400' : score >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-muted-foreground')}>
+                                          {score.toFixed(0)}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium mb-1">All Reasons</p>
-                              {result.reasons.map((r, i) => <p key={i} className="text-muted-foreground">• {r}</p>)}
+
+                            {/* Technical Details Card */}
+                            <div className="rounded-lg border bg-card p-3 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Activity className="h-4 w-4 text-purple-500" />
+                                <h4 className="font-semibold text-sm">Technical Signals</h4>
+                              </div>
+                              <div className="space-y-1.5">
+                                {result.reasons.map((r, i) => (
+                                  <div key={i} className="flex items-start gap-2">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
+                                    <span className="text-xs text-muted-foreground leading-relaxed">{r}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Analysis Card */}
+                            <div className="rounded-lg border bg-card p-3 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Target className="h-4 w-4 text-orange-500" />
+                                <h4 className="font-semibold text-sm">Detailed Analysis</h4>
+                              </div>
+                              <div className="space-y-1.5">
+                                {(result.reasons_detailed || []).length > 0 ? (
+                                  result.reasons_detailed.map((r, i) => {
+                                    // Determine icon based on content
+                                    const isPositive = r.toLowerCase().includes('strong') || r.toLowerCase().includes('bullish') || r.toLowerCase().includes('above') || r.toLowerCase().includes('high');
+                                    const isWarning = r.toLowerCase().includes('moderate') || r.toLowerCase().includes('neutral');
+                                    const IconComponent = isPositive ? TrendingUp : isWarning ? AlertCircle : Info;
+                                    const iconColor = isPositive ? 'text-green-500' : isWarning ? 'text-yellow-500' : 'text-blue-500';
+                                    return (
+                                      <div key={i} className="flex items-start gap-2">
+                                        <IconComponent className={cn('h-3.5 w-3.5 mt-0.5 shrink-0', iconColor)} />
+                                        <span className="text-xs text-muted-foreground leading-relaxed">{r}</span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <p className="text-xs text-muted-foreground italic">No detailed analysis available</p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>

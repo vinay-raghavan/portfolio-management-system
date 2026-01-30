@@ -652,7 +652,8 @@ export const settingsApi = {
 // ============================================================================
 
 export type FilterType = 'volume' | 'momentum' | 'breakout' | 'consolidation' | 'moving_average' | 'price_action';
-export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation';
+export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation' | 'minervini';
+export type StrictnessLevel = 'strict' | 'moderate' | 'relaxed' | 'exploratory';
 export type RecommendationCategory = 'momentum' | 'breakout' | 'pullback' | 'sector';
 
 export interface FilterConfig {
@@ -671,6 +672,7 @@ export interface ScreenerRunRequest {
 export interface ScreenerPresetRunRequest {
   preset: ScreenerPresetType;
   universe?: string;
+  strictness?: StrictnessLevel;
   min_score?: number;
   top_n?: number;
 }
@@ -679,9 +681,12 @@ export interface ScreenerResultItem {
   symbol: string;
   rank: number;
   score: number;
+  grade: string;
+  grade_description: string;
   passed: boolean;
   filter_scores: Record<string, number>;
   reasons: string[];
+  reasons_detailed: string[];
   metadata: Record<string, unknown>;
 }
 

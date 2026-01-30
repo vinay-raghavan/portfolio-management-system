@@ -39,6 +39,57 @@ class ScreenerPresetType(str, Enum):
     CONSOLIDATION = "consolidation"
     VALUE = "value"
     SECTOR_ROTATION = "sector_rotation"
+    MINERVINI = "minervini"  # Mark Minervini Trend Template
+
+
+class StrictnessLevel(str, Enum):
+    """Strictness levels for preset screeners."""
+
+    STRICT = "strict"  # Professional-grade criteria (Minervini exact)
+    MODERATE = "moderate"  # Slightly relaxed (good for trending markets)
+    RELAXED = "relaxed"  # More permissive (finds more candidates)
+    EXPLORATORY = "exploratory"  # Very loose (for idea generation)
+
+
+class ScoreGrade(str, Enum):
+    """Grade interpretation of numeric score."""
+
+    A_PLUS = "A+"  # 90-100: Exceptional
+    A = "A"  # 80-89: Excellent
+    B = "B"  # 70-79: Good
+    C = "C"  # 60-69: Fair
+    D = "D"  # 50-59: Weak
+    F = "F"  # Below 50: Failed
+
+
+def get_score_grade(score: float) -> ScoreGrade:
+    """Convert numeric score to letter grade."""
+    if score >= 90:
+        return ScoreGrade.A_PLUS
+    elif score >= 80:
+        return ScoreGrade.A
+    elif score >= 70:
+        return ScoreGrade.B
+    elif score >= 60:
+        return ScoreGrade.C
+    elif score >= 50:
+        return ScoreGrade.D
+    return ScoreGrade.F
+
+
+def get_score_description(score: float) -> str:
+    """Get verbal description of score."""
+    if score >= 90:
+        return "Exceptional - meets all criteria strongly"
+    elif score >= 80:
+        return "Excellent - meets most criteria well"
+    elif score >= 70:
+        return "Good - solid candidate worth watching"
+    elif score >= 60:
+        return "Fair - some criteria met, needs confirmation"
+    elif score >= 50:
+        return "Weak - borderline, high risk"
+    return "Failed - does not meet minimum criteria"
 
 
 class FilterConfig(BaseModel):
@@ -65,6 +116,10 @@ class ScreenerPresetRunRequest(BaseModel):
 
     preset: ScreenerPresetType
     universe: str = Field(default="nifty500")
+    strictness: StrictnessLevel = Field(
+        default=StrictnessLevel.MODERATE,
+        description="How strict the filter criteria should be",
+    )
     min_score: float = Field(default=50.0, ge=0, le=100)
     top_n: int = Field(default=50, ge=1, le=500)
 
@@ -75,9 +130,15 @@ class ScreenerResultItem(BaseModel):
     symbol: str
     rank: int
     score: float
+    grade: str = Field(default="", description="Letter grade (A+, A, B, C, D, F)")
+    grade_description: str = Field(default="", description="Verbal interpretation of score")
     passed: bool
     filter_scores: dict[str, float] = Field(default_factory=dict)
     reasons: list[str] = Field(default_factory=list)
+    reasons_detailed: list[str] = Field(
+        default_factory=list,
+        description="Detailed reasons with actual values",
+    )
     metadata: dict = Field(default_factory=dict)
 
 
@@ -315,3 +376,11 @@ class UpdateReturnsResponse(BaseModel):
     updated_1w: int = 0
     updated_1m: int = 0
     errors: list[str] = []
+
+
+class StoreRecommendationsRequest(BaseModel):
+    """Request to store daily recommendations (from worker task)."""
+
+    date: str = Field(..., description="Date in ISO format (YYYY-MM-DD)")
+    category: str = Field(..., description="Category: momentum, breakout, pullback, sector")
+    results: list[dict] = Field(..., description="Screener results to store")
