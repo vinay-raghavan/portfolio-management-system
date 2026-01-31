@@ -344,9 +344,7 @@ def process_screener_alerts(self) -> dict:
             )
 
             if response.status_code != 200:
-                logger.error(
-                    f"Process alerts error: {response.status_code} - {response.text}"
-                )
+                logger.error(f"Process alerts error: {response.status_code} - {response.text}")
                 return {
                     "status": "error",
                     "message": f"API returned {response.status_code}",
