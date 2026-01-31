@@ -79,7 +79,9 @@ class VolumeFilter(BaseFilter):
                 passed=True,
                 score=total_score,
                 reason=f"Volume OK (avg: {avg_volume:,.0f}, ratio: {volume_ratio:.2f}x)",
-                metadata=sanitize_for_json({"avg_volume": avg_volume, "volume_ratio": volume_ratio}),
+                metadata=sanitize_for_json(
+                    {"avg_volume": avg_volume, "volume_ratio": volume_ratio}
+                ),
             )
         except Exception as e:
             logger.error(f"Volume filter error for {symbol}: {e}")
@@ -144,7 +146,10 @@ class MomentumFilter(BaseFilter):
         # Need at least 200 days for reasonable 52-week calculations
         min_required = max(self.rsi_period, self.roc_period, 200)
         if len(data) < min_required:
-            return FilterResult(passed=False, reason=f"Insufficient data for momentum ({len(data)} < {min_required})")
+            return FilterResult(
+                passed=False,
+                reason=f"Insufficient data for momentum ({len(data)} < {min_required})",
+            )
 
         try:
             close = data["close"]
@@ -220,12 +225,14 @@ class MomentumFilter(BaseFilter):
                 passed=passed,
                 score=min(100, score),
                 reason="; ".join(reasons) if reasons else "No momentum signal",
-                metadata=sanitize_for_json({
-                    "rsi": rsi,
-                    "roc": roc,
-                    "pct_from_52w_high": pct_from_high,
-                    "pct_above_52w_low": pct_above_low,
-                }),
+                metadata=sanitize_for_json(
+                    {
+                        "rsi": rsi,
+                        "roc": roc,
+                        "pct_from_52w_high": pct_from_high,
+                        "pct_above_52w_low": pct_above_low,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"Momentum filter error for {symbol}: {e}")
@@ -357,17 +364,19 @@ class MovingAverageFilter(BaseFilter):
                 passed=passed,
                 score=min(100, score),
                 reason="; ".join(reasons) if reasons else "MA check passed",
-                metadata=sanitize_for_json({
-                    "ma_short": ma_short,
-                    "ma_mid": ma_mid,
-                    "ma_trend": ma_trend,
-                    "above_short": above_short,
-                    "above_mid": above_mid,
-                    "above_trend": above_trend,
-                    "stacked_ma": stacked_ma,
-                    "trend_up": trend_up,
-                    "crossover": crossover,
-                }),
+                metadata=sanitize_for_json(
+                    {
+                        "ma_short": ma_short,
+                        "ma_mid": ma_mid,
+                        "ma_trend": ma_trend,
+                        "above_short": above_short,
+                        "above_mid": above_mid,
+                        "above_trend": above_trend,
+                        "stacked_ma": stacked_ma,
+                        "trend_up": trend_up,
+                        "crossover": crossover,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"MA filter error for {symbol}: {e}")
@@ -424,7 +433,9 @@ class BreakoutFilter(BaseFilter):
                     passed=False,
                     score=max(0, 50 - pct_to_breakout * 10),
                     reason=f"No breakout ({pct_to_breakout:.1f}% to level)",
-                    metadata=sanitize_for_json({"range_high": range_high, "breakout_level": breakout_level}),
+                    metadata=sanitize_for_json(
+                        {"range_high": range_high, "breakout_level": breakout_level}
+                    ),
                 )
 
             score = 60.0
@@ -441,12 +452,14 @@ class BreakoutFilter(BaseFilter):
                 passed=True,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata=sanitize_for_json({
-                    "range_high": range_high,
-                    "range_low": range_low,
-                    "breakout_level": breakout_level,
-                    "volume_ratio": volume_ratio,
-                }),
+                metadata=sanitize_for_json(
+                    {
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "breakout_level": breakout_level,
+                        "volume_ratio": volume_ratio,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"Breakout filter error for {symbol}: {e}")
@@ -521,13 +534,15 @@ class ConsolidationFilter(BaseFilter):
                 passed=True,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata=sanitize_for_json({
-                    "range_high": range_high,
-                    "range_low": range_low,
-                    "range_pct": range_pct,
-                    "range_position": range_position,
-                    "volume_declining": vol_declining,
-                }),
+                metadata=sanitize_for_json(
+                    {
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "range_pct": range_pct,
+                        "range_position": range_position,
+                        "volume_declining": vol_declining,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"Consolidation filter error for {symbol}: {e}")
@@ -614,11 +629,13 @@ class SectorPerformanceFilter(BaseFilter):
                 passed=passed,
                 score=min(100, score),
                 reason="; ".join(reasons),
-                metadata=sanitize_for_json({
-                    "stock_roc": stock_roc,
-                    "range_position": range_pos,
-                    "lookback_period": self.lookback_period,
-                }),
+                metadata=sanitize_for_json(
+                    {
+                        "stock_roc": stock_roc,
+                        "range_position": range_pos,
+                        "lookback_period": self.lookback_period,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"Sector performance filter error for {symbol}: {e}")

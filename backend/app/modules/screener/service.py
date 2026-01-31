@@ -35,7 +35,6 @@ from app.modules.screener.schemas import (
 )
 from app.modules.screener.screener import StockScreener
 
-
 # Strictness level multipliers for filter parameters
 # Format: {param_name: {strictness: multiplier}}
 # For boolean params, strictness determines if they're required
@@ -151,9 +150,7 @@ def apply_strictness_to_filters(
     return modified_filters
 
 
-def _generate_detailed_reasons(
-    metadata: dict, filter_scores: dict[str, float]
-) -> list[str]:
+def _generate_detailed_reasons(metadata: dict, filter_scores: dict[str, float]) -> list[str]:
     """Generate detailed reason strings with actual values from filter metadata."""
     detailed = []
 
@@ -216,11 +213,11 @@ def _generate_detailed_reasons(
             vol = volume_data["avg_volume"]
             if vol is not None:
                 if vol >= 1_000_000:
-                    detailed.append(f"Avg volume: {vol/1e6:.1f}M (very liquid)")
+                    detailed.append(f"Avg volume: {vol / 1e6:.1f}M (very liquid)")
                 elif vol >= 100_000:
-                    detailed.append(f"Avg volume: {vol/1e3:.0f}K (liquid)")
+                    detailed.append(f"Avg volume: {vol / 1e3:.0f}K (liquid)")
                 else:
-                    detailed.append(f"Avg volume: {vol/1e3:.0f}K")
+                    detailed.append(f"Avg volume: {vol / 1e3:.0f}K")
 
         if "volume_ratio" in volume_data:
             ratio = volume_data["volume_ratio"]
@@ -229,19 +226,17 @@ def _generate_detailed_reasons(
 
     # Extract breakout filter data
     breakout_data = metadata.get("breakout_filter", {})
-    if breakout_data:
-        if "breakout_pct" in breakout_data:
-            pct = breakout_data["breakout_pct"]
-            if pct is not None and pct > 0:
-                detailed.append(f"Breaking out {pct:.1f}% above resistance")
+    if breakout_data and "breakout_pct" in breakout_data:
+        pct = breakout_data["breakout_pct"]
+        if pct is not None and pct > 0:
+            detailed.append(f"Breaking out {pct:.1f}% above resistance")
 
     # Extract consolidation filter data
     consol_data = metadata.get("consolidation_filter", {})
-    if consol_data:
-        if "range_pct" in consol_data:
-            pct = consol_data["range_pct"]
-            if pct is not None:
-                detailed.append(f"Consolidating in {pct:.1f}% range")
+    if consol_data and "range_pct" in consol_data:
+        pct = consol_data["range_pct"]
+        if pct is not None:
+            detailed.append(f"Consolidating in {pct:.1f}% range")
 
     return detailed
 

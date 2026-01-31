@@ -951,9 +951,7 @@ async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
 
     # For dynamic universes (e.g., NIFTY500), fallback to NIFTY50
     if universe_upper in DYNAMIC_UNIVERSES:
-        logger.warning(
-            f"Dynamic universe {universe_upper} requested, falling back to NIFTY50"
-        )
+        logger.warning(f"Dynamic universe {universe_upper} requested, falling back to NIFTY50")
         return PREDEFINED_UNIVERSES["NIFTY50"]["symbols"]
 
     # Handle special cases

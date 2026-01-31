@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
@@ -29,7 +36,6 @@ import {
   TrendingDown,
   Target,
   BarChart3,
-  Calendar,
   Trophy,
   Zap,
   Flame,
@@ -40,6 +46,7 @@ import {
   Star,
   Eye,
   Bookmark,
+  Maximize2,
 } from 'lucide-react';
 import { screenerApi, watchlistApi, RecommendationItem } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -64,11 +71,14 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
   });
 
   // Fetch actual recommendations to show stocks
-  const { data: recommendationsData } = useQuery({
+  const { data: recommendationsData, error: recommendationsError } = useQuery({
     queryKey: ['screener-recommendations'],
     queryFn: () => screenerApi.getRecommendations(),
     staleTime: 5 * 60 * 1000,
   });
+
+  // State for expanding compact view
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Create watchlist mutation - create watchlist first, then add items
   const createWatchlistMutation = useMutation({
@@ -159,115 +169,202 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
   // Determine overall trend
   const overallTrend = stats.overall_avg_return_1m !== null && stats.overall_avg_return_1m > 0;
 
-  return (
-    <Card className={cn(
-      "overflow-hidden",
-      overallTrend
-        ? "border-green-200 dark:border-green-900/50"
-        : stats.total_recommendations > 0
-          ? "border-red-200 dark:border-red-900/50"
-          : ""
-    )}>
-      <CardHeader className={cn(
-        "pb-3",
-        overallTrend
-          ? "bg-gradient-to-r from-green-50/50 to-transparent dark:from-green-950/20"
-          : stats.total_recommendations > 0
-            ? "bg-gradient-to-r from-red-50/50 to-transparent dark:from-red-950/20"
-            : ""
-      )}>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <div className={cn(
-              "p-1.5 rounded-lg",
-              overallTrend ? "bg-green-100 dark:bg-green-900/40" : "bg-muted"
-            )}>
-              <BarChart3 className={cn(
-                "h-4 w-4",
-                overallTrend ? "text-green-600 dark:text-green-400" : ""
-              )} />
-            </div>
-            Screener Performance
-          </CardTitle>
-          {overallTrend && (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              Profitable
-            </Badge>
-          )}
-        </div>
-        <CardDescription className="flex items-center gap-2 mt-1">
-          <Calendar className="h-3 w-3" />
-          Last {days} days • {stats.total_recommendations} recommendations • {stats.unique_symbols} unique stocks
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="pt-4">
-        {stats.total_recommendations === 0 ? (
-          <div className="text-center py-8">
-            <CircleDot className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground">No recommendations yet</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              Performance data will appear after daily recommendations are generated
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Overall Stats with Progress Bars */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <WinRateCard
-                label="1 Day"
-                icon={<Zap className="h-3.5 w-3.5" />}
-                winRate={stats.overall_win_rate_1d}
-                avgReturn={stats.overall_avg_return_1d}
-                color="blue"
-              />
-              <WinRateCard
-                label="1 Week"
-                icon={<Timer className="h-3.5 w-3.5" />}
-                winRate={stats.overall_win_rate_1w}
-                avgReturn={stats.overall_avg_return_1w}
-                color="purple"
-              />
-              <WinRateCard
-                label="1 Month"
-                icon={<Flame className="h-3.5 w-3.5" />}
-                winRate={stats.overall_win_rate_1m}
-                avgReturn={stats.overall_avg_return_1m}
-                color="orange"
-              />
-            </div>
+  // Get all symbols from recommendations for compact view
+  const allSymbols = recommendations.flatMap(cat =>
+    cat.recommendations.slice(0, 3).map(r => ({ symbol: r.symbol, score: r.score, category: cat.category }))
+  );
 
-            {!compact && stats.categories.length > 0 && (
-              <Tabs defaultValue={stats.categories[0]?.category || 'momentum'}>
-                <TabsList className="mb-4 w-full grid" style={{ gridTemplateColumns: `repeat(${stats.categories.length}, 1fr)` }}>
-                  {stats.categories.map((cat) => (
-                    <TabsTrigger
-                      key={cat.category}
-                      value={cat.category}
-                      className="capitalize text-xs"
-                    >
-                      {getCategoryIcon(cat.category)}
-                      <span className="ml-1.5">{cat.category}</span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {stats.categories.map((cat) => {
-                  const categoryRecs = recommendations.find(r => r.category === cat.category);
-                  return (
-                    <TabsContent key={cat.category} value={cat.category}>
-                      <CategoryStats
-                        stats={cat}
-                        recommendations={categoryRecs?.recommendations || []}
-                        onSaveAsWatchlist={(symbols) => handleSaveAsWatchlist(cat.category, symbols)}
-                      />
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
+  // Format helper
+  const formatPercent = (val: number | null) =>
+    val !== null ? `${val >= 0 ? '+' : ''}${val.toFixed(1)}%` : '-';
+
+  // Always show compact card, with Sheet for expanded view
+  return (
+    <>
+      <Card className="overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "p-1.5 rounded-lg",
+                overallTrend ? "bg-green-100 dark:bg-green-900/40" : "bg-muted"
+              )}>
+                <BarChart3 className={cn(
+                  "h-4 w-4",
+                  overallTrend ? "text-green-600 dark:text-green-400" : ""
+                )} />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Screener Performance</p>
+                <p className="text-xs text-muted-foreground">{stats.unique_symbols} stocks tracked</p>
+              </div>
+            </div>
+            {stats.total_recommendations > 0 && (
+              <div className="text-right">
+                <p className={cn(
+                  "text-lg font-bold",
+                  overallTrend ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                )}>
+                  {formatPercent(stats.overall_avg_return_1m)}
+                </p>
+                <p className="text-xs text-muted-foreground">1M avg</p>
+              </div>
             )}
-          </>
-        )}
-      </CardContent>
+          </div>
+
+          {stats.total_recommendations > 0 ? (
+            <>
+              {/* Compact stats row */}
+              <div className="flex items-center gap-4 text-xs mb-3">
+                <div className="flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-blue-500" />
+                  <span className="text-muted-foreground">1D:</span>
+                  <span className={cn("font-medium", stats.overall_win_rate_1d && stats.overall_win_rate_1d >= 50 ? "text-green-600" : "text-red-600")}>
+                    {stats.overall_win_rate_1d?.toFixed(0) ?? '-'}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Timer className="h-3 w-3 text-purple-500" />
+                  <span className="text-muted-foreground">1W:</span>
+                  <span className={cn("font-medium", stats.overall_win_rate_1w && stats.overall_win_rate_1w >= 50 ? "text-green-600" : "text-red-600")}>
+                    {stats.overall_win_rate_1w?.toFixed(0) ?? '-'}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Flame className="h-3 w-3 text-orange-500" />
+                  <span className="text-muted-foreground">1M:</span>
+                  <span className={cn("font-medium", stats.overall_win_rate_1m && stats.overall_win_rate_1m >= 50 ? "text-green-600" : "text-red-600")}>
+                    {stats.overall_win_rate_1m?.toFixed(0) ?? '-'}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Top symbols row */}
+              {allSymbols.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {allSymbols.slice(0, 6).map((item, idx) => (
+                    <Badge
+                      key={`${item.symbol}-${idx}`}
+                      variant="secondary"
+                      className="text-xs font-mono px-2 py-0.5"
+                    >
+                      {item.symbol}
+                    </Badge>
+                  ))}
+                  {allSymbols.length > 6 && (
+                    <Badge variant="outline" className="text-xs px-2 py-0.5">
+                      +{allSymbols.length - 6} more
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Expand button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full h-7 text-xs"
+                onClick={() => setIsExpanded(true)}
+              >
+                <Maximize2 className="h-3 w-3 mr-1.5" />
+                View Details
+              </Button>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              No recommendations yet
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Expanded View Sheet */}
+      <Sheet open={isExpanded} onOpenChange={setIsExpanded}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <div className={cn(
+                "p-1.5 rounded-lg",
+                overallTrend ? "bg-green-100 dark:bg-green-900/40" : "bg-muted"
+              )}>
+                <BarChart3 className={cn(
+                  "h-4 w-4",
+                  overallTrend ? "text-green-600 dark:text-green-400" : ""
+                )} />
+              </div>
+              Screener Performance
+              {overallTrend && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800 text-xs ml-2">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Profitable
+                </Badge>
+              )}
+            </SheetTitle>
+            <SheetDescription>
+              Last {days} days • {stats.total_recommendations} recommendations • {stats.unique_symbols} unique stocks
+            </SheetDescription>
+          </SheetHeader>
+
+          {stats.total_recommendations > 0 && (
+            <div className="space-y-6">
+              {/* Win Rate Cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <WinRateCard
+                  label="1 Day"
+                  icon={<Zap className="h-3.5 w-3.5" />}
+                  winRate={stats.overall_win_rate_1d}
+                  avgReturn={stats.overall_avg_return_1d}
+                  color="blue"
+                />
+                <WinRateCard
+                  label="1 Week"
+                  icon={<Timer className="h-3.5 w-3.5" />}
+                  winRate={stats.overall_win_rate_1w}
+                  avgReturn={stats.overall_avg_return_1w}
+                  color="purple"
+                />
+                <WinRateCard
+                  label="1 Month"
+                  icon={<Flame className="h-3.5 w-3.5" />}
+                  winRate={stats.overall_win_rate_1m}
+                  avgReturn={stats.overall_avg_return_1m}
+                  color="orange"
+                />
+              </div>
+
+              {/* Category Tabs */}
+              {stats.categories.length > 0 && (
+                <Tabs defaultValue={stats.categories[0]?.category || 'momentum'}>
+                  <TabsList className="mb-4 w-full grid h-9" style={{ gridTemplateColumns: `repeat(${stats.categories.length}, 1fr)` }}>
+                    {stats.categories.map((cat) => (
+                      <TabsTrigger
+                        key={cat.category}
+                        value={cat.category}
+                        className="capitalize text-xs"
+                      >
+                        {getCategoryIcon(cat.category)}
+                        <span className="ml-1.5">{cat.category}</span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {stats.categories.map((cat) => {
+                    const categoryRecs = recommendations.find(r => r.category === cat.category);
+                    return (
+                      <TabsContent key={cat.category} value={cat.category} className="mt-0">
+                        <CategoryStats
+                          stats={cat}
+                          recommendations={categoryRecs?.recommendations || []}
+                          onSaveAsWatchlist={(symbols) => handleSaveAsWatchlist(cat.category, symbols)}
+                        />
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Save as Watchlist Dialog */}
       <Dialog open={showWatchlistDialog} onOpenChange={setShowWatchlistDialog}>
@@ -309,7 +406,7 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }
 
@@ -414,6 +511,61 @@ function WinRateCard({
   );
 }
 
+// Compact Win Rate Card for expanded view
+function CompactWinRateCard({
+  label,
+  icon,
+  winRate,
+  avgReturn,
+  color,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  winRate: number | null;
+  avgReturn: number | null;
+  color: 'blue' | 'purple' | 'orange';
+}) {
+  const formatPercent = (val: number | null) =>
+    val !== null ? `${val >= 0 ? '+' : ''}${val.toFixed(1)}%` : '-';
+
+  const isPositiveReturn = avgReturn !== null && avgReturn > 0;
+  const winRateValue = winRate ?? 0;
+
+  const colorClasses = {
+    blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', icon: 'text-blue-500', progress: 'bg-blue-500' },
+    purple: { bg: 'bg-purple-50 dark:bg-purple-950/30', icon: 'text-purple-500', progress: 'bg-purple-500' },
+    orange: { bg: 'bg-orange-50 dark:bg-orange-950/30', icon: 'text-orange-500', progress: 'bg-orange-500' }
+  };
+
+  const colors = colorClasses[color];
+
+  return (
+    <div className={cn("rounded-lg p-2 border", colors.bg)}>
+      <div className="flex items-center gap-1 mb-1">
+        <span className={colors.icon}>{icon}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
+      </div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm font-bold">
+          {winRate !== null ? `${winRate.toFixed(0)}%` : '-'}
+        </span>
+        <span className={cn(
+          "text-xs font-medium",
+          isPositiveReturn ? "text-green-600 dark:text-green-400" : avgReturn !== null ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+        )}>
+          {formatPercent(avgReturn)}
+        </span>
+      </div>
+      <div className="h-1 bg-muted rounded-full overflow-hidden mt-1">
+        <div
+          className={cn("h-full rounded-full", colors.progress)}
+          style={{ width: `${Math.min(winRateValue, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 import { CategoryPerformanceStats } from '@/lib/api';
 
 function CategoryStats({
@@ -428,21 +580,7 @@ function CategoryStats({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const formatPercent = (val: number | null | undefined) =>
-    val !== null && val !== undefined ? `${val >= 0 ? '+' : ''}${val.toFixed(2)}%` : '-';
-
-  const getWinRateColor = (rate: number | null) => {
-    if (rate === null) return 'text-muted-foreground';
-    if (rate >= 60) return 'text-green-600 dark:text-green-400';
-    if (rate >= 50) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
-  };
-
-  const getWinRateBg = (rate: number | null) => {
-    if (rate === null) return 'bg-muted';
-    if (rate >= 60) return 'bg-green-100 dark:bg-green-900/30';
-    if (rate >= 50) return 'bg-yellow-100 dark:bg-yellow-900/30';
-    return 'bg-red-100 dark:bg-red-900/30';
-  };
+    val !== null && val !== undefined ? `${val >= 0 ? '+' : ''}${val.toFixed(1)}%` : '-';
 
   const getReturnColor = (val: number | null | undefined) => {
     if (val === null || val === undefined) return 'text-muted-foreground';
@@ -450,163 +588,99 @@ function CategoryStats({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Win Rates with Visual Indicators */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: '1 Day', rate: stats.win_rate_1d, avg: stats.avg_return_1d },
-          { label: '1 Week', rate: stats.win_rate_1w, avg: stats.avg_return_1w },
-          { label: '1 Month', rate: stats.win_rate_1m, avg: stats.avg_return_1m },
-        ].map(({ label, rate, avg }) => (
-          <div
-            key={label}
-            className={cn(
-              "rounded-lg p-2.5 border text-center",
-              getWinRateBg(rate)
-            )}
-          >
-            <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
-            <p className={cn("text-lg font-bold", getWinRateColor(rate))}>
-              {rate !== null ? `${rate.toFixed(0)}%` : '-'}
-            </p>
-            {avg !== null && avg !== undefined && (
-              <p className={cn("text-xs", getReturnColor(avg))}>
-                {formatPercent(avg)}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Best Picks with Trophy Icons */}
+    <div className="space-y-3">
+      {/* Top Performers - Compact */}
       {(stats.best_pick_1d || stats.best_pick_1w || stats.best_pick_1m) && (
-        <div className="bg-gradient-to-r from-amber-50/50 to-transparent dark:from-amber-950/20 rounded-lg p-3 border border-amber-100 dark:border-amber-900/30">
-          <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1.5">
-            <Trophy className="h-3.5 w-3.5" />
-            Top Performers
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {stats.best_pick_1d && stats.best_return_1d !== null && (
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
-                <Zap className="h-3 w-3 mr-1" />
-                1D: {stats.best_pick_1d}
-                <span className="ml-1 text-green-600 dark:text-green-400 font-bold">
-                  {formatPercent(stats.best_return_1d)}
-                </span>
-              </Badge>
-            )}
-            {stats.best_pick_1w && stats.best_return_1w !== null && (
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
-                <Timer className="h-3 w-3 mr-1" />
-                1W: {stats.best_pick_1w}
-                <span className="ml-1 text-green-600 dark:text-green-400 font-bold">
-                  {formatPercent(stats.best_return_1w)}
-                </span>
-              </Badge>
-            )}
-            {stats.best_pick_1m && stats.best_return_1m !== null && (
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800">
-                <Flame className="h-3 w-3 mr-1" />
-                1M: {stats.best_pick_1m}
-                <span className="ml-1 text-green-600 dark:text-green-400 font-bold">
-                  {formatPercent(stats.best_return_1m)}
-                </span>
-              </Badge>
-            )}
-          </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Trophy className="h-3.5 w-3.5 text-amber-500" />
+          {stats.best_pick_1d && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              {stats.best_pick_1d}
+              <span className={getReturnColor(stats.best_return_1d)}>{formatPercent(stats.best_return_1d)}</span>
+            </Badge>
+          )}
+          {stats.best_pick_1w && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              {stats.best_pick_1w}
+              <span className={getReturnColor(stats.best_return_1w)}>{formatPercent(stats.best_return_1w)}</span>
+            </Badge>
+          )}
+          {stats.best_pick_1m && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              {stats.best_pick_1m}
+              <span className={getReturnColor(stats.best_return_1m)}>{formatPercent(stats.best_return_1m)}</span>
+            </Badge>
+          )}
         </div>
       )}
 
       {/* Expandable Stock List */}
       {recommendations.length > 0 && (
         <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-          <div className="flex items-center justify-between border-t pt-3">
+          <div className="flex items-center justify-between">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2 text-xs h-8">
-                {isExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
-                )}
-                <Eye className="h-3.5 w-3.5" />
-                View {recommendations.length} Stocks
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-7 px-2">
+                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                <Eye className="h-3 w-3" />
+                {recommendations.length} Stocks
               </Button>
             </CollapsibleTrigger>
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 text-xs h-8"
+              className="gap-1.5 text-xs h-7 px-2"
               onClick={() => onSaveAsWatchlist(recommendations.map(r => r.symbol))}
             >
-              <Bookmark className="h-3.5 w-3.5" />
-              Save as Watchlist
+              <Bookmark className="h-3 w-3" />
+              Save
             </Button>
           </div>
 
-          <CollapsibleContent className="mt-3">
-            <div className="rounded-lg border overflow-hidden">
-              {/* Table Header */}
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
-                <div className="col-span-1 text-center">#</div>
+          <CollapsibleContent className="mt-2">
+            <div className="rounded border overflow-hidden text-xs">
+              {/* Header */}
+              <div className="grid grid-cols-10 gap-1 px-2 py-1.5 bg-muted/50 font-medium text-muted-foreground">
                 <div className="col-span-3">Symbol</div>
-                <div className="col-span-2 text-right">Score</div>
+                <div className="col-span-1 text-right">Score</div>
                 <div className="col-span-2 text-right">1D</div>
                 <div className="col-span-2 text-right">1W</div>
                 <div className="col-span-2 text-right">1M</div>
               </div>
-
-              {/* Stock Rows */}
-              <div className="divide-y max-h-64 overflow-y-auto">
+              {/* Rows */}
+              <div className="divide-y max-h-48 overflow-y-auto">
                 {recommendations.map((rec, idx) => (
                   <div
                     key={rec.symbol}
                     className={cn(
-                      "grid grid-cols-12 gap-2 px-3 py-2 text-sm items-center hover:bg-muted/30 transition-colors",
+                      "grid grid-cols-10 gap-1 px-2 py-1.5 items-center",
                       idx % 2 === 0 ? "bg-background" : "bg-muted/10"
                     )}
                   >
-                    <div className="col-span-1 text-center text-muted-foreground text-xs">
-                      {rec.rank}
-                    </div>
-                    <div className="col-span-3 font-medium flex items-center gap-1.5">
-                      {idx < 3 && (
-                        <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
-                      )}
+                    <div className="col-span-3 font-medium flex items-center gap-1">
+                      {idx < 3 && <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500" />}
                       {rec.symbol}
                     </div>
-                    <div className="col-span-2 text-right">
-                      <Badge variant="secondary" className="text-xs font-mono">
-                        {rec.score.toFixed(0)}
-                      </Badge>
-                    </div>
-                    <div className={cn("col-span-2 text-right font-mono text-xs", getReturnColor(rec.return_1d))}>
+                    <div className="col-span-1 text-right font-mono">{rec.score.toFixed(0)}</div>
+                    <div className={cn("col-span-2 text-right font-mono", getReturnColor(rec.return_1d))}>
                       {formatPercent(rec.return_1d)}
                     </div>
-                    <div className={cn("col-span-2 text-right font-mono text-xs", getReturnColor(rec.return_1w))}>
+                    <div className={cn("col-span-2 text-right font-mono", getReturnColor(rec.return_1w))}>
                       {formatPercent(rec.return_1w)}
                     </div>
-                    <div className={cn("col-span-2 text-right font-mono text-xs", getReturnColor(rec.return_1m))}>
+                    <div className={cn("col-span-2 text-right font-mono", getReturnColor(rec.return_1m))}>
                       {formatPercent(rec.return_1m)}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Summary Footer */}
-            <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-              <span>{recommendations.length} stocks identified</span>
-              <span>Returns update daily after market close</span>
-            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
 
-      {/* Fallback if no recommendations loaded */}
+      {/* Fallback */}
       {recommendations.length === 0 && (
-        <div className="text-xs text-muted-foreground text-center pt-2 border-t">
-          {stats.total_recommendations} recommendations in this category
-        </div>
+        <p className="text-xs text-muted-foreground">{stats.total_recommendations} recommendations</p>
       )}
     </div>
   );
