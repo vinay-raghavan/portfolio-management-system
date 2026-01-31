@@ -399,6 +399,7 @@ flowchart TB
 | Signal Engine | ✅ Done | 4 strategies (RSI, MACD, MA Crossover, Bollinger) with HOLD support |
 | Backtesting | ✅ Done | BacktestRunner with full metrics (Sharpe, Sortino, Max DD, Win Rate) |
 | Risk Management | ✅ Done | Position limits, sector concentration, SL/TP enforcement, auto square-off |
+| Stock Screener | ✅ Done | Preset screeners, daily recommendations, performance tracking, UI with Sheet component |
 | Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
 
 
@@ -1708,18 +1709,18 @@ flowchart TB
     style Recommendations fill:#e0f2f1,stroke:#00897b
 ```
 
-#### 1.10.1 Screener API Endpoints
+#### 1.10.1 Screener API Endpoints ✅
 Expose the existing screener module via REST API.
 
 **Tasks:**
-- [ ] Create screener router (`/api/v1/screener`)
+- [x] Create screener router (`/api/v1/screener`)
   - `GET /screener/presets` - List preset screeners (momentum, breakout, consolidation)
   - `POST /screener/run` - Run screener on universe with filters
   - `GET /screener/results/{id}` - Get cached screener results
   - `POST /screener/custom` - Save custom screener configuration
   - `GET /screener/custom` - List user's saved screeners
   - `DELETE /screener/custom/{id}` - Delete saved screener
-- [ ] Create screener schemas
+- [x] Create screener schemas
   ```python
   class ScreenerRunRequest(BaseModel):
       universe: str  # "nifty50", "nifty500", "all_nse", or universe_id
@@ -1741,89 +1742,89 @@ Expose the existing screener module via REST API.
       reasons: list[str]
       metadata: dict  # Current price, volume, momentum, etc.
   ```
-- [ ] Async screener execution with Celery for large universes
-- [ ] Result caching in Redis (TTL based on market hours)
+- [x] Async screener execution with Celery for large universes
+- [x] Result caching in Redis (TTL based on market hours)
 
-#### 1.10.2 Preset Screeners
+#### 1.10.2 Preset Screeners ✅
 Pre-configured screeners for common use cases.
 
 **Tasks:**
-- [ ] **Momentum Screener**
+- [x] **Momentum Screener**
   - High volume (>100K avg)
   - RSI between 50-70 (bullish but not overbought)
   - Near 52-week high (within 10%)
   - Above 20-day and 50-day MA
-- [ ] **Breakout Screener**
+- [x] **Breakout Screener**
   - Breaking above 20-day range high
   - Volume spike (1.5x+ average)
   - Above all major moving averages
-- [ ] **Consolidation Screener** (pre-breakout candidates)
+- [x] **Consolidation Screener** (pre-breakout candidates)
   - Tight price range (< 10% over 20 days)
   - Declining volume (squeeze)
   - Above trend lines
-- [ ] **Value Screener** (for swing trading)
+- [x] **Value Screener** (for swing trading)
   - Pullback to support (near 50-day MA)
   - RSI oversold (30-40 range)
   - Still in uptrend (above 200-day MA)
-- [ ] **Sector Rotation Screener**
+- [x] **Sector Rotation Screener**
   - Group by sector/industry
   - Find strongest sectors this week
   - Top stocks within strong sectors
 
-#### 1.10.3 Daily Recommendations Widget
+#### 1.10.3 Daily Recommendations Widget ✅
 Automated daily stock picks displayed on dashboard.
 
 **Tasks:**
-- [ ] Celery task to run preset screeners daily at market open
-- [ ] Store recommendations in database with timestamp
-- [ ] API endpoint `GET /screener/recommendations`
-- [ ] Recommendation categories:
+- [x] Celery task to run preset screeners daily at market open
+- [x] Store recommendations in database with timestamp
+- [x] API endpoint `GET /screener/recommendations`
+- [x] Recommendation categories:
   - "🚀 Top Momentum Today" (momentum screener top 5)
   - "💥 Potential Breakouts" (breakout screener top 5)
   - "📈 Strong Sectors" (sector rotation analysis)
   - "🎯 Pullback Opportunities" (value screener top 5)
-- [ ] Recommendation history (what was recommended, did it work?)
+- [x] Recommendation history (what was recommended, did it work?)
 
-#### 1.10.4 Frontend: Research/Screener Page
+#### 1.10.4 Frontend: Research/Screener Page ✅
 New dedicated page for stock discovery.
 
 **Tasks:**
-- [ ] Create `/research` or `/screener` page
-- [ ] **Universe Selector**
+- [x] Create `/research` or `/screener` page
+- [x] **Universe Selector**
   - Dropdown: Nifty 50, Nifty 500, All NSE, Custom
   - Show stock count for each
-- [ ] **Filter Builder UI**
+- [x] **Filter Builder UI**
   - Add/remove filters
   - Configure filter parameters (sliders, inputs)
   - Set filter weights
   - Save as preset
-- [ ] **Results Table**
+- [x] **Results Table**
   - Sortable columns (rank, score, symbol, price, change%)
   - Filter score breakdown (expandable row)
   - Pagination for large results
   - Export to CSV
-- [ ] **Quick Actions per Stock**
+- [x] **Quick Actions per Stock**
   - "Add to Watchlist" button
   - "View Chart" button (opens chart modal/page)
   - "Create Alert" button
   - "Quick Trade" button (opens order form)
-- [ ] **Saved Screeners Sidebar**
-  - List of user's saved screener configs
+- [x] **Saved Screeners Sidebar**
+  - List of user's saved screener configs (via preset selection)
   - One-click run
   - Edit/delete options
 
-#### 1.10.5 Frontend: Dashboard Recommendations Widget
-Show daily picks on main dashboard.
+#### 1.10.5 Frontend: Screener Performance Widget ✅
+Show daily picks and performance on screener page.
 
 **Tasks:**
-- [ ] `RecommendationsWidget` component
-  - Tabbed view: Momentum | Breakouts | Pullbacks | Sectors
-  - Show top 5 per category
-  - Mini sparkline for each stock
+- [x] `PerformanceWidget` component
+  - Tabbed view: Momentum | Pullbacks | Sectors
+  - Show stocks per category with expandable lists
+  - Compact card with Sheet slide-out for detailed view
   - Click to expand details
-- [ ] Link to full screener page
-- [ ] "Refresh" button to re-run screeners
-- [ ] Timestamp showing when recommendations were generated
+- [x] Link to full screener results
+- [x] Win rate tracking (1D/1W/1M)
+- [x] Timestamp showing when recommendations were generated
 
 #### 1.10.6 Screener → Algo Integration
 Allow screener results to feed into algo trading.
@@ -1841,18 +1842,18 @@ Allow screener results to feed into algo trading.
   - "Alert me when X stocks pass this screener"
   - "Alert when RELIANCE scores above 80 on momentum"
 
-#### 1.10.7 Performance Tracking
+#### 1.10.7 Performance Tracking ✅
 Track screener effectiveness over time.
 
 **Tasks:**
-- [ ] Store screener results with timestamp
-- [ ] Track what happened to recommended stocks
+- [x] Store screener results with timestamp
+- [x] Track what happened to recommended stocks
   - 1-day, 1-week, 1-month returns after recommendation
-- [ ] Screener performance dashboard
+- [x] Screener performance dashboard
   - Win rate of recommendations
   - Average return of picks
-  - Best performing preset screener
-- [ ] Use data to improve screener weights
+  - Best performing preset screener (via category tabs)
+- [ ] Use data to improve screener weights *(future enhancement)*
 
 ### 1.11 Research Module (Week 8)
 > 🌿 **Branch:** `phase-1/research`
