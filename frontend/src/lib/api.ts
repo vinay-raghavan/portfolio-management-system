@@ -646,3 +646,204 @@ export const settingsApi = {
   getProviders: () =>
     api.get<AvailableProvidersResponse>('/settings/providers'),
 };
+
+// ============================================================================
+// Screener API
+// ============================================================================
+
+export type FilterType = 'volume' | 'momentum' | 'breakout' | 'consolidation' | 'moving_average' | 'price_action';
+export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation' | 'minervini';
+export type StrictnessLevel = 'strict' | 'moderate' | 'relaxed' | 'exploratory';
+export type RecommendationCategory = 'momentum' | 'breakout' | 'pullback' | 'sector';
+
+export interface FilterConfig {
+  filter_type: FilterType;
+  params: Record<string, unknown>;
+  weight: number;
+}
+
+export interface ScreenerRunRequest {
+  universe: string;
+  filters: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface ScreenerPresetRunRequest {
+  preset: ScreenerPresetType;
+  universe?: string;
+  strictness?: StrictnessLevel;
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface ScreenerResultItem {
+  symbol: string;
+  rank: number;
+  score: number;
+  grade: string;
+  grade_description: string;
+  passed: boolean;
+  filter_scores: Record<string, number>;
+  reasons: string[];
+  reasons_detailed: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface ScreenerRunResponse {
+  run_id: string;
+  status: string;
+  universe: string;
+  total_screened: number;
+  passed_count: number;
+  min_score: number;
+  results: ScreenerResultItem[];
+  executed_at: string;
+  duration_ms: number;
+}
+
+export interface ScreenerPresetInfo {
+  preset: ScreenerPresetType;
+  name: string;
+  description: string;
+  filters: FilterConfig[];
+}
+
+export interface ScreenerPresetsResponse {
+  presets: ScreenerPresetInfo[];
+}
+
+export interface CustomScreenerCreate {
+  name: string;
+  description?: string;
+  universe?: string;
+  filters: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+}
+
+export interface CustomScreener {
+  id: string;
+  name: string;
+  description: string | null;
+  universe: string;
+  filters: FilterConfig[];
+  min_score: number;
+  top_n: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecommendationItem {
+  symbol: string;
+  rank: number;
+  score: number;
+  price_at_rec: number;
+  filter_scores: Record<string, number>;
+  reasons: string[];
+  metadata: Record<string, unknown>;
+  return_1d?: number | null;
+  return_1w?: number | null;
+  return_1m?: number | null;
+}
+
+export interface CategoryRecommendations {
+  category: RecommendationCategory;
+  title: string;
+  description: string;
+  recommendations: RecommendationItem[];
+}
+
+export interface DailyRecommendationsResponse {
+  date: string;
+  generated_at: string;
+  categories: CategoryRecommendations[];
+}
+
+export interface CreateUniverseFromScreenerResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  symbol_count: number;
+  is_dynamic: boolean;
+  created_at: string;
+}
+
+export const screenerApi = {
+  // Presets
+  getPresets: () =>
+    api.get<ScreenerPresetsResponse>('/screener/presets'),
+
+  // Run screeners
+  runScreener: (data: ScreenerRunRequest) =>
+    api.post<ScreenerRunResponse>('/screener/run', data),
+  runPreset: (data: ScreenerPresetRunRequest) =>
+    api.post<ScreenerRunResponse>('/screener/run/preset', data),
+
+  // Custom screeners
+  getCustomScreeners: () =>
+    api.get<{ screeners: CustomScreener[] }>('/screener/custom'),
+  createCustomScreener: (data: CustomScreenerCreate) =>
+    api.post<CustomScreener>('/screener/custom', data),
+  updateCustomScreener: (id: string, data: Partial<CustomScreenerCreate>) =>
+    api.patch<CustomScreener>(`/screener/custom/${id}`, data),
+  deleteCustomScreener: (id: string) =>
+    api.delete(`/screener/custom/${id}`),
+  runCustomScreener: (id: string) =>
+    api.post<ScreenerRunResponse>(`/screener/custom/${id}/run`),
+
+  // Recommendations
+  getRecommendations: (date?: string) =>
+    api.get<DailyRecommendationsResponse>('/screener/recommendations', { params: { date } }),
+
+  // Universe integration
+  createUniverse: (data: {
+    name: string;
+    description?: string;
+    symbols: string[];
+    screener_config?: object;
+    is_dynamic: boolean;
+  }) =>
+    api.post<CreateUniverseFromScreenerResponse>('/screener/create-universe', data),
+  refreshUniverse: (universeId: string) =>
+    api.post<{ status: string; universe_id: string; old_symbol_count: number; new_symbol_count: number }>(
+      `/screener/refresh-universe/${universeId}`
+    ),
+
+  // Performance tracking
+  getPerformance: (days: number = 30) =>
+    api.get<ScreenerPerformanceStats>('/screener/performance', { params: { days } }),
+};
+
+// ============== Performance Tracking Types ==============
+
+export interface CategoryPerformanceStats {
+  category: string;
+  total_recommendations: number;
+  win_rate_1d: number | null;
+  win_rate_1w: number | null;
+  win_rate_1m: number | null;
+  avg_return_1d: number | null;
+  avg_return_1w: number | null;
+  avg_return_1m: number | null;
+  best_pick_1d: string | null;
+  best_pick_1w: string | null;
+  best_pick_1m: string | null;
+  best_return_1d: number | null;
+  best_return_1w: number | null;
+  best_return_1m: number | null;
+}
+
+export interface ScreenerPerformanceStats {
+  total_recommendations: number;
+  unique_symbols: number;
+  date_range_start: string | null;
+  date_range_end: string | null;
+  categories: CategoryPerformanceStats[];
+  overall_win_rate_1d: number | null;
+  overall_win_rate_1w: number | null;
+  overall_win_rate_1m: number | null;
+  overall_avg_return_1d: number | null;
+  overall_avg_return_1w: number | null;
+  overall_avg_return_1m: number | null;
+}

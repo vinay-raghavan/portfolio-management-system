@@ -11,7 +11,8 @@ This system performs comprehensive market analysis, executes automated trading s
 - **Algorithmic Trading**: Automated strategy execution with RSI, MACD, VWAP, ORB, and more
 - **Paper Trading**: Simulated trading to test strategies risk-free
 - **Portfolio Tracking**: Real-time P&L, positions, and performance analytics
-- **Modern UI**: Interactive charts, watchlists, and trading signals
+- **Stock Screener**: Preset screeners (momentum, breakout, consolidation, pullback, sector) with daily recommendations and performance tracking
+- **Modern UI**: Interactive charts, watchlists, trading signals, and research page
 - **Risk Management**: Kill switch, circuit breakers, daily loss limits
 - **Indian Market Focus**: NSE/BSE support with Yahoo Finance and NSE data providers
 
@@ -70,6 +71,7 @@ portfolio-management-system/
 │   │   │   ├── portfolio/       # Portfolio management
 │   │   │   ├── trading/         # Order placement
 │   │   │   ├── algo/            # Algo trading config
+│   │   │   ├── screener/        # Stock screener & recommendations
 │   │   │   └── data/            # Market data
 │   │   ├── models/              # Database models
 │   │   └── providers/           # Re-exports from shared

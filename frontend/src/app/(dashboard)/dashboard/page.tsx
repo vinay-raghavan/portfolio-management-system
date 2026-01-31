@@ -9,6 +9,7 @@ import {
   MarketOverview,
   AlgoSummary,
   FundsSummary,
+  RecommendationsWidget,
 } from '@/components/dashboard';
 
 export default function DashboardPage() {
@@ -40,6 +41,9 @@ export default function DashboardPage() {
         <AlgoSummary />
         <MarketOverview />
       </div>
+
+      {/* Daily Recommendations */}
+      <RecommendationsWidget />
 
       {/* Recent Trades */}
       <RecentTrades limit={5} />

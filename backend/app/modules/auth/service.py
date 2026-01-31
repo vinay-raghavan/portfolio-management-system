@@ -30,6 +30,29 @@ class AuthService:
         result = await self.db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
+    async def get_or_create_system_user(self) -> User:
+        """Get or create a system user for internal operations.
+
+        The system user is used for automated tasks like daily recommendations,
+        scheduled screeners, etc. It has a fixed email and no password.
+        """
+        system_email = "system@internal.local"
+        user = await self.get_user_by_email(system_email)
+
+        if user is None:
+            # Create system user with a random password hash (never used for login)
+            user = User(
+                email=system_email,
+                password_hash=get_password_hash("system-internal-never-used"),
+                full_name="System",
+            )
+            self.db.add(user)
+            await self.db.flush()
+            await self.db.refresh(user)
+            logger.info(f"Created system user with ID {user.id}")
+
+        return user
+
     async def create_user(self, user_data: UserCreate) -> User:
         """Create a new user with initialized funds.
 

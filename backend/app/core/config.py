@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # Paper Trading
     PAPER_TRADING_INITIAL_BALANCE: float = 1000000.0  # ₹10 Lakh default
 
+    # Internal API Key (for worker/service-to-service calls)
+    INTERNAL_API_KEY: str = "internal-worker-key"
+
     # Angel One Credentials (for Phase 2)
     ANGEL_API_KEY: str = ""
     ANGEL_CLIENT_ID: str = ""

@@ -308,6 +308,121 @@ class NSEDataProvider(DataProvider):
 
         return None
 
+    async def get_index_constituents(self, index_name: str) -> list[dict]:
+        """Get constituents of an NSE index.
+
+        Args:
+            index_name: Name of the index (e.g., "NIFTY 50", "NIFTY 500", "NIFTY BANK")
+
+        Returns:
+            List of constituent stock dictionaries with symbol, name, price data, etc.
+        """
+        # Normalize index name
+        index_name = index_name.upper().strip()
+
+        # Map common index names to NSE API format
+        index_mapping = {
+            "NIFTY 50": "NIFTY%2050",
+            "NIFTY50": "NIFTY%2050",
+            "NIFTY 100": "NIFTY%20100",
+            "NIFTY100": "NIFTY%20100",
+            "NIFTY 200": "NIFTY%20200",
+            "NIFTY200": "NIFTY%20200",
+            "NIFTY 500": "NIFTY%20500",
+            "NIFTY500": "NIFTY%20500",
+            "NIFTY BANK": "NIFTY%20BANK",
+            "BANKNIFTY": "NIFTY%20BANK",
+            "NIFTY IT": "NIFTY%20IT",
+            "NIFTYIT": "NIFTY%20IT",
+            "NIFTY NEXT 50": "NIFTY%20NEXT%2050",
+            "NIFTYNEXT50": "NIFTY%20NEXT%2050",
+            "NIFTY MIDCAP 50": "NIFTY%20MIDCAP%2050",
+            "NIFTYMIDCAP50": "NIFTY%20MIDCAP%2050",
+            "NIFTY MIDCAP 100": "NIFTY%20MIDCAP%20100",
+            "NIFTYMIDCAP100": "NIFTY%20MIDCAP%20100",
+            "NIFTY MIDCAP 150": "NIFTY%20MIDCAP%20150",
+            "NIFTYMIDCAP150": "NIFTY%20MIDCAP%20150",
+            "NIFTY SMALLCAP 50": "NIFTY%20SMLCAP%2050",
+            "NIFTYSMALLCAP50": "NIFTY%20SMLCAP%2050",
+            "NIFTY SMALLCAP 100": "NIFTY%20SMLCAP%20100",
+            "NIFTYSMALLCAP100": "NIFTY%20SMLCAP%20100",
+            "NIFTY SMALLCAP 250": "NIFTY%20SMLCAP%20250",
+            "NIFTYSMALLCAP250": "NIFTY%20SMLCAP%20250",
+        }
+
+        api_index = index_mapping.get(index_name, index_name.replace(" ", "%20"))
+        cache_key = f"nse:constituents:{index_name}"
+
+        # Check cache first
+        if self._redis:
+            with contextlib.suppress(Exception):
+                import json
+
+                cached = await self._redis.get(cache_key)
+                if cached:
+                    return json.loads(cached)
+
+        data = await self._make_request(f"/equity-stockIndices?index={api_index}")
+        if not data:
+            logger.warning(f"No data returned for index: {index_name}")
+            return []
+
+        try:
+            # The API returns data with a "data" array containing constituents
+            constituents_data = data.get("data", [])
+            if not constituents_data:
+                logger.warning(f"No constituents found in response for: {index_name}")
+                return []
+
+            constituents = []
+            for item in constituents_data:
+                # Skip the index itself (usually first entry)
+                symbol = item.get("symbol", "")
+                if not symbol or symbol == index_name.replace(" ", ""):
+                    continue
+
+                constituent = {
+                    "symbol": symbol,
+                    "name": item.get("meta", {}).get("companyName", "")
+                    if isinstance(item.get("meta"), dict)
+                    else "",
+                    "industry": item.get("meta", {}).get("industry", "")
+                    if isinstance(item.get("meta"), dict)
+                    else "",
+                    "isin": item.get("meta", {}).get("isin", "")
+                    if isinstance(item.get("meta"), dict)
+                    else "",
+                    "series": item.get("series", "EQ"),
+                    "is_fno": item.get("meta", {}).get("isFNOSec", False)
+                    if isinstance(item.get("meta"), dict)
+                    else False,
+                    "last_price": item.get("lastPrice"),
+                    "change": item.get("change"),
+                    "change_pct": item.get("pChange"),
+                    "open": item.get("open"),
+                    "high": item.get("dayHigh"),
+                    "low": item.get("dayLow"),
+                    "previous_close": item.get("previousClose"),
+                    "volume": item.get("totalTradedVolume"),
+                    "year_high": item.get("yearHigh"),
+                    "year_low": item.get("yearLow"),
+                }
+                constituents.append(constituent)
+
+            # Cache for 5 minutes (index constituents don't change often)
+            if self._redis and constituents:
+                with contextlib.suppress(Exception):
+                    import json
+
+                    await self._redis.setex(cache_key, 300, json.dumps(constituents))
+
+            logger.info(f"Fetched {len(constituents)} constituents for {index_name}")
+            return constituents
+
+        except Exception as e:
+            logger.error(f"Error parsing index constituents for {index_name}: {e}")
+            return []
+
     async def get_historical(
         self,
         symbol: str,

@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -61,18 +60,48 @@ class StockScreener(BaseScreener):
             return None
 
         try:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=self.lookback_days)
+            # Convert lookback_days to appropriate period string
+            # Use 1y for 200+ days (covers 52-week calculations which need ~252 trading days)
+            if self.lookback_days >= 200:
+                period = "1y"
+            elif self.lookback_days >= 90:
+                period = "6mo"
+            elif self.lookback_days >= 30:
+                period = "3mo"
+            else:
+                period = "1mo"
 
-            data = await self.data_provider.get_historical_data(
+            # Use the correct DataProvider API method: get_historical
+            ohlcv_list = await self.data_provider.get_historical(
                 symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
+                period=period,
                 interval="1d",
             )
 
-            if data is not None and not data.empty and self.cache_data:
-                self._data_cache[symbol] = data
+            if not ohlcv_list:
+                return None
+
+            # Convert list of OHLCV objects to pandas DataFrame
+            # Use lowercase column names to match filter expectations
+            data = pd.DataFrame(
+                [
+                    {
+                        "date": o.timestamp,
+                        "open": float(o.open),
+                        "high": float(o.high),
+                        "low": float(o.low),
+                        "close": float(o.close),
+                        "volume": int(o.volume),
+                    }
+                    for o in ohlcv_list
+                ]
+            )
+
+            if not data.empty:
+                data.set_index("date", inplace=True)
+                data.sort_index(inplace=True)
+                if self.cache_data:
+                    self._data_cache[symbol] = data
 
             return data
         except Exception as e:
