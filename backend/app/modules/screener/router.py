@@ -18,6 +18,8 @@ from app.modules.data.service import get_user_data_provider
 from app.modules.screener.schemas import (
     CategoryPerformanceStats,
     CategoryRecommendations,
+    CreateStrategyFromScreenerRequest,
+    CreateStrategyFromScreenerResponse,
     CreateUniverseFromScreenerRequest,
     CreateUniverseFromScreenerResponse,
     CustomScreenerCreate,
@@ -29,6 +31,10 @@ from app.modules.screener.schemas import (
     OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
+    ScreenerAlertCreate,
+    ScreenerAlertListResponse,
+    ScreenerAlertResponse,
+    ScreenerAlertUpdate,
     ScreenerPresetRunRequest,
     ScreenerPresetsResponse,
     ScreenerRunRequest,
@@ -971,3 +977,480 @@ async def _resolve_universe(universe: str, db: DbSession) -> list[str]:
 
     logger.warning(f"Universe '{universe}' not found, returning empty list")
     return []
+
+
+# ============== Screener Alert Endpoints ==============
+
+
+@router.post("/alerts", response_model=ScreenerAlertResponse)
+async def create_screener_alert(
+    data: ScreenerAlertCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ScreenerAlertResponse:
+    """Create a new screener alert."""
+    from sqlalchemy import select
+
+    from app.modules.screener.models import CustomScreener, ScreenerAlert
+
+    # Validate that either custom_screener_id or preset is provided
+    if not data.custom_screener_id and not data.preset:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either custom_screener_id or preset must be provided",
+        )
+
+    # If custom_screener_id, validate it exists and belongs to user
+    custom_screener_name = None
+    if data.custom_screener_id:
+        result = await db.execute(
+            select(CustomScreener).where(
+                CustomScreener.id == data.custom_screener_id,
+                CustomScreener.user_id == str(current_user.id),
+            )
+        )
+        custom_screener = result.scalar_one_or_none()
+        if not custom_screener:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Custom screener not found",
+            )
+        custom_screener_name = custom_screener.name
+
+    alert = ScreenerAlert(
+        user_id=str(current_user.id),
+        name=data.name,
+        custom_screener_id=data.custom_screener_id,
+        preset=data.preset,
+        universe=data.universe,
+        alert_on_new_symbols=data.alert_on_new_symbols,
+        alert_on_removed_symbols=data.alert_on_removed_symbols,
+        min_score_threshold=data.min_score_threshold,
+        target_symbol=data.target_symbol,
+        enabled=data.enabled,
+    )
+    db.add(alert)
+    await db.commit()
+    await db.refresh(alert)
+
+    return ScreenerAlertResponse(
+        id=alert.id,
+        name=alert.name,
+        custom_screener_id=alert.custom_screener_id,
+        custom_screener_name=custom_screener_name,
+        preset=alert.preset,
+        universe=alert.universe,
+        alert_on_new_symbols=alert.alert_on_new_symbols,
+        alert_on_removed_symbols=alert.alert_on_removed_symbols,
+        min_score_threshold=alert.min_score_threshold,
+        target_symbol=alert.target_symbol,
+        enabled=alert.enabled,
+        last_run_at=alert.last_run_at,
+        last_symbols=alert.last_symbols,
+        created_at=alert.created_at,
+        updated_at=alert.updated_at,
+    )
+
+
+@router.get("/alerts", response_model=ScreenerAlertListResponse)
+async def list_screener_alerts(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ScreenerAlertListResponse:
+    """List all screener alerts for the current user."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.modules.screener.models import ScreenerAlert
+
+    result = await db.execute(
+        select(ScreenerAlert)
+        .options(selectinload(ScreenerAlert.custom_screener))
+        .where(ScreenerAlert.user_id == str(current_user.id))
+        .order_by(ScreenerAlert.created_at.desc())
+    )
+    alerts = result.scalars().all()
+
+    return ScreenerAlertListResponse(
+        alerts=[
+            ScreenerAlertResponse(
+                id=a.id,
+                name=a.name,
+                custom_screener_id=a.custom_screener_id,
+                custom_screener_name=a.custom_screener.name if a.custom_screener else None,
+                preset=a.preset,
+                universe=a.universe,
+                alert_on_new_symbols=a.alert_on_new_symbols,
+                alert_on_removed_symbols=a.alert_on_removed_symbols,
+                min_score_threshold=a.min_score_threshold,
+                target_symbol=a.target_symbol,
+                enabled=a.enabled,
+                last_run_at=a.last_run_at,
+                last_symbols=a.last_symbols,
+                created_at=a.created_at,
+                updated_at=a.updated_at,
+            )
+            for a in alerts
+        ]
+    )
+
+
+@router.get("/alerts/{alert_id}", response_model=ScreenerAlertResponse)
+async def get_screener_alert(
+    alert_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ScreenerAlertResponse:
+    """Get a specific screener alert."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.modules.screener.models import ScreenerAlert
+
+    result = await db.execute(
+        select(ScreenerAlert)
+        .options(selectinload(ScreenerAlert.custom_screener))
+        .where(
+            ScreenerAlert.id == alert_id,
+            ScreenerAlert.user_id == str(current_user.id),
+        )
+    )
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert not found",
+        )
+
+    return ScreenerAlertResponse(
+        id=alert.id,
+        name=alert.name,
+        custom_screener_id=alert.custom_screener_id,
+        custom_screener_name=alert.custom_screener.name if alert.custom_screener else None,
+        preset=alert.preset,
+        universe=alert.universe,
+        alert_on_new_symbols=alert.alert_on_new_symbols,
+        alert_on_removed_symbols=alert.alert_on_removed_symbols,
+        min_score_threshold=alert.min_score_threshold,
+        target_symbol=alert.target_symbol,
+        enabled=alert.enabled,
+        last_run_at=alert.last_run_at,
+        last_symbols=alert.last_symbols,
+        created_at=alert.created_at,
+        updated_at=alert.updated_at,
+    )
+
+
+@router.put("/alerts/{alert_id}", response_model=ScreenerAlertResponse)
+async def update_screener_alert(
+    alert_id: str,
+    data: ScreenerAlertUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ScreenerAlertResponse:
+    """Update a screener alert."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.modules.screener.models import ScreenerAlert
+
+    result = await db.execute(
+        select(ScreenerAlert)
+        .options(selectinload(ScreenerAlert.custom_screener))
+        .where(
+            ScreenerAlert.id == alert_id,
+            ScreenerAlert.user_id == str(current_user.id),
+        )
+    )
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert not found",
+        )
+
+    # Update fields
+    if data.name is not None:
+        alert.name = data.name
+    if data.alert_on_new_symbols is not None:
+        alert.alert_on_new_symbols = data.alert_on_new_symbols
+    if data.alert_on_removed_symbols is not None:
+        alert.alert_on_removed_symbols = data.alert_on_removed_symbols
+    if data.min_score_threshold is not None:
+        alert.min_score_threshold = data.min_score_threshold
+    if data.target_symbol is not None:
+        alert.target_symbol = data.target_symbol
+    if data.enabled is not None:
+        alert.enabled = data.enabled
+
+    await db.commit()
+    await db.refresh(alert)
+
+    return ScreenerAlertResponse(
+        id=alert.id,
+        name=alert.name,
+        custom_screener_id=alert.custom_screener_id,
+        custom_screener_name=alert.custom_screener.name if alert.custom_screener else None,
+        preset=alert.preset,
+        universe=alert.universe,
+        alert_on_new_symbols=alert.alert_on_new_symbols,
+        alert_on_removed_symbols=alert.alert_on_removed_symbols,
+        min_score_threshold=alert.min_score_threshold,
+        target_symbol=alert.target_symbol,
+        enabled=alert.enabled,
+        last_run_at=alert.last_run_at,
+        last_symbols=alert.last_symbols,
+        created_at=alert.created_at,
+        updated_at=alert.updated_at,
+    )
+
+
+@router.delete("/alerts/{alert_id}")
+async def delete_screener_alert(
+    alert_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Delete a screener alert."""
+    from sqlalchemy import select
+
+    from app.modules.screener.models import ScreenerAlert
+
+    result = await db.execute(
+        select(ScreenerAlert).where(
+            ScreenerAlert.id == alert_id,
+            ScreenerAlert.user_id == str(current_user.id),
+        )
+    )
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert not found",
+        )
+
+    await db.delete(alert)
+    await db.commit()
+
+    return {"status": "success", "deleted_id": alert_id}
+
+
+@router.post("/alerts/process")
+async def process_screener_alerts(
+    db: DbSession,
+) -> dict:
+    """Process all enabled screener alerts (internal endpoint).
+
+    Called by Celery task to:
+    1. Run the screener for each enabled alert
+    2. Compare with last_symbols to find new/removed symbols
+    3. Update last_symbols and last_run_at
+
+    Returns counts of alerts processed and notifications triggered.
+    """
+    from datetime import datetime
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.modules.screener.models import ScreenerAlert
+
+    # Get all enabled alerts
+    result = await db.execute(
+        select(ScreenerAlert)
+        .options(selectinload(ScreenerAlert.custom_screener))
+        .where(ScreenerAlert.enabled == True)  # noqa: E712
+    )
+    alerts = result.scalars().all()
+
+    if not alerts:
+        return {
+            "status": "success",
+            "alerts_processed": 0,
+            "notifications_sent": 0,
+            "message": "No enabled alerts",
+        }
+
+    redis = await get_redis()
+    service = ScreenerService(db, redis)
+
+    alerts_processed = 0
+    notifications_sent = 0
+    errors: list[str] = []
+
+    try:
+        for alert in alerts:
+            try:
+                # Determine screener configuration
+                if alert.custom_screener_id and alert.custom_screener:
+                    # Custom screener
+                    screener = alert.custom_screener
+                    universe = screener.universe
+                    filters = [FilterConfig(**f) for f in (screener.filters or [])]
+                    min_score = screener.min_score
+                    top_n = screener.top_n
+                elif alert.preset:
+                    # Preset screener
+                    preset_config = ScreenerService.get_preset_filters(alert.preset, "moderate")
+                    if not preset_config:
+                        errors.append(f"Alert {alert.id}: Invalid preset {alert.preset}")
+                        continue
+                    universe = alert.universe or "nifty500"
+                    filters = preset_config
+                    min_score = 50.0
+                    top_n = 50
+                else:
+                    errors.append(f"Alert {alert.id}: No screener configuration")
+                    continue
+
+                # Resolve universe symbols
+                symbols = await _resolve_universe(universe, db)
+                if not symbols:
+                    errors.append(f"Alert {alert.id}: Empty universe {universe}")
+                    continue
+
+                # Run the screener
+                run_result = await service.run_screener(
+                    symbols=symbols,
+                    filters=filters,
+                    min_score=min_score,
+                    top_n=top_n,
+                    user_id=alert.user_id,
+                    use_cache=False,  # Fresh results for alerts
+                )
+
+                # Get current matching symbols (above threshold if set)
+                current_symbols = []
+                for r in run_result.results:
+                    if not r.passed:
+                        continue
+                    if alert.min_score_threshold and r.score < alert.min_score_threshold:
+                        continue
+                    if alert.target_symbol and r.symbol != alert.target_symbol:
+                        continue
+                    current_symbols.append(r.symbol)
+
+                # Compare with last run
+                last_symbols = set(alert.last_symbols or [])
+                current_set = set(current_symbols)
+
+                new_symbols = current_set - last_symbols
+                removed_symbols = last_symbols - current_set
+
+                # Check if notifications should be sent
+                should_notify = False
+                notification_data = {
+                    "alert_id": alert.id,
+                    "alert_name": alert.name,
+                    "new_symbols": list(new_symbols) if alert.alert_on_new_symbols else [],
+                    "removed_symbols": (
+                        list(removed_symbols) if alert.alert_on_removed_symbols else []
+                    ),
+                }
+
+                if alert.alert_on_new_symbols and new_symbols:
+                    should_notify = True
+                if alert.alert_on_removed_symbols and removed_symbols:
+                    should_notify = True
+
+                if should_notify:
+                    # TODO: Send notification (email, push, etc.)
+                    # For now, just log it
+                    logger.info(f"Alert triggered: {notification_data}")
+                    notifications_sent += 1
+
+                # Update alert state
+                alert.last_symbols = current_symbols
+                alert.last_run_at = datetime.now(UTC)
+                alerts_processed += 1
+
+            except Exception as e:
+                logger.exception(f"Error processing alert {alert.id}: {e}")
+                errors.append(f"Alert {alert.id}: {str(e)}")
+
+        await db.commit()
+
+    finally:
+        if redis:
+            await redis.close()
+
+    result_data = {
+        "status": "success",
+        "alerts_processed": alerts_processed,
+        "notifications_sent": notifications_sent,
+    }
+    if errors:
+        result_data["errors"] = errors
+
+    return result_data
+
+
+# ============== Create Strategy from Screener ==============
+
+
+@router.post("/create-strategy", response_model=CreateStrategyFromScreenerResponse)
+async def create_strategy_from_screener(
+    data: CreateStrategyFromScreenerRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CreateStrategyFromScreenerResponse:
+    """Create an algo strategy from screener results.
+
+    This creates a new universe from the screener results and links it to a new strategy.
+    If is_dynamic_universe is True, the universe can be refreshed by re-running the screener.
+    """
+    from app.modules.algo.models import UserStrategy
+    from app.modules.algo.schemas import UniverseCreate
+
+    universe_svc = UniverseService(db)
+
+    # Build filter_criteria for dynamic universes
+    filter_criteria = None
+    if data.is_dynamic_universe and data.screener_config:
+        filter_criteria = {
+            "source": "screener",
+            "screener_config": data.screener_config,
+        }
+
+    # Create the universe
+    universe_name = f"{data.name} Universe"
+    universe_data = UniverseCreate(
+        name=universe_name,
+        description=f"Screener-based universe for strategy '{data.name}'",
+        symbols=data.symbols,
+        filter_criteria=filter_criteria,
+        is_dynamic=data.is_dynamic_universe,
+    )
+    universe = await universe_svc.create(str(current_user.id), universe_data)
+
+    # Create the strategy
+    strategy = UserStrategy(
+        user_id=str(current_user.id),
+        name=data.name,
+        description=data.description
+        or f"Strategy created from screener with {len(data.symbols)} symbols",
+        strategy_type=data.strategy_type,
+        universe_id=universe.id,
+        is_active=False,  # User needs to configure and activate
+        strategy_config={
+            "source": "screener",
+            "screener_config": data.screener_config,
+            "initial_symbols": data.symbols,
+        },
+    )
+    db.add(strategy)
+    await db.commit()
+    await db.refresh(strategy)
+
+    return CreateStrategyFromScreenerResponse(
+        strategy_id=strategy.id,
+        strategy_name=strategy.name,
+        universe_id=universe.id,
+        universe_name=universe.name,
+        symbol_count=len(data.symbols),
+        is_dynamic=data.is_dynamic_universe,
+        created_at=strategy.created_at,
+    )

@@ -286,32 +286,90 @@ class CreateUniverseFromScreenerResponse(BaseModel):
     created_at: datetime
 
 
-class ScreenerAlertConfig(BaseModel):
-    """Configuration for screener alerts."""
+class ScreenerAlertCreate(BaseModel):
+    """Request to create a screener alert."""
 
-    screener_id: str = Field(..., description="ID of custom screener to monitor")
+    name: str = Field(..., min_length=1, max_length=100)
+    custom_screener_id: str | None = Field(default=None, description="ID of custom screener")
+    preset: str | None = Field(default=None, description="Preset screener name (if not custom)")
+    universe: str | None = Field(default=None, description="Universe for preset screener")
     alert_on_new_symbols: bool = Field(default=True, description="Alert when new symbols match")
     alert_on_removed_symbols: bool = Field(
         default=False, description="Alert when symbols no longer match"
     )
-    min_score_change: float | None = Field(
-        default=None, ge=0.1, description="Alert on score change threshold"
+    min_score_threshold: float | None = Field(
+        default=None, ge=0, le=100, description="Minimum score threshold for alerts"
+    )
+    target_symbol: str | None = Field(
+        default=None, max_length=20, description="Alert for specific symbol only"
     )
     enabled: bool = Field(default=True)
 
 
+class ScreenerAlertUpdate(BaseModel):
+    """Request to update a screener alert."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    alert_on_new_symbols: bool | None = None
+    alert_on_removed_symbols: bool | None = None
+    min_score_threshold: float | None = Field(default=None, ge=0, le=100)
+    target_symbol: str | None = Field(default=None, max_length=20)
+    enabled: bool | None = None
+
+
 class ScreenerAlertResponse(BaseModel):
-    """Response for screener alert configuration."""
+    """Response for screener alert."""
 
     id: str
-    screener_id: str
-    screener_name: str
+    name: str
+    custom_screener_id: str | None
+    custom_screener_name: str | None = None
+    preset: str | None
+    universe: str | None
     alert_on_new_symbols: bool
     alert_on_removed_symbols: bool
-    min_score_change: float | None
+    min_score_threshold: float | None
+    target_symbol: str | None
     enabled: bool
-    created_at: datetime
     last_run_at: datetime | None
+    last_symbols: list[str] | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ScreenerAlertListResponse(BaseModel):
+    """Response for list of screener alerts."""
+
+    alerts: list[ScreenerAlertResponse]
+
+
+class CreateStrategyFromScreenerRequest(BaseModel):
+    """Request to create an algo strategy from screener results."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    strategy_type: str = Field(default="momentum", description="Strategy type")
+    symbols: list[str] = Field(..., min_length=1, description="Symbols from screener results")
+    screener_config: dict | None = Field(
+        default=None, description="Screener configuration for dynamic refresh"
+    )
+    is_dynamic_universe: bool = Field(
+        default=False, description="If true, universe will be refreshed from screener"
+    )
+
+
+class CreateStrategyFromScreenerResponse(BaseModel):
+    """Response after creating strategy from screener."""
+
+    strategy_id: str
+    strategy_name: str
+    universe_id: str
+    universe_name: str
+    symbol_count: int
+    is_dynamic: bool
+    created_at: datetime
 
 
 # ============== Performance Tracking Schemas ==============

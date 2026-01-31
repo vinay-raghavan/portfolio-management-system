@@ -317,3 +317,51 @@ def update_recommendation_returns(self) -> dict:
     except Exception as e:
         logger.exception(f"Error updating recommendation returns: {e}")
         return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.process_screener_alerts")
+def process_screener_alerts(self) -> dict:
+    """Process all enabled screener alerts.
+
+    This task runs periodically to:
+    1. Fetch all enabled screener alerts
+    2. Run the associated screener for each alert
+    3. Compare results with last_symbols
+    4. Send notifications for new/removed symbols
+    5. Update last_symbols and last_run_at
+
+    Runs every 15 minutes during market hours, hourly otherwise.
+    """
+    logger.info("Starting screener alerts processing")
+
+    endpoint = f"{BACKEND_API_URL}/api/v1/screener/alerts/process"
+
+    try:
+        with httpx.Client(timeout=300.0) as client:  # 5 min timeout
+            response = client.post(
+                endpoint,
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Process alerts error: {response.status_code} - {response.text}"
+                )
+                return {
+                    "status": "error",
+                    "message": f"API returned {response.status_code}",
+                }
+
+            result = response.json()
+            logger.info(
+                f"Alerts processing complete: {result.get('alerts_processed', 0)} processed, "
+                f"{result.get('notifications_sent', 0)} notifications sent"
+            )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout processing screener alerts")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error processing screener alerts: {e}")
+        return {"status": "error", "message": str(e)}

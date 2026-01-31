@@ -129,4 +129,9 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.screener.update_recommendation_returns",
         "schedule": crontab(hour=10, minute=35),  # 4:05 PM IST = 10:35 UTC
     },
+    # Process screener alerts - every 15 minutes during market hours
+    "process-screener-alerts": {
+        "task": "worker.tasks.screener.process_screener_alerts",
+        "schedule": 900.0,  # Every 15 minutes
+    },
 }

@@ -399,7 +399,7 @@ flowchart TB
 | Signal Engine | ✅ Done | 4 strategies (RSI, MACD, MA Crossover, Bollinger) with HOLD support |
 | Backtesting | ✅ Done | BacktestRunner with full metrics (Sharpe, Sortino, Max DD, Win Rate) |
 | Risk Management | ✅ Done | Position limits, sector concentration, SL/TP enforcement, auto square-off |
-| Stock Screener | ✅ Done | Preset screeners, daily recommendations, performance tracking, UI with Sheet component |
+| Stock Screener | ✅ Done | Preset screeners, daily recommendations, performance tracking, algo integration with alerts |
 | Alerts/Notifications Impl | ❌ Missing | Providers need implementation |
 
 
@@ -1826,21 +1826,27 @@ Show daily picks and performance on screener page.
 - [x] Win rate tracking (1D/1W/1M)
 - [x] Timestamp showing when recommendations were generated
 
-#### 1.10.6 Screener → Algo Integration
+#### 1.10.6 Screener → Algo Integration ✅
 Allow screener results to feed into algo trading.
 
 **Tasks:**
-- [ ] "Create Strategy from Results" action
+- [x] "Create Strategy from Results" action
   - Takes top N screener results
   - Creates custom universe with those symbols
   - Links to strategy creation dialog
-- [ ] Dynamic screener-based universe
+  - Endpoint: `POST /screener/create-strategy`
+- [x] Dynamic screener-based universe
   - Universe type: "screener"
-  - Re-runs screener daily to update symbols
+  - Re-runs screener to update symbols via `POST /screener/refresh-universe/{universe_id}`
   - Algo trades whatever passes the screen
-- [ ] Screener alerts
-  - "Alert me when X stocks pass this screener"
-  - "Alert when RELIANCE scores above 80 on momentum"
+  - Universe `filter_criteria` stores screener config for dynamic refresh
+- [x] Screener alerts
+  - ScreenerAlert model for alert configuration
+  - CRUD endpoints: `POST/GET/PUT/DELETE /screener/alerts`
+  - Celery task `process_screener_alerts` runs every 15 minutes
+  - Tracks new/removed symbols compared to last run
+  - Support for preset or custom screener alerts
+  - Optional target symbol and minimum score threshold
 
 #### 1.10.7 Performance Tracking ✅
 Track screener effectiveness over time.

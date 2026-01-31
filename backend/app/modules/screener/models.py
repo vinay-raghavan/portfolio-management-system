@@ -175,3 +175,63 @@ class DailyRecommendation(Base):
 
     def __repr__(self) -> str:
         return f"<DailyRecommendation {self.symbol} {self.category}>"
+
+
+class ScreenerAlert(Base):
+    """Alert configuration for screener-based notifications.
+
+    Allows users to set up alerts when:
+    - New symbols match a screener
+    - Symbols no longer match a screener
+    - A specific symbol's score changes significantly
+    """
+
+    __tablename__ = "screener_alerts"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    custom_screener_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("custom_screeners.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    # For preset screeners (when custom_screener_id is None)
+    preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    universe: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Alert configuration
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    alert_on_new_symbols: Mapped[bool] = mapped_column(Boolean, default=True)
+    alert_on_removed_symbols: Mapped[bool] = mapped_column(Boolean, default=False)
+    min_score_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_symbol: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # Alert for specific symbol
+
+    # State
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_symbols: Mapped[list | None] = mapped_column(
+        JSONType, nullable=True
+    )  # Symbols from last run
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    custom_screener: Mapped["CustomScreener | None"] = relationship("CustomScreener")
+
+    __table_args__ = (
+        Index("ix_screener_alerts_user", "user_id"),
+        Index("ix_screener_alerts_enabled", "enabled"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScreenerAlert {self.name}>"
