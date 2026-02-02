@@ -18,13 +18,14 @@ import {
   type CustomScreener,
   type StrictnessLevel,
 } from '@/lib/api';
-import { useNotificationStore, useTradingStore } from '@/store';
+import { useNotificationStore, useTradingStore, useUIStore } from '@/store';
 import { useRouter } from 'next/navigation';
 
 export default function ScreenerPage() {
   const router = useRouter();
   const { addNotification } = useNotificationStore();
   const { quickBuy, quickSell } = useTradingStore();
+  const { setSelectedSymbol } = useUIStore();
 
   // State - Default to 'Nifty 50' which is the seeded universe name
   const [universe, setUniverse] = useState<UniverseType>('Nifty 50');
@@ -132,7 +133,8 @@ export default function ScreenerPage() {
   };
 
   const handleViewChart = (symbol: string) => {
-    router.push(`/charts?symbol=${symbol}`);
+    setSelectedSymbol(symbol);
+    router.push('/analysis');
   };
 
   const handleQuickTrade = (symbol: string, side: 'buy' | 'sell') => {
