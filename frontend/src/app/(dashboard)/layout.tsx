@@ -31,6 +31,27 @@ export default function DashboardLayout({
   const helpModalRef = useRef<KeyboardShortcutsHelpRef>(null);
   const { registerHelpModal } = useKeyboardShortcuts(true);
 
+  // Load persisted open groups from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('nav-open-groups');
+      if (stored) {
+        setOpenGroups(JSON.parse(stored));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  // Persist open groups to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('nav-open-groups', JSON.stringify(openGroups));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [openGroups]);
+
   // Register the help modal with the keyboard shortcuts hook
   useEffect(() => {
     registerHelpModal(helpModalRef.current);
