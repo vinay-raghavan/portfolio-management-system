@@ -1,7 +1,28 @@
-"""Broker integration module for live trading."""
+"""Broker integration module for live trading.
 
-from app.modules.broker.base import BrokerInterface, BrokerFactory
-from app.modules.broker.angelone import AngelOneBroker
+This module provides:
+1. Broker abstraction layer (re-exported from providers)
+2. API routes for broker OAuth integration
+3. Database models for encrypted credential storage
+"""
 
-__all__ = ["BrokerInterface", "BrokerFactory", "AngelOneBroker"]
+from app.providers.broker import Broker, BrokerFactory, PaperBroker, get_broker
 
+from .models import BrokerCredential, BrokerType
+from .router import router
+from .service import BrokerService
+
+# Legacy alias for backward compatibility
+BrokerInterface = Broker
+
+__all__ = [
+    "Broker",
+    "BrokerCredential",
+    "BrokerInterface",  # Legacy alias
+    "BrokerFactory",
+    "BrokerService",
+    "BrokerType",
+    "get_broker",
+    "PaperBroker",
+    "router",
+]

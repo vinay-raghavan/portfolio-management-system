@@ -3,7 +3,7 @@ name = "portfolio-worker"
 version = "0.1.0"
 description = "Portfolio Management System - Background Worker"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "celery>=5.4.0",
     "redis>=5.2.0",
@@ -28,20 +28,29 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = [
+[tool.hatch.build.targets.wheel]
+packages = ["worker"]
+
+[dependency-groups]
+dev = [
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",
+    "ruff>=0.14.10",
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 exclude = [".git", ".venv", "__pycache__"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
-ignore = ["E501", "B008"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "ARG001", # unused function argument (required by Celery bind=True)
+    "ARG002", # unused method argument (required by abstract class)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["worker"]
