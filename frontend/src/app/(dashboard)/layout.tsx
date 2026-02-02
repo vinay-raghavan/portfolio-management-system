@@ -10,7 +10,7 @@ import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
 import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef, SkipLink } from '@/components/shared';
 import { NavGroup } from '@/components/navigation';
-import { navigationGroups, settingsNavItem } from '@/config/navigation';
+import { navigationGroups, standaloneNavItems, settingsNavItem } from '@/config/navigation';
 import { useKeyboardShortcuts } from '@/hooks';
 import {
   Tooltip,
@@ -98,16 +98,61 @@ export default function DashboardLayout({
             </div>
           </div>
           <nav className={cn('p-2 space-y-1 flex-1 overflow-y-auto', isExpanded && 'p-4 space-y-2')} role="menubar" aria-label="Primary">
+            {/* Standalone items (Dashboard, Portfolio) */}
+            {standaloneNavItems.map((item) => {
+              const linkContent = (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center rounded-lg text-sm font-medium transition-colors',
+                    isExpanded ? 'gap-3 px-3 py-2' : 'justify-center p-3',
+                    pathname === item.href
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  <span className={cn(
+                    'whitespace-nowrap transition-opacity duration-300',
+                    isExpanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
+                  )}>
+                    {item.name}
+                  </span>
+                </Link>
+              );
+
+              if (!isExpanded) {
+                return (
+                  <Tooltip key={item.name}>
+                    <TooltipTrigger asChild>
+                      {linkContent}
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="flex items-center gap-2">
+                      <span>{item.name}</span>
+                      <kbd className="ml-1 inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                        {item.shortcut}
+                      </kbd>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return linkContent;
+            })}
+
             {/* Navigation Groups */}
-            {navigationGroups.map((group) => (
-              <NavGroup
-                key={group.name}
-                group={group}
-                isExpanded={isExpanded}
-                isOpen={openGroups[group.name] ?? false}
-                onToggle={() => toggleGroup(group.name)}
-              />
-            ))}
+            <div className="pt-2 mt-2 border-t border-border space-y-1">
+              {navigationGroups.map((group) => (
+                <NavGroup
+                  key={group.name}
+                  group={group}
+                  isExpanded={isExpanded}
+                  isOpen={openGroups[group.name] ?? false}
+                  onToggle={() => toggleGroup(group.name)}
+                />
+              ))}
+            </div>
 
             {/* Settings - standalone item */}
             <div className="pt-2 mt-2 border-t border-border">

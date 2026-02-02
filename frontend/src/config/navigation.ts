@@ -28,15 +28,13 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+// Standalone top-level items (not in groups)
+export const standaloneNavItems: NavItem[] = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
+  { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
+];
+
 export const navigationGroups: NavGroup[] = [
-  {
-    name: 'Overview',
-    icon: LayoutDashboard,
-    items: [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
-      { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
-    ],
-  },
   {
     name: 'Research',
     icon: Microscope,
@@ -69,6 +67,7 @@ export const settingsNavItem: NavItem = {
 
 // Flat list of all navigation items for keyboard shortcuts
 export const allNavItems: NavItem[] = [
+  ...standaloneNavItems,
   ...navigationGroups.flatMap((group) => group.items),
   settingsNavItem,
 ];
