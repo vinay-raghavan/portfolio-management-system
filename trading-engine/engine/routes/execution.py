@@ -534,8 +534,14 @@ async def run_scheduled_strategies(
                     # Always release the per-strategy lock
                     await strategy_lock.release()
 
+                # Commit after each strategy to release locks quickly
+                # This prevents blocking other transactions (like UI strategy edits)
+                await db.commit()
+
             except Exception as e:
                 logger.exception(f"Error executing strategy {strategy.id}: {e}")
+                # Rollback any partial changes from the failed strategy
+                await db.rollback()
                 results.append(
                     {
                         "strategy_id": strategy.id,
@@ -543,8 +549,6 @@ async def run_scheduled_strategies(
                         "error": str(e),
                     }
                 )
-
-        await db.commit()
 
         return {
             "status": "success",

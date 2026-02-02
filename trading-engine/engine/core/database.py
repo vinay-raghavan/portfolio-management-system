@@ -23,6 +23,8 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    pool_recycle=300,  # Recycle connections after 5 minutes
+    pool_timeout=30,  # Wait max 30s for a connection from pool
 )
 
 # Create async session factory
@@ -39,6 +41,10 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
     async with async_session_maker() as session:
         try:
             yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
@@ -49,6 +55,10 @@ async def get_db_context() -> AsyncGenerator[AsyncSession]:
     async with async_session_maker() as session:
         try:
             yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
