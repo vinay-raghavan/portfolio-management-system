@@ -161,9 +161,11 @@ class AlgoService:
             # Apply field mapping if exists
             model_field = field_mappings.get(field, field)
 
-            # Handle default_profit_booking_rules - convert to JSON dict
+            # Handle default_profit_booking_rules - convert Decimals to JSON-serializable types
             if field == "default_profit_booking_rules" and value is not None:
-                # Value is already a dict from model_dump
+                # Use model_dump with mode="json" to convert Decimals to floats
+                if data.default_profit_booking_rules is not None:
+                    value = data.default_profit_booking_rules.model_dump(mode="json")
                 setattr(strategy, model_field, value)
             else:
                 setattr(strategy, model_field, value)
