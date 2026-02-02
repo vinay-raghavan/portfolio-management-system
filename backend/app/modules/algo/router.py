@@ -847,6 +847,8 @@ async def get_pnl_summary(
     - Win rate and trade counts
     - Best/worst trade performance
     """
+    import asyncio
+
     from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
@@ -855,21 +857,32 @@ async def get_pnl_summary(
     # We pass None for status and filter manually to get both OPEN and PARTIAL
     all_positions = await service.get_positions(current_user.id)
     positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
+    symbols = list({p.symbol for p in positions}) if positions else []
+    user_id = current_user.id
+
+    # Commit transaction to release DB connection before external API calls
+    await db.commit()
 
     # Fetch current prices for open positions to calculate unrealized P&L
+    # Use parallel fetching for better performance
     current_prices: dict[str, Decimal] = {}
-    if positions:
-        symbols = list({p.symbol for p in positions})
+    if symbols:
         data_provider = YahooDataProvider()
-        for symbol in symbols:
+
+        async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
             try:
                 quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    current_prices[symbol] = quote.price
+                return (symbol, quote.price if quote and quote.price else None)
             except Exception as e:
                 logger.warning(f"Failed to get price for {symbol}: {e}")
+                return (symbol, None)
 
-    return await service.get_pnl_summary(current_user.id, current_prices)
+        results = await asyncio.gather(*[fetch_price(s) for s in symbols])
+        for symbol, price in results:
+            if price is not None:
+                current_prices[symbol] = price
+
+    return await service.get_pnl_summary(user_id, current_prices)
 
 
 @router.get("/pnl/by-strategy", response_model=PnLByStrategyResponse)
@@ -884,6 +897,8 @@ async def get_pnl_by_strategy(
     - Win rate and trade counts per strategy
     - Open/closed position counts
     """
+    import asyncio
+
     from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
@@ -891,21 +906,32 @@ async def get_pnl_by_strategy(
     # First get open/partial positions to know which symbols we need prices for
     all_positions = await service.get_positions(current_user.id)
     positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
+    symbols = list({p.symbol for p in positions}) if positions else []
+    user_id = current_user.id
+
+    # Commit transaction to release DB connection before external API calls
+    await db.commit()
 
     # Fetch current prices for open/partial positions to calculate unrealized P&L
+    # Use parallel fetching for better performance
     current_prices: dict[str, Decimal] = {}
-    if positions:
-        symbols = list({p.symbol for p in positions})
+    if symbols:
         data_provider = YahooDataProvider()
-        for symbol in symbols:
+
+        async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
             try:
                 quote = await data_provider.get_quote(symbol)
-                if quote and quote.price:
-                    current_prices[symbol] = quote.price
+                return (symbol, quote.price if quote and quote.price else None)
             except Exception as e:
                 logger.warning(f"Failed to get price for {symbol}: {e}")
+                return (symbol, None)
 
-    return await service.get_pnl_by_strategy(current_user.id, current_prices)
+        results = await asyncio.gather(*[fetch_price(s) for s in symbols])
+        for symbol, price in results:
+            if price is not None:
+                current_prices[symbol] = price
+
+    return await service.get_pnl_by_strategy(user_id, current_prices)
 
 
 @router.get("/pnl/history", response_model=PnLHistoryResponse)
@@ -939,6 +965,8 @@ async def get_unrealized_pnl(
     - Total unrealized P&L
     - Entry value vs current value
     """
+    import asyncio
+
     from app.providers.data import YahooDataProvider
 
     service = AlgoService(db)
@@ -947,6 +975,7 @@ async def get_unrealized_pnl(
     # Get both OPEN and PARTIAL positions
     all_positions = await service.get_positions(current_user.id)
     positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
+    user_id = current_user.id
 
     if not positions:
         return UnrealizedPnLResponse(
@@ -957,20 +986,30 @@ async def get_unrealized_pnl(
             positions_count=0,
         )
 
-    # Get current prices for all symbols
+    # Get symbols before committing transaction
     symbols = list({p.symbol for p in positions})
-    current_prices: dict[str, Decimal] = {}
 
+    # Commit transaction to release DB connection before external API calls
+    await db.commit()
+
+    # Get current prices for all symbols using parallel fetching
+    current_prices: dict[str, Decimal] = {}
     data_provider = YahooDataProvider()
-    for symbol in symbols:
+
+    async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
         try:
             quote = await data_provider.get_quote(symbol)
-            if quote and quote.price:
-                current_prices[symbol] = quote.price
+            return (symbol, quote.price if quote and quote.price else None)
         except Exception as e:
             logger.warning(f"Failed to get price for {symbol}: {e}")
+            return (symbol, None)
 
-    return await service.get_unrealized_pnl(current_user.id, current_prices)
+    results = await asyncio.gather(*[fetch_price(s) for s in symbols])
+    for symbol, price in results:
+        if price is not None:
+            current_prices[symbol] = price
+
+    return await service.get_unrealized_pnl(user_id, current_prices)
 
 
 # ============== Profit Booking Endpoints ==============
