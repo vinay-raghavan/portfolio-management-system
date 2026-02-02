@@ -25,11 +25,6 @@ class Settings(BaseSettings):
     POLYGON_API_KEY: str = ""
     ALPHA_VANTAGE_API_KEY: str = ""
 
-    # Internal service URLs
-    BACKEND_API_URL: str = "http://api:8000"
-    INTERNAL_API_URL: str = "http://trading-engine:8001"
-    INTERNAL_API_KEY: str = "internal-worker-key"
-
     # Worker settings
     LOG_LEVEL: str = "INFO"
 
@@ -40,3 +35,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+

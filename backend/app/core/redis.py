@@ -22,3 +22,4 @@ async def close_redis() -> None:
     if redis_client:
         await redis_client.close()
         redis_client = None
+

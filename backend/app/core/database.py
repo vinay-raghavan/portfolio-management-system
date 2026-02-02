@@ -2,7 +2,6 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -15,8 +14,6 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    pool_recycle=300,  # Recycle connections after 5 minutes
-    pool_timeout=30,  # Wait max 30s for a connection from pool
 )
 
 # Session factory
@@ -36,17 +33,13 @@ class Base(DeclarativeBase):
 
 
 async def init_db() -> None:
-    """Initialize database - verify connection.
-
-    Note: Tables are managed by Alembic migrations.
-    Run: alembic upgrade head
-    """
+    """Initialize database (create tables if needed)."""
     async with engine.begin() as conn:
-        # Just verify connection - Alembic manages schema
-        await conn.execute(text("SELECT 1"))
+        # In production, use Alembic migrations instead
+        await conn.run_sync(Base.metadata.create_all)
 
 
-async def get_db() -> AsyncGenerator[AsyncSession]:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency to get database session."""
     async with async_session_maker() as session:
         try:
@@ -57,3 +50,4 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
             raise
         finally:
             await session.close()
+

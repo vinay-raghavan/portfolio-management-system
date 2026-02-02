@@ -1,31 +1,21 @@
 """FastAPI application entry point."""
 
-import logging
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from shared.strategies import register_all_prebuilt_strategies
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
 
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
-    if not settings.SKIP_DB_INIT:
-        await init_db()
-
-    # Register prebuilt composite strategies
-    prebuilt = register_all_prebuilt_strategies()
-    logger.info(f"Registered {len(prebuilt)} prebuilt composite strategies")
-
+    await init_db()
     yield
     # Shutdown
 
@@ -50,11 +40,9 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# NOTE: Internal algo endpoints are now handled by the trading-engine service
-# The worker communicates directly with trading-engine at http://trading-engine:8001/internal/
-
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "version": settings.VERSION}
+

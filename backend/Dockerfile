@@ -1,33 +1,18 @@
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install curl for healthcheck and build tools for packages with C extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gcc \
-    g++ \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN pip install uv
 
-# Copy shared package first (for dependency resolution)
-COPY shared /shared
-
-# Copy dependency files and README (required by pyproject.toml)
-COPY backend/pyproject.toml backend/README.md ./
-
-# Copy application code (needed for editable install)
-COPY backend/app ./app
-
-# Copy Alembic configuration and migrations
-COPY backend/alembic.ini ./
-COPY backend/alembic ./alembic
+# Copy dependency files
+COPY pyproject.toml ./
 
 # Install dependencies
-RUN uv sync --no-dev
+RUN uv pip install --system -e .
+
+# Copy application code
+COPY . .
 
 # Expose port
 EXPOSE 8000
@@ -37,5 +22,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import String, DateTime, Numeric, ForeignKey, Index, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -25,24 +25,18 @@ class OrderType(str, Enum):
 
     MARKET = "MARKET"
     LIMIT = "LIMIT"
-    STOP_LOSS = "SL"  # Stop Loss Limit
-    STOP_LOSS_MARKET = "SL-M"  # Stop Loss Market
+    STOP_LOSS = "STOP_LOSS"
     TAKE_PROFIT = "TAKE_PROFIT"
-    GTT = "GTT"  # Good Till Triggered
 
 
 class OrderStatus(str, Enum):
     """Order status enum."""
 
     PENDING = "PENDING"
-    OPEN = "OPEN"  # Active limit/SL order waiting to trigger
-    TRIGGERED = "TRIGGERED"  # GTT/SL triggered, awaiting execution
     FILLED = "FILLED"
     PARTIALLY_FILLED = "PARTIAL"
     CANCELLED = "CANCELLED"
     REJECTED = "REJECTED"
-    EXPIRED = "EXPIRED"
-    AMO_PENDING = "AMO_PENDING"  # After Market Order - queued for next session
 
 
 class Order(Base):
@@ -61,9 +55,6 @@ class Order(Base):
     order_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MARKET")
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
     price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
-    trigger_price: Mapped[Decimal | None] = mapped_column(
-        Numeric(18, 4), nullable=True
-    )  # For SL/SL-M/GTT orders
     stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     take_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
@@ -71,81 +62,19 @@ class Order(Base):
     filled_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     fees: Mapped[Decimal] = mapped_column(Numeric(18, 4), default=Decimal("0"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    # GTT specific fields
-    valid_till: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )  # For GTT orders
-    parent_order_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False), nullable=True
-    )  # For SL/TP linked orders
-
-    # AMO (After Market Order) fields
-    is_amo: Mapped[bool] = mapped_column(
-        nullable=False, default=False
-    )  # True if this is an after-market order
-    scheduled_for: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )  # When AMO should execute
-
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    triggered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )  # When SL/GTT was triggered
 
     __table_args__ = (
         Index("ix_orders_user_status", "user_id", "status"),
         Index("ix_orders_user_created", "user_id", "created_at"),
-        Index(
-            "ix_orders_open_trigger", "status", "trigger_price"
-        ),  # For efficient SL/GTT monitoring
     )
 
     def __repr__(self) -> str:
         return f"<Order {self.side} {self.quantity} {self.symbol} @ {self.price} [{self.status}]>"
 
-
-class OrderTemplate(Base):
-    """Order template model for quick repeat orders."""
-
-    __tablename__ = "order_templates"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Quick RELIANCE Buy"
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
-    side: Mapped[str] = mapped_column(String(4), nullable=False)  # BUY/SELL
-    order_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MARKET")
-    quantity: Mapped[int | None] = mapped_column(nullable=True)  # Fixed quantity
-    quantity_pct: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )  # % of available funds
-    stop_loss_pct: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )  # Stop loss as % below entry
-    take_profit_pct: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )  # Take profit as % above entry
-    is_favorite: Mapped[bool] = mapped_column(nullable=False, default=False)
-    use_count: Mapped[int] = mapped_column(nullable=False, default=0)  # Track usage for "recent"
-
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    __table_args__ = (
-        Index("ix_order_templates_user", "user_id"),
-        Index("ix_order_templates_user_favorite", "user_id", "is_favorite"),
-    )
-
-    def __repr__(self) -> str:
-        return f"<OrderTemplate {self.name} ({self.side} {self.symbol})>"

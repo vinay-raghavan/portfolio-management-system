@@ -1,12 +1,14 @@
 """Technical analysis tasks."""
 
 import logging
+from decimal import Decimal
 
+import pandas as pd
 import yfinance as yf
-from redis import Redis
+from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.momentum import RSIIndicator
-from ta.trend import MACD, EMAIndicator, SMAIndicator
-from ta.volatility import AverageTrueRange, BollingerBands
+from ta.volatility import BollingerBands, AverageTrueRange
+from redis import Redis
 
 from worker.celery_app import celery_app
 from worker.config import settings
@@ -91,3 +93,4 @@ def calculate_daily_analytics(self) -> dict:
 
     logger.info(f"Queued analytics for {processed} symbols")
     return {"status": "success", "processed": processed}
+

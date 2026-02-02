@@ -3,14 +3,14 @@ name = "portfolio-backend"
 version = "0.1.0"
 description = "Portfolio Management System - Backend API"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
-    "pydantic[email]>=2.10.0",
+    "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
@@ -22,13 +22,7 @@ dependencies = [
     "yfinance>=0.2.50",
     "ta>=0.11.0",
     "python-multipart>=0.0.17",
-    "bcrypt<5.0.0",
-    # Shared package
-    "portfolio-shared",
 ]
-
-[tool.uv.sources]
-portfolio-shared = { path = "../shared", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -42,20 +36,15 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["app"]
-
-[dependency-groups]
-dev = [
-    "aiosqlite>=0.22.0",
+[tool.uv]
+dev-dependencies = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.14.10",
 ]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 100
 exclude = [
     ".git",
@@ -80,8 +69,6 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
     "B904",   # raise without from inside except
-    "ARG001", # unused function argument (often required by interface/framework)
-    "ARG002", # unused method argument (often required by abstract class)
 ]
 
 [tool.ruff.lint.isort]

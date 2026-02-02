@@ -2,14 +2,14 @@
 
 ## 1. Overview
 
-An automated personal financial portfolio management system for Indian markets (NSE/BSE) that performs comprehensive market analysis, executes algorithmic trading strategies (simulated or live), and maximizes returns through intelligent decision-making.
+An automated personal financial portfolio management system that performs comprehensive market analysis, executes trades (simulated initially), and maximizes returns through intelligent decision-making.
 
 ### 1.1 Key Objectives
-- Indian market focus (NSE/BSE) with Yahoo Finance and NSE data providers
-- Algorithmic trading with multiple strategy types (RSI, MACD, VWAP, ORB, etc.)
-- Paper trading for strategy validation
-- Risk management with kill switch and circuit breakers
+- Multi-market support (US, India, etc.)
+- Comprehensive fundamental and technical analysis
+- Automated trading with simulation mode
 - Modern, intuitive user interface
+- Risk-aware portfolio optimization
 
 ---
 
@@ -21,45 +21,35 @@ An automated personal financial portfolio management system for Indian markets (
 |-------|------------|-----------|
 | **Frontend** | Next.js 14 + React 18 | SSR, App Router, excellent DX |
 | **UI Components** | shadcn/ui + Tailwind CSS | Modern, accessible, customizable |
-| **Charts** | TradingView Lightweight Charts | Professional financial charts |
-| **Backend API** | Python 3.13 + FastAPI | User-facing API, portfolio management |
-| **Trading Engine** | Python 3.13 + FastAPI | Strategy execution, order management |
-| **Task Queue** | Celery + Redis | Scheduled strategy execution |
+| **Charts** | TradingView Lightweight Charts + Recharts | Professional financial charts |
+| **Backend** | Python FastAPI | Async, high-performance, great for ML |
+| **Task Queue** | Celery + Redis | Distributed task processing |
 | **Database** | PostgreSQL + TimescaleDB | Time-series optimized for market data |
-| **Cache** | Redis | Caching, pub/sub, kill switch state |
-| **Package Manager** | uv | Fast Python package management |
-| **Analysis** | pandas, numpy, ta-lib | Quantitative analysis |
+| **Cache** | Redis | Real-time data caching |
+| **Document Store** | MongoDB | News, reports, unstructured data |
+| **ML/Analysis** | pandas, numpy, scikit-learn, ta-lib | Industry standard for quantitative analysis |
 
 ### 2.2 Core Modules
 
 ```
 portfolio-management-system/
 ├── frontend/                    # Next.js application
-│   ├── src/app/                 # App router pages
-│   ├── src/components/          # React components
-│   └── src/lib/                 # Utilities & API clients
-├── backend/                     # User-facing API (port 8010)
-│   ├── app/api/                 # FastAPI routes
-│   ├── app/modules/             # Business logic modules
-│   │   ├── auth/                # Authentication
-│   │   ├── portfolio/           # Portfolio management
-│   │   ├── trading/             # Order placement
-│   │   ├── algo/                # Algo strategy config
-│   │   └── data/                # Market data
-│   ├── app/models/              # Database models
-│   └── app/providers/           # Re-exports from shared
-├── trading-engine/              # Strategy execution (port 8001)
-│   ├── engine/algo/             # Executor, scheduler, safety
-│   ├── engine/routes/           # Internal API endpoints
-│   ├── engine/strategies/       # Re-exports from shared
-│   └── engine/providers/        # Re-exports from shared
-├── shared/                      # Shared Python package
-│   └── shared/
-│       ├── providers/           # Broker & data providers
-│       ├── strategies/          # Trading strategies
-│       └── models/              # Common models
-├── worker/                      # Celery background tasks
-└── docker-compose.yml           # Container orchestration
+│   ├── app/                     # App router pages
+│   ├── components/              # React components
+│   └── lib/                     # Utilities & API clients
+├── backend/
+│   ├── api/                     # FastAPI routes
+│   ├── core/                    # Core business logic
+│   │   ├── data/                # Data ingestion services
+│   │   ├── analysis/            # Analysis engines
+│   │   ├── trading/             # Trading engine
+│   │   └── portfolio/           # Portfolio management
+│   ├── models/                  # Database models
+│   ├── services/                # External service integrations
+│   └── ml/                      # Machine learning models
+├── workers/                     # Celery background workers
+├── tests/                       # Test suites
+└── docker/                      # Container configurations
 ```
 
 ---
@@ -71,59 +61,66 @@ portfolio-management-system/
 | Provider | Data Type | Markets | Cost |
 |----------|-----------|---------|------|
 | **Yahoo Finance (yfinance)** | Prices, fundamentals | Global | Free |
+| **Alpha Vantage** | Technical indicators, forex | Global | Free tier available |
+| **Polygon.io** | Real-time US data | US | Paid |
 | **NSE India API** | Indian market data | India | Free |
+| **Financial Modeling Prep** | Fundamentals, ratios | Global | Free tier |
+| **News API / Finnhub** | News, sentiment | Global | Free tier |
 
 ### 3.2 Data Categories
 
 1. **Price Data**: OHLCV (Open, High, Low, Close, Volume)
-2. **Technical Indicators**: RSI, MACD, Bollinger Bands, VWAP, etc.
-3. **Fundamental Data**: Financial statements, ratios (future)
+2. **Fundamental Data**: Financial statements, ratios, earnings
+3. **Technical Indicators**: RSI, MACD, Bollinger Bands, etc.
+4. **News & Sentiment**: Headlines, articles, social sentiment
+5. **Economic Data**: GDP, inflation, interest rates, employment
+6. **Geopolitical Events**: Elections, policy changes, conflicts
 
 ---
 
-## 4. Trading Strategies
+## 4. Analysis Engines
 
-### 4.1 Strategy Architecture
-
-All strategies inherit from `BaseStrategy` in the shared package:
+### 4.1 Technical Analysis Module
 
 ```python
-class BaseStrategy(ABC):
-    @abstractmethod
-    def generate_signal(self, symbol: str, data: pd.DataFrame) -> SignalData | None:
-        """Generate trading signal from market data."""
-        pass
+# Key indicators to implement
+TECHNICAL_INDICATORS = {
+    "trend": ["SMA", "EMA", "MACD", "ADX", "Parabolic SAR"],
+    "momentum": ["RSI", "Stochastic", "CCI", "Williams %R", "ROC"],
+    "volatility": ["Bollinger Bands", "ATR", "Keltner Channels"],
+    "volume": ["OBV", "VWAP", "Accumulation/Distribution"],
+    "patterns": ["Head & Shoulders", "Double Top/Bottom", "Triangles"]
+}
 ```
 
-### 4.2 Available Strategies
-
-**Indicator-Based:**
-- `RSIStrategy` - RSI oversold/overbought signals
-- `MACDStrategy` - MACD crossover signals
-- `BollingerBandsStrategy` - Bollinger band breakouts
-- `MovingAverageCrossoverStrategy` - MA crossovers
-
-**Intraday:**
-- `VWAPReversionStrategy` - Mean reversion to VWAP
-- `VWAPMomentumStrategy` - VWAP momentum breakouts
-- `ORBStrategy` - Opening Range Breakout
-- `GapAndGoStrategy` - Gap continuation
-- `TWAPStrategy` - Time-weighted execution
-
-**Swing:**
-- `PriceActionVolumeSwingStrategy` - Multi-day price action
-
-### 4.3 Composite Strategies
-
-Combine multiple strategies with weighted voting:
+### 4.2 Fundamental Analysis Module
 
 ```python
-composite = CompositeStrategy(
-    strategies=[RSIStrategy(), MACDStrategy()],
-    weights=[0.6, 0.4],
-    min_agreement=0.5
-)
+# Key metrics to analyze
+FUNDAMENTAL_METRICS = {
+    "valuation": ["P/E", "P/B", "P/S", "EV/EBITDA", "PEG"],
+    "profitability": ["ROE", "ROA", "ROIC", "Gross Margin", "Net Margin"],
+    "growth": ["Revenue Growth", "EPS Growth", "Book Value Growth"],
+    "health": ["Current Ratio", "Debt/Equity", "Interest Coverage"],
+    "efficiency": ["Asset Turnover", "Inventory Turnover", "Receivables Turnover"]
+}
 ```
+
+### 4.3 Sentiment Analysis Module
+
+- News headline sentiment (NLP-based)
+- Social media sentiment (Twitter/X, Reddit)
+- Analyst recommendations aggregation
+- Insider trading activity
+- Institutional holdings changes
+
+### 4.4 Risk Analysis Module
+
+- Value at Risk (VaR)
+- Beta calculation
+- Sharpe Ratio
+- Maximum Drawdown
+- Correlation analysis
 
 ---
 
@@ -131,66 +128,74 @@ composite = CompositeStrategy(
 
 ### 5.1 Signal Generation
 
-Strategies generate `SignalData` with:
-- Signal type (BUY, SELL, HOLD)
-- Confidence score (0.0 - 1.0)
-- Entry price, stop loss, take profit
-- Reason/explanation
+Multi-factor scoring system combining:
+- Technical signals (40% weight)
+- Fundamental score (30% weight)
+- Sentiment score (15% weight)
+- Risk metrics (15% weight)
 
-### 5.2 Order Management
+### 5.2 Strategy Framework
+
+```python
+class TradingStrategy(ABC):
+    @abstractmethod
+    def generate_signals(self, market_data: MarketData) -> List[Signal]:
+        pass
+    
+    @abstractmethod
+    def calculate_position_size(self, signal: Signal, portfolio: Portfolio) -> float:
+        pass
+```
+
+**Built-in Strategies:**
+1. **Momentum Strategy**: Buy strength, sell weakness
+2. **Mean Reversion**: Buy oversold, sell overbought
+3. **Value Investing**: Buy undervalued fundamentals
+4. **Trend Following**: Follow established trends
+5. **Multi-Factor**: Combine multiple strategies
+
+### 5.3 Order Management
 
 ```python
 @dataclass
 class Order:
     symbol: str
-    side: OrderSide  # BUY, SELL
-    order_type: OrderType  # MARKET, LIMIT, STOP_LOSS
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["MARKET", "LIMIT", "STOP_LOSS", "TAKE_PROFIT"]
     quantity: float
-    price: float | None
+    price: Optional[float]
+    stop_loss: Optional[float]
+    take_profit: Optional[float]
 ```
 
-### 5.3 Risk Management
-
-- **Kill Switch**: Emergency stop all trading
-- **Circuit Breakers**: Daily loss limits
-- **Position Limits**: Max position size per symbol
-- **Cooldown Periods**: Prevent overtrading
-
-### 5.4 Paper Trading (PaperBroker)
+### 5.4 Trade Simulator
 
 Paper trading engine that:
-- Simulates order execution with configurable slippage
+- Simulates order execution with realistic slippage
 - Tracks virtual portfolio performance
-- Calculates realistic fees
+- Calculates realistic fees and taxes
 - Provides performance analytics
 
 ---
 
-## 6. Broker Providers
+## 6. Portfolio Engine
 
-### 6.1 Provider Architecture
+### 6.1 Position Management
+- Real-time position tracking
+- Cost basis calculation (FIFO, LIFO, Average)
+- Unrealized/Realized P&L tracking
+- Dividend tracking and reinvestment
 
-All brokers implement `BaseBroker`:
+### 6.2 Portfolio Optimization
+- Modern Portfolio Theory (MPT) implementation
+- Efficient Frontier calculation
+- Risk parity allocation
+- Black-Litterman model support
 
-```python
-class BaseBroker(ABC):
-    @abstractmethod
-    async def place_order(self, order: Order) -> OrderResult: ...
-
-    @abstractmethod
-    async def get_positions(self) -> list[Position]: ...
-
-    @abstractmethod
-    async def get_quote(self, symbol: str) -> Quote: ...
-```
-
-### 6.2 Available Brokers
-
-| Broker | Type | Status |
-|--------|------|--------|
-| `PaperBroker` | Simulation | ✅ Implemented |
-| `AngelOneBroker` | Live | 🔄 Planned |
-| `ZerodhaBroker` | Live | 🔄 Planned |
+### 6.3 Auto-Rebalancing
+- Threshold-based rebalancing triggers
+- Calendar-based rebalancing
+- Tax-loss harvesting opportunities
 
 ---
 
@@ -200,41 +205,39 @@ class BaseBroker(ABC):
 
 1. **Portfolio Overview**
    - Total portfolio value, Daily/Weekly/Monthly P&L
-   - Asset allocation, Top performers
+   - Asset allocation pie chart, Top performers and laggards
 
-2. **Algo Trading**
-   - Strategy configuration
-   - Active strategies, P&L tracking
-   - Kill switch controls
+2. **Stock Analysis**
+   - Interactive price charts (candlestick, line)
+   - Technical indicator overlays, Fundamental metrics display
 
 3. **Trading Console**
    - Active signals, Order entry, Trade history
+
+4. **Watchlist & Reports**
+   - Custom watchlists, Performance analytics, Tax reports
 
 ---
 
 ## 8. Database Schema (Core Tables)
 
 ```sql
--- Algo strategies
-CREATE TABLE algo_strategies (
+-- Portfolio positions
+CREATE TABLE positions (
     id UUID PRIMARY KEY,
     user_id UUID REFERENCES users(id),
-    name VARCHAR(100) NOT NULL,
-    strategy_type VARCHAR(50) NOT NULL,
-    symbols TEXT[] NOT NULL,
-    parameters JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT false
+    symbol VARCHAR(20) NOT NULL,
+    market VARCHAR(10) NOT NULL,
+    quantity DECIMAL(18, 8) NOT NULL,
+    avg_cost DECIMAL(18, 4) NOT NULL
 );
 
--- Algo trades
-CREATE TABLE algo_trades (
+-- Trade history
+CREATE TABLE trades (
     id UUID PRIMARY KEY,
-    strategy_id UUID REFERENCES algo_strategies(id),
-    symbol VARCHAR(20) NOT NULL,
-    side VARCHAR(4) NOT NULL,
-    quantity DECIMAL(18, 8) NOT NULL,
-    price DECIMAL(18, 4) NOT NULL,
-    executed_at TIMESTAMPTZ DEFAULT NOW()
+    symbol VARCHAR(20), side VARCHAR(4),
+    quantity DECIMAL(18, 8), price DECIMAL(18, 4),
+    executed_at TIMESTAMPTZ NOT NULL
 );
 
 -- Price data (TimescaleDB hypertable)
@@ -248,18 +251,28 @@ CREATE TABLE price_data (
 
 ---
 
-## 9. Key Dependencies
+## 9. Development Phases
 
-**Shared Package**: pydantic, pandas, numpy, ta-lib, yfinance
-**Backend/Engine**: FastAPI, SQLAlchemy, httpx
-**Worker**: Celery, Redis
+| Phase | Duration | Focus |
+|-------|----------|-------|
+| **Phase 1** | Weeks 1-3 | Foundation (Next.js + FastAPI, DB, Data ingestion) |
+| **Phase 2** | Weeks 4-6 | Analysis Engine (Technical, Fundamental, Charts) |
+| **Phase 3** | Weeks 7-9 | Trading Engine (Simulator, Signals, Orders) |
+| **Phase 4** | Weeks 10-11 | Portfolio Management (P&L, Analytics) |
+| **Phase 5** | Weeks 12+ | Advanced (ML, Multi-market, Live trading) |
+
+---
+
+## 10. Key Dependencies
+
+**Backend**: FastAPI, SQLAlchemy, Celery, yfinance, pandas, ta-lib, scikit-learn
 **Frontend**: Next.js 14, React 18, TanStack Query, Tailwind, TradingView Charts
 
 ---
 
-## 10. Deployment
+## 11. Security & Deployment
 
-- Docker Compose for container orchestration
-- PostgreSQL + TimescaleDB for data persistence
-- Redis for caching and Celery broker
-- Hetzner VPS recommended (~€5-10/month)
+- JWT authentication, API key encryption
+- Rate limiting, Audit logging, 2FA
+- Frontend on Vercel, Backend on Docker/K8s
+- PostgreSQL + TimescaleDB, Redis cache, MongoDB for documents

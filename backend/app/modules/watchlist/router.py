@@ -2,14 +2,14 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import DbSession, CurrentUser
 from app.modules.watchlist.schemas import (
     WatchlistCreate,
+    WatchlistUpdate,
+    WatchlistResponse,
+    WatchlistListResponse,
     WatchlistItemCreate,
     WatchlistItemResponse,
-    WatchlistListResponse,
-    WatchlistResponse,
-    WatchlistUpdate,
 )
 from app.modules.watchlist.service import WatchlistService
 
@@ -108,7 +108,9 @@ async def update_watchlist(
 
 
 @router.delete("/{watchlist_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_watchlist(watchlist_id: str, db: DbSession, current_user: CurrentUser) -> None:
+async def delete_watchlist(
+    watchlist_id: str, db: DbSession, current_user: CurrentUser
+) -> None:
     """Delete a watchlist."""
     service = WatchlistService(db)
     deleted = await service.delete_watchlist(current_user.id, watchlist_id)
@@ -120,11 +122,7 @@ async def delete_watchlist(watchlist_id: str, db: DbSession, current_user: Curre
         )
 
 
-@router.post(
-    "/{watchlist_id}/items",
-    response_model=WatchlistItemResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/{watchlist_id}/items", response_model=WatchlistItemResponse, status_code=status.HTTP_201_CREATED)
 async def add_watchlist_item(
     watchlist_id: str, data: WatchlistItemCreate, db: DbSession, current_user: CurrentUser
 ) -> WatchlistItemResponse:
@@ -154,3 +152,4 @@ async def remove_watchlist_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Item not found in watchlist",
         )
+

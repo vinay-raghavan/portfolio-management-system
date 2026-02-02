@@ -60,3 +60,4 @@ class WatchlistListResponse(BaseModel):
     """Schema for list of watchlists."""
 
     watchlists: list[WatchlistResponse]
+

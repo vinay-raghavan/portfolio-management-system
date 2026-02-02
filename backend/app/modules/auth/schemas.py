@@ -44,3 +44,4 @@ class AuthResponse(BaseModel):
 
     user: UserResponse
     token: TokenResponse
+

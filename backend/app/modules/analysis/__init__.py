@@ -1,1 +1,2 @@
 """Technical analysis module."""
+
