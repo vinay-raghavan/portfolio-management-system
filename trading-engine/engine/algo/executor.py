@@ -343,7 +343,7 @@ class StrategyExecutor:
     ) -> int:
         """Calculate position size based on strategy config.
 
-        For percentage-based methods (PORTFOLIO_PERCENT, RISK_PERCENT),
+        For percentage-based methods (PERCENT_OF_PORTFOLIO, RISK_BASED),
         fetches actual portfolio value from the broker.
 
         Args:
@@ -363,7 +363,7 @@ class StrategyExecutor:
             amount = config.fixed_amount or Decimal("10000")
             return max(1, int(amount / price))
 
-        if method == PositionSizingMethod.PORTFOLIO_PERCENT:
+        if method == PositionSizingMethod.PERCENT_OF_PORTFOLIO:
             # Fetch actual portfolio value from broker
             try:
                 funds = await self.broker.get_funds(config.user_id)
@@ -372,7 +372,7 @@ class StrategyExecutor:
                 amount_to_invest = portfolio_value * (pct / Decimal("100"))
                 quantity = int(amount_to_invest / price)
                 logger.debug(
-                    f"PORTFOLIO_PERCENT sizing: {pct}% of {portfolio_value} = "
+                    f"PERCENT_OF_PORTFOLIO sizing: {pct}% of {portfolio_value} = "
                     f"{amount_to_invest}, qty={quantity} @ {price}"
                 )
                 return max(1, quantity) if quantity > 0 else 0
@@ -380,7 +380,7 @@ class StrategyExecutor:
                 logger.warning(f"Failed to get portfolio value: {e}, using fixed amount")
                 return max(1, int((config.fixed_amount or Decimal("10000")) / price))
 
-        if method == PositionSizingMethod.RISK_PERCENT:
+        if method == PositionSizingMethod.RISK_BASED:
             # Risk-based sizing: risk_amount = portfolio_value * risk_percent
             # quantity = risk_amount / (entry_price - stop_loss)
             try:
@@ -395,7 +395,7 @@ class StrategyExecutor:
                     risk_per_share = price - stop_loss
                     quantity = int(risk_amount / risk_per_share)
                     logger.debug(
-                        f"RISK_PERCENT sizing: {risk_pct}% risk = {risk_amount}, "
+                        f"RISK_BASED sizing: {risk_pct}% risk = {risk_amount}, "
                         f"risk/share={risk_per_share}, qty={quantity}"
                     )
                     return max(1, quantity) if quantity > 0 else 0
