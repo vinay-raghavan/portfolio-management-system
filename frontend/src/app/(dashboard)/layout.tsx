@@ -1,27 +1,16 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  Briefcase,
-  LineChart,
-  ListOrdered,
-  Star,
-  Settings,
-  LogOut,
-  Zap,
-  FlaskConical,
-  Bot,
-  LayoutGrid,
-  Search,
-} from 'lucide-react';
+import { LayoutDashboard, LogOut, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { NotificationBell } from '@/components/alerts';
 import { GlobalSearch } from '@/components/search';
 import { ErrorBoundary, KeyboardShortcutsHelp, type KeyboardShortcutsHelpRef, SkipLink } from '@/components/shared';
+import { NavGroup } from '@/components/navigation';
+import { navigationGroups, standaloneNavItems, settingsNavItem } from '@/config/navigation';
 import { useKeyboardShortcuts } from '@/hooks';
 import {
   Tooltip,
@@ -29,20 +18,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, shortcut: 'G D' },
-  { name: 'Portfolio', href: '/portfolio', icon: Briefcase, shortcut: 'G P' },
-  { name: 'Screener', href: '/screener', icon: Search, shortcut: 'G R' },
-  { name: 'Analysis', href: '/analysis', icon: LineChart, shortcut: 'G A' },
-  { name: 'Charts', href: '/charts', icon: LayoutGrid, shortcut: 'G C' },
-  { name: 'Signals', href: '/signals', icon: Zap, shortcut: 'G S' },
-  { name: 'Algo Trading', href: '/algo', icon: Bot, shortcut: 'G T' },
-  { name: 'Backtest', href: '/backtest', icon: FlaskConical, shortcut: 'G B' },
-  { name: 'Orders', href: '/orders', icon: ListOrdered, shortcut: 'G O' },
-  { name: 'Watchlist', href: '/watchlist', icon: Star, shortcut: 'G W' },
-  { name: 'Settings', href: '/settings', icon: Settings, shortcut: 'G ,' },
-];
 
 export default function DashboardLayout({
   children,
@@ -52,13 +27,43 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const helpModalRef = useRef<KeyboardShortcutsHelpRef>(null);
   const { registerHelpModal } = useKeyboardShortcuts(true);
+
+  // Load persisted open groups from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('nav-open-groups');
+      if (stored) {
+        setOpenGroups(JSON.parse(stored));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  // Persist open groups to localStorage when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('nav-open-groups', JSON.stringify(openGroups));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [openGroups]);
 
   // Register the help modal with the keyboard shortcuts hook
   useEffect(() => {
     registerHelpModal(helpModalRef.current);
   }, [registerHelpModal]);
+
+  // Toggle a navigation group open/closed
+  const toggleGroup = useCallback((groupName: string) => {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupName]: !prev[groupName],
+    }));
+  }, []);
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -92,8 +97,9 @@ export default function DashboardLayout({
               </span>
             </div>
           </div>
-          <nav className={cn('p-2 space-y-1 flex-1', isExpanded && 'p-4 space-y-2')} role="menubar" aria-label="Primary">
-            {navigation.map((item) => {
+          <nav className={cn('p-2 space-y-1 flex-1 overflow-y-auto', isExpanded && 'p-4 space-y-2')} role="menubar" aria-label="Primary">
+            {/* Standalone items (Dashboard, Portfolio) */}
+            {standaloneNavItems.map((item) => {
               const linkContent = (
                 <Link
                   key={item.name}
@@ -134,6 +140,59 @@ export default function DashboardLayout({
 
               return linkContent;
             })}
+
+            {/* Navigation Groups */}
+            <div className="pt-2 mt-2 border-t border-border space-y-1">
+              {navigationGroups.map((group) => (
+                <NavGroup
+                  key={group.name}
+                  group={group}
+                  isExpanded={isExpanded}
+                  isOpen={openGroups[group.name] ?? false}
+                  onToggle={() => toggleGroup(group.name)}
+                />
+              ))}
+            </div>
+
+            {/* Settings - standalone item */}
+            <div className="pt-2 mt-2 border-t border-border">
+              {isExpanded ? (
+                <Link
+                  href={settingsNavItem.href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    pathname === settingsNavItem.href
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  <Settings className="h-5 w-5 shrink-0" />
+                  <span>{settingsNavItem.name}</span>
+                </Link>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={settingsNavItem.href}
+                      className={cn(
+                        'flex items-center justify-center p-3 rounded-lg text-sm font-medium transition-colors',
+                        pathname === settingsNavItem.href
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:bg-accent'
+                      )}
+                    >
+                      <Settings className="h-5 w-5 shrink-0" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="flex items-center gap-2">
+                    <span>{settingsNavItem.name}</span>
+                    <kbd className="ml-1 inline-flex items-center gap-0.5 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                      {settingsNavItem.shortcut}
+                    </kbd>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           </nav>
           <div className={cn(
             'p-2 border-t',
