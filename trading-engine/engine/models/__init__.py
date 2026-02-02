@@ -12,6 +12,7 @@ from engine.models.algo import (
     StrategyExecution,
     StrategyStatus,
     Universe,
+    UserFunds,
     UserStrategy,
 )
 from engine.models.signals import SignalData, SignalType
@@ -28,6 +29,7 @@ __all__ = [
     "StrategyExecution",
     "StrategyStatus",
     "Universe",
+    "UserFunds",
     "UserStrategy",
     "SignalData",
     "SignalType",

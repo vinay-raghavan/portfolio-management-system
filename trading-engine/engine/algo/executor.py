@@ -419,7 +419,7 @@ class StrategyExecutor:
     ) -> None:
         """Check open positions for stop-loss/take-profit exits.
 
-        If any positions hit their SL/TP, places exit orders.
+        If any positions hit their SL/TP, places exit orders and updates funds.
         """
         if not symbol_prices:
             return
@@ -437,6 +437,12 @@ class StrategyExecutor:
                     logger.info(
                         f"Auto-closed {len(closed_positions)} positions due to SL/TP: "
                         f"pnl={pnl_stats.total_pnl}, winners={pnl_stats.winning_trades}"
+                    )
+
+                    # Update funds for closed positions (credit sale proceeds)
+                    # This ensures realized P&L reflects in user funds
+                    await self._update_funds_for_closed_positions(
+                        config.user_id, closed_positions, db
                     )
 
                     # Add exit orders to result
@@ -466,6 +472,55 @@ class StrategyExecutor:
 
         except Exception as e:
             logger.warning(f"Error checking exit conditions: {e}")
+
+    async def _update_funds_for_closed_positions(
+        self,
+        user_id: str,
+        closed_positions: list,
+        db,
+    ) -> None:
+        """Update user funds for closed positions.
+
+        When positions are closed via SL/TP, the broker order isn't placed,
+        so we need to manually update funds to reflect the sale proceeds.
+
+        Args:
+            user_id: The user ID
+            closed_positions: List of PositionResult objects
+            db: Database session
+        """
+        from shared.providers.funds import DatabaseFundsProvider
+
+        from engine.models import UserFunds
+
+        try:
+            # Create a funds provider for this operation
+            funds_provider = DatabaseFundsProvider(
+                db=db,
+                user_funds_model=UserFunds,
+                initial_balance=Decimal("0"),  # Not used for updates
+            )
+
+            for pos in closed_positions:
+                # For LONG positions, closing means SELL (credit proceeds)
+                # For SHORT positions, closing means BUY (debit cost)
+                side = "SELL" if pos.side == "LONG" else "BUY"
+                exit_price = pos.exit_price if pos.exit_price else Decimal("0")
+
+                await funds_provider.update_funds_for_trade(
+                    user_id=user_id,
+                    side=side,
+                    quantity=Decimal(str(pos.quantity)),
+                    price=exit_price,
+                    fees=Decimal("0"),  # Fees already accounted for in P&L
+                )
+                logger.debug(
+                    f"Updated funds for closed position {pos.symbol}: "
+                    f"side={side}, qty={pos.quantity}, price={exit_price}"
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to update funds for closed positions: {e}")
 
     def _signal_to_dict(self, signal: SignalData) -> dict:
         """Convert SignalData to dictionary."""

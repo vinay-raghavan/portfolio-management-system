@@ -5,10 +5,15 @@ based on their connected broker credentials.
 """
 
 import logging
+from decimal import Decimal
 
+from shared.providers.broker import PaperBroker
+from shared.providers.funds import DatabaseFundsProvider
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from engine.config import settings
+from engine.models.algo import UserFunds
 from engine.models.broker import BrokerCredential, BrokerType
 from engine.providers.broker import Broker, get_broker
 
@@ -34,10 +39,21 @@ async def get_user_broker(
     Returns:
         Broker instance (paper or live based on settings)
     """
-    # Paper trading always uses paper broker
+    # Paper trading always uses paper broker with database-backed funds
     if is_paper_trading:
         logger.debug(f"Using paper broker for user {user_id[:8]}... (paper trading mode)")
-        return get_broker("paper")
+        broker = get_broker("paper")
+        # Configure DatabaseFundsProvider for database-backed funds management
+        if isinstance(broker, PaperBroker):
+            initial_balance = Decimal(str(settings.PAPER_TRADING_INITIAL_BALANCE))
+            funds_provider = DatabaseFundsProvider(
+                db=db,
+                user_funds_model=UserFunds,
+                initial_balance=initial_balance,
+            )
+            broker.set_funds_provider(funds_provider)
+            logger.debug("Configured DatabaseFundsProvider for paper broker")
+        return broker
 
     # For live trading, look up user's connected broker credentials
     result = await db.execute(
@@ -64,7 +80,17 @@ async def get_user_broker(
         f"Live trading strategy will use paper broker! "
         f"User should connect a broker in settings."
     )
-    return get_broker("paper")
+    broker = get_broker("paper")
+    # Configure DatabaseFundsProvider for the fallback paper broker too
+    if isinstance(broker, PaperBroker):
+        initial_balance = Decimal(str(settings.PAPER_TRADING_INITIAL_BALANCE))
+        funds_provider = DatabaseFundsProvider(
+            db=db,
+            user_funds_model=UserFunds,
+            initial_balance=initial_balance,
+        )
+        broker.set_funds_provider(funds_provider)
+    return broker
 
 
 async def _create_broker_from_credential(cred: BrokerCredential) -> Broker | None:

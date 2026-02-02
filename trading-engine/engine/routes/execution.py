@@ -217,7 +217,8 @@ async def execute_strategy_full(
             await broker.connect()
         data_provider = get_data_provider()
         _configure_broker_price_fetcher(broker, data_provider)
-        safety_service = SafetyService()
+        # Pass broker to SafetyService for funds validation
+        safety_service = SafetyService(broker=broker)
 
         # Execute strategy
         executor = StrategyExecutor(
@@ -409,7 +410,7 @@ async def run_scheduled_strategies(
                         await broker.connect()
                     data_provider = get_data_provider()
                     _configure_broker_price_fetcher(broker, data_provider)
-                    safety_service = SafetyService()
+                    safety_service = SafetyService(broker=broker)
 
                     executor = StrategyExecutor(
                         broker=broker,
@@ -640,7 +641,7 @@ async def execute_strategy_by_id(
             await broker.connect()
         data_provider = get_data_provider()
         _configure_broker_price_fetcher(broker, data_provider)
-        safety_service = SafetyService()
+        safety_service = SafetyService(broker=broker)
 
         executor = StrategyExecutor(
             broker=broker,
