@@ -189,6 +189,20 @@ class ProfitCutoffAction(str, Enum):
     NOTIFY_ONLY = "NOTIFY_ONLY"  # Just send notification
 
 
+class StrategyProductType(str, Enum):
+    """Product type for strategy orders (matches broker terminology).
+
+    Rules:
+    - DELIVERY (CNC): Full payment required, no shorting, hold indefinitely
+    - INTRADAY (MIS): Margin required (25%), shorting allowed, must square off same day
+    - MARGIN (MTF): Margin required (50%) + interest, leveraged buying only, no shorting
+    """
+
+    DELIVERY = "DELIVERY"  # CNC - Cash and Carry (default, safest)
+    INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
+    MARGIN = "MARGIN"  # MTF - Margin Trading Facility
+
+
 class UserStrategy(Base):
     """User's configured strategy for algo trading."""
 
@@ -211,6 +225,13 @@ class UserStrategy(Base):
         default=StrategyStatus.DISABLED,
     )
     is_paper_trading: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Product type for orders (CNC/MIS/MTF)
+    product_type: Mapped[StrategyProductType] = mapped_column(
+        SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
+        nullable=False,
+        default=StrategyProductType.DELIVERY,
+    )
 
     strategy_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
