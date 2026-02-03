@@ -21,7 +21,11 @@ from engine.core.locks import (
     DistributedLock,
 )
 from engine.core.redis import get_redis
-from engine.models.algo import PositionSizingMethod, StrategyProductType, StrategyStatus, UserStrategy
+from engine.models.algo import (
+    PositionSizingMethod,
+    StrategyStatus,
+    UserStrategy,
+)
 from engine.providers.broker import PaperBroker
 from engine.providers.data import DataProvider, get_data_provider
 from engine.providers.schemas import ProductType

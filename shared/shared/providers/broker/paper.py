@@ -227,9 +227,7 @@ class PaperBroker(Broker):
             Error message if validation fails, None if valid.
         """
         if order.side == OrderSide.BUY:
-            return self._validate_buy_order(
-                product_type, margin_percent, order_value, fees, funds
-            )
+            return self._validate_buy_order(product_type, margin_percent, order_value, fees, funds)
         else:  # SELL
             return self._validate_sell_order(
                 order, product_type, margin_percent, order_value, fees, funds, existing_qty
@@ -258,7 +256,7 @@ class PaperBroker(Broker):
             if margin_required > funds.available_cash:
                 return (
                     f"Insufficient margin for {product_type.value} buy. "
-                    f"Required: ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                    f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
                     f"Available: ₹{funds.available_cash:.2f}"
                 )
         return None
@@ -290,7 +288,7 @@ class PaperBroker(Broker):
                 if margin_required > funds.available_cash:
                     return (
                         f"Insufficient margin for INTRADAY short sell. "
-                        f"Required: ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
                         f"Available: ₹{funds.available_cash:.2f}"
                     )
 

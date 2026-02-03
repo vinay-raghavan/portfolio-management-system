@@ -572,8 +572,13 @@ class SafetyService:
                 )
             else:  # SELL
                 return self._check_sell_funds(
-                    product_type, order_value, estimated_fees, margin_percent,
-                    funds, quantity, existing_position_qty
+                    product_type,
+                    order_value,
+                    estimated_fees,
+                    margin_percent,
+                    funds,
+                    quantity,
+                    existing_position_qty,
                 )
 
         except Exception as e:
@@ -621,7 +626,7 @@ class SafetyService:
                     passed=False,
                     reason=(
                         f"Insufficient margin for {product_type} buy: "
-                        f"required ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                        f"required ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
                         f"available ₹{funds.available_cash:.2f}"
                     ),
                 )

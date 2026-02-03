@@ -109,12 +109,24 @@ class DatabaseFundsProvider(FundsProvider):
 
         if side.upper() == "BUY":
             await self._handle_buy(
-                funds, user_id, trade_value, fees, normalized_type, margin_percent
+                funds,
+                user_id,
+                trade_value,
+                fees,
+                normalized_type,
+                margin_percent,
+                existing_position_qty,
             )
         else:  # SELL
             await self._handle_sell(
-                funds, user_id, trade_value, fees, quantity,
-                normalized_type, margin_percent, existing_position_qty
+                funds,
+                user_id,
+                trade_value,
+                fees,
+                quantity,
+                normalized_type,
+                margin_percent,
+                existing_position_qty,
             )
 
         await self.db.flush()
@@ -135,6 +147,7 @@ class DatabaseFundsProvider(FundsProvider):
         fees: Decimal,
         product_type: ProductType,
         margin_percent: Decimal,
+        existing_position_qty: Decimal | None,
     ) -> None:
         """Handle BUY order funds update based on product type."""
         total_cost = trade_value + fees
@@ -152,20 +165,52 @@ class DatabaseFundsProvider(FundsProvider):
                 f"New balance: ₹{funds.cash_balance:.2f}"
             )
 
-        elif product_type in (ProductType.INTRADAY, ProductType.MARGIN):
-            # INTRADAY/MARGIN: Block margin instead of full payment
+        elif product_type == ProductType.INTRADAY:
+            # Check if this is closing a short position
+            is_closing_short = existing_position_qty is not None and existing_position_qty < 0
+
+            if is_closing_short:
+                # Closing short position - deduct cost and release margin
+                funds.cash_balance -= total_cost
+                # Release the margin that was blocked for the short
+                margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                if margin_to_release > 0:
+                    funds.margin_used -= margin_to_release
+                    funds.cash_balance += margin_to_release
+                logger.debug(
+                    f"INTRADAY BUY (close short): Cost ₹{total_cost:.2f}, "
+                    f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
+                )
+            else:
+                # Opening long position - block margin
+                margin_required = trade_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    raise ValueError(
+                        f"Insufficient margin for INTRADAY buy. "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                        f"Available: ₹{funds.available_cash:.2f}"
+                    )
+                funds.cash_balance -= margin_required
+                funds.margin_used += margin_required
+                logger.debug(
+                    f"INTRADAY BUY: Blocked margin ₹{margin_required:.2f} "
+                    f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
+                )
+
+        elif product_type == ProductType.MARGIN:
+            # MARGIN: Block margin instead of full payment
             margin_required = trade_value * margin_percent + fees
             if funds.available_cash < margin_required:
                 raise ValueError(
-                    f"Insufficient margin for {product_type.value} buy. "
-                    f"Required: ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                    f"Insufficient margin for MARGIN buy. "
+                    f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
                     f"Available: ₹{funds.available_cash:.2f}"
                 )
             # Block margin from available cash
             funds.cash_balance -= margin_required
             funds.margin_used += margin_required
             logger.debug(
-                f"{product_type.value} BUY: Blocked margin ₹{margin_required:.2f} "
+                f"MARGIN BUY: Blocked margin ₹{margin_required:.2f} "
                 f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
             )
 
@@ -222,7 +267,7 @@ class DatabaseFundsProvider(FundsProvider):
                 if funds.available_cash < margin_required:
                     raise ValueError(
                         f"Insufficient margin for INTRADAY short sell. "
-                        f"Required: ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
                         f"Available: ₹{funds.available_cash:.2f}"
                     )
                 funds.cash_balance -= margin_required
