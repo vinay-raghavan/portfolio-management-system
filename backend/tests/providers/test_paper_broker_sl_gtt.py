@@ -10,6 +10,7 @@ from app.providers.schemas import (
     OrderSide,
     OrderStatus,
     OrderType,
+    ProductType,
 )
 
 
@@ -32,6 +33,7 @@ class TestPaperBrokerStopLossOrders:
             order_type=OrderType.STOP_LOSS,
             quantity=10,
             price=Decimal("95"),
+            product_type=ProductType.INTRADAY,  # Allow short selling
             # No trigger_price
         )
 
@@ -47,6 +49,7 @@ class TestPaperBrokerStopLossOrders:
             side=OrderSide.SELL,
             order_type=OrderType.STOP_LOSS_MARKET,
             quantity=10,
+            product_type=ProductType.INTRADAY,  # Allow short selling
             # No trigger_price
         )
 
@@ -65,6 +68,7 @@ class TestPaperBrokerStopLossOrders:
             quantity=10,
             price=Decimal("89"),
             trigger_price=Decimal("90"),
+            product_type=ProductType.INTRADAY,  # Allow short selling
         )
 
         response = await broker.place_order("user1", order)
