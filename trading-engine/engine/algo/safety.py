@@ -530,10 +530,13 @@ class SafetyService:
         side: str,
         quantity: int,
         price: Decimal,
+        product_type: str = "DELIVERY",
+        existing_position_qty: Decimal | None = None,
     ) -> SafetyCheck:
-        """Check if an order passes safety checks including funds validation.
+        """Check if an order passes safety checks including funds/margin validation.
 
-        This is the async version that validates available funds for buy orders.
+        This is the async version that validates available funds/margin based on
+        product type (CNC/MIS/MTF).
 
         Args:
             user_id: User placing the order
@@ -541,6 +544,8 @@ class SafetyService:
             side: Order side (BUY/SELL)
             quantity: Order quantity
             price: Order price
+            product_type: Product type (DELIVERY, INTRADAY, MARGIN)
+            existing_position_qty: Current position quantity for SELL validation
 
         Returns:
             SafetyCheck with pass/fail status
@@ -550,26 +555,126 @@ class SafetyService:
         if not basic_check.passed:
             return basic_check
 
-        # Check funds for buy orders (if broker is configured)
-        if side == "BUY" and self.broker is not None:
-            try:
-                order_value = price * Decimal(quantity)
-                # Add estimated fees (0.1%)
-                estimated_fees = order_value * Decimal("0.001")
-                total_required = order_value + estimated_fees
+        if self.broker is None:
+            return SafetyCheck(passed=True)
 
-                funds = await self.broker.get_funds(user_id)
-                if funds.available_cash < total_required:
+        # Get margin percentage based on product type
+        margin_percent = self._get_margin_percent(product_type)
+        order_value = price * Decimal(quantity)
+        estimated_fees = order_value * Decimal("0.001")
+
+        try:
+            funds = await self.broker.get_funds(user_id)
+
+            if side == "BUY":
+                return self._check_buy_funds(
+                    product_type, order_value, estimated_fees, margin_percent, funds
+                )
+            else:  # SELL
+                return self._check_sell_funds(
+                    product_type, order_value, estimated_fees, margin_percent,
+                    funds, quantity, existing_position_qty
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to check funds for {user_id}: {e}")
+            # Continue with order - broker will validate at execution time
+            return SafetyCheck(passed=True)
+
+    def _get_margin_percent(self, product_type: str) -> Decimal:
+        """Get margin percentage for product type."""
+        margins = {
+            "DELIVERY": Decimal("1.0"),
+            "CNC": Decimal("1.0"),
+            "INTRADAY": Decimal("0.25"),
+            "MIS": Decimal("0.25"),
+            "MARGIN": Decimal("0.50"),
+            "MTF": Decimal("0.50"),
+        }
+        return margins.get(product_type.upper(), Decimal("1.0"))
+
+    def _check_buy_funds(
+        self,
+        product_type: str,
+        order_value: Decimal,
+        fees: Decimal,
+        margin_percent: Decimal,
+        funds,
+    ) -> SafetyCheck:
+        """Check funds for BUY order based on product type."""
+        if product_type.upper() in ("DELIVERY", "CNC"):
+            # Full payment required
+            total_required = order_value + fees
+            if funds.available_cash < total_required:
+                return SafetyCheck(
+                    passed=False,
+                    reason=(
+                        f"Insufficient funds for DELIVERY buy: "
+                        f"required ₹{total_required:.2f}, available ₹{funds.available_cash:.2f}"
+                    ),
+                )
+        else:
+            # Margin required
+            margin_required = order_value * margin_percent + fees
+            if funds.available_cash < margin_required:
+                return SafetyCheck(
+                    passed=False,
+                    reason=(
+                        f"Insufficient margin for {product_type} buy: "
+                        f"required ₹{margin_required:.2f} ({margin_percent*100:.0f}% margin), "
+                        f"available ₹{funds.available_cash:.2f}"
+                    ),
+                )
+        return SafetyCheck(passed=True)
+
+    def _check_sell_funds(
+        self,
+        product_type: str,
+        order_value: Decimal,
+        fees: Decimal,
+        margin_percent: Decimal,
+        funds,
+        quantity: int,
+        existing_position_qty: Decimal | None,
+    ) -> SafetyCheck:
+        """Check funds/position for SELL order based on product type."""
+        owned = existing_position_qty or Decimal("0")
+
+        if product_type.upper() in ("DELIVERY", "CNC"):
+            # Must own shares to sell
+            if owned < quantity:
+                return SafetyCheck(
+                    passed=False,
+                    reason=(
+                        f"Cannot short sell in DELIVERY mode: "
+                        f"trying to sell {quantity} but only own {owned}"
+                    ),
+                )
+
+        elif product_type.upper() in ("INTRADAY", "MIS"):
+            # Short selling allowed with margin
+            if owned <= 0:
+                # Opening short - check margin
+                margin_required = order_value * margin_percent + fees
+                if funds.available_cash < margin_required:
                     return SafetyCheck(
                         passed=False,
                         reason=(
-                            f"Insufficient funds: required ₹{total_required:.2f}, "
-                            f"available ₹{funds.available_cash:.2f}"
+                            f"Insufficient margin for INTRADAY short: "
+                            f"required ₹{margin_required:.2f}, available ₹{funds.available_cash:.2f}"
                         ),
                     )
-            except Exception as e:
-                logger.warning(f"Failed to check funds for {user_id}: {e}")
-                # Continue with order - broker will validate at execution time
+
+        elif product_type.upper() in ("MARGIN", "MTF"):
+            # No short selling in MTF
+            if owned < quantity:
+                return SafetyCheck(
+                    passed=False,
+                    reason=(
+                        f"Cannot short sell in MARGIN (MTF) mode: "
+                        f"trying to sell {quantity} but only own {owned}"
+                    ),
+                )
 
         return SafetyCheck(passed=True)
 
