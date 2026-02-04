@@ -429,6 +429,9 @@ class CreateSmartStrategyRequest(BaseModel):
     filters: list[FilterConfig] | None = Field(
         default=None, description="Filter configs if not using run_id"
     )
+    preset: ScreenerPresetType | None = Field(
+        default=None, description="Preset screener type to infer from"
+    )
     symbols: list[str] = Field(..., min_length=1, description="Symbols for the strategy")
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None

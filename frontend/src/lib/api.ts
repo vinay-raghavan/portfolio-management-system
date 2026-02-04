@@ -805,6 +805,7 @@ export interface InferStrategyResponse {
 export interface CreateSmartStrategyRequest {
   screener_run_id?: string;
   filters?: FilterConfig[];
+  preset?: string;
   symbols: string[];
   name: string;
   description?: string;

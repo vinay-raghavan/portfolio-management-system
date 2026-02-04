@@ -222,6 +222,7 @@ export default function ScreenerPage() {
       productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
       symbols: string[];
       filters?: FilterConfig[];
+      preset?: string;
       isDynamic: boolean;
       screenerConfig?: Record<string, unknown>;
     }) =>
@@ -229,6 +230,7 @@ export default function ScreenerPage() {
         name: data.name,
         symbols: data.symbols,
         filters: data.filters,
+        preset: data.preset,
         strategy_type_override: data.strategyType,
         strategy_params_override: data.params,
         product_type: data.productType,
@@ -258,6 +260,7 @@ export default function ScreenerPage() {
     productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
     symbols: string[];
     filters?: FilterConfig[];
+    preset?: string;
     isDynamic: boolean;
     screenerConfig?: Record<string, unknown>;
   }) => {

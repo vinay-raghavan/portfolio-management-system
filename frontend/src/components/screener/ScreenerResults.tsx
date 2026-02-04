@@ -52,6 +52,7 @@ interface ScreenerResultsProps {
     productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
     symbols: string[];
     filters?: FilterConfig[];
+    preset?: string;
     isDynamic: boolean;
     screenerConfig?: Record<string, unknown>;
   }) => void;
@@ -455,6 +456,7 @@ export function ScreenerResults({
                     productType: data.productType,
                     symbols: passedSymbols,
                     filters: screenerConfig?.filters,
+                    preset: screenerConfig?.preset,
                     isDynamic: smartStrategyDynamic,
                     screenerConfig: smartStrategyDynamic ? (screenerConfig as Record<string, unknown>) : undefined,
                   });

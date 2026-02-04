@@ -1558,6 +1558,7 @@ async def create_smart_strategy(
     from app.modules.algo.schemas import UniverseCreate
     from app.modules.algo.strategy_inference import inference_engine
     from app.modules.screener.models import CustomScreener
+    from app.modules.screener.service import PRESET_DEFINITIONS
 
     universe_svc = UniverseService(db)
 
@@ -1568,6 +1569,12 @@ async def create_smart_strategy(
         screener = await db.get(CustomScreener, data.screener_run_id)
         if screener:
             filters = [FilterConfig(**f) for f in screener.filters]
+
+    # If preset provided, get filters from preset definition
+    if data.preset and not filters:
+        preset_info = PRESET_DEFINITIONS.get(data.preset)
+        if preset_info:
+            filters = preset_info.filters
 
     # Run inference to get recommended strategy
     if filters:
