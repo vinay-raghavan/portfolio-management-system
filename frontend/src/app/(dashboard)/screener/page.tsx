@@ -178,8 +178,8 @@ export default function ScreenerPage() {
 
   // Strategy inference mutation
   const inferStrategyMutation = useMutation({
-    mutationFn: (filtersToInfer: FilterConfig[]) =>
-      screenerApi.inferStrategy({ filters: filtersToInfer }),
+    mutationFn: (request: { filters?: FilterConfig[]; preset?: string }) =>
+      screenerApi.inferStrategy(request),
     onError: (error: any) => {
       addNotification({
         type: 'error',
@@ -190,18 +190,24 @@ export default function ScreenerPage() {
   });
 
   const handleInferStrategy = async (): Promise<InferStrategyResponse | null> => {
-    const filtersToUse = mode === 'custom' ? filters : [];
-    if (filtersToUse.length === 0) {
-      addNotification({
-        type: 'warning',
-        title: 'No Filters',
-        message: 'Smart strategy requires custom filters. Switch to custom mode and add filters.',
-      });
-      return null;
-    }
     try {
-      const res = await inferStrategyMutation.mutateAsync(filtersToUse);
-      return res.data;
+      // For preset mode, pass the preset name; for custom mode, pass filters
+      if (mode === 'preset' && selectedPreset) {
+        const res = await inferStrategyMutation.mutateAsync({ preset: selectedPreset });
+        return res.data;
+      } else if (mode === 'custom' && filters.length > 0) {
+        const res = await inferStrategyMutation.mutateAsync({ filters });
+        return res.data;
+      } else {
+        addNotification({
+          type: 'warning',
+          title: 'No Configuration',
+          message: mode === 'preset'
+            ? 'Please select a preset first.'
+            : 'Please add custom filters first.',
+        });
+        return null;
+      }
     } catch {
       return null;
     }

@@ -384,11 +384,14 @@ class InferStrategyRequest(BaseModel):
     filters: list[FilterConfig] | None = Field(
         default=None, description="Filter configs to infer from directly"
     )
+    preset: ScreenerPresetType | None = Field(
+        default=None, description="Preset screener type to infer from"
+    )
 
     def model_post_init(self, __context) -> None:
         """Validate that at least one source is provided."""
-        if not self.screener_run_id and not self.filters:
-            raise ValueError("Either screener_run_id or filters must be provided")
+        if not self.screener_run_id and not self.filters and not self.preset:
+            raise ValueError("Either screener_run_id, filters, or preset must be provided")
 
 
 class StrategyRecommendationResponse(BaseModel):

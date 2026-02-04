@@ -1478,6 +1478,7 @@ async def infer_strategy(
     """
     from app.modules.algo.strategy_inference import inference_engine
     from app.modules.screener.models import CustomScreener
+    from app.modules.screener.service import PRESET_DEFINITIONS
 
     filters = data.filters
 
@@ -1491,6 +1492,12 @@ async def infer_strategy(
             )
         # Convert stored filter config to FilterConfig objects
         filters = [FilterConfig(**f) for f in screener.filters]
+
+    # If preset provided, get filters from preset definition
+    if data.preset and not filters:
+        preset_info = PRESET_DEFINITIONS.get(data.preset)
+        if preset_info:
+            filters = preset_info.filters
 
     if not filters:
         raise HTTPException(

@@ -777,6 +777,7 @@ export type RiskProfile = 'conservative' | 'moderate' | 'aggressive';
 export interface InferStrategyRequest {
   screener_run_id?: string;
   filters?: FilterConfig[];
+  preset?: string;
 }
 
 export interface StrategyRecommendation {
