@@ -455,8 +455,9 @@ class StrategyExecutor:
 
                     # Update funds for closed positions (credit sale proceeds)
                     # This ensures realized P&L reflects in user funds
+                    # Pass product_type to ensure proper margin release for INTRADAY/MARGIN
                     await self._update_funds_for_closed_positions(
-                        config.user_id, closed_positions, db
+                        config.user_id, closed_positions, db, config.product_type
                     )
 
                     # Add exit orders to result
@@ -492,6 +493,7 @@ class StrategyExecutor:
         user_id: str,
         closed_positions: list,
         db,
+        product_type: ProductType = ProductType.DELIVERY,
     ) -> None:
         """Update user funds for closed positions.
 
@@ -502,6 +504,7 @@ class StrategyExecutor:
             user_id: The user ID
             closed_positions: List of PositionResult objects
             db: Database session
+            product_type: Product type (DELIVERY/INTRADAY/MARGIN) for margin handling
         """
         from shared.providers.funds import DatabaseFundsProvider
 
@@ -521,16 +524,21 @@ class StrategyExecutor:
                 side = "SELL" if pos.side == "LONG" else "BUY"
                 exit_price = pos.exit_price if pos.exit_price else Decimal("0")
 
+                # Pass product_type and existing_position_qty to properly release margin
+                # For closing positions, existing_position_qty is the quantity being closed
                 await funds_provider.update_funds_for_trade(
                     user_id=user_id,
                     side=side,
                     quantity=Decimal(str(pos.quantity)),
                     price=exit_price,
                     fees=Decimal("0"),  # Fees already accounted for in P&L
+                    product_type=product_type,
+                    existing_position_qty=Decimal(str(pos.quantity)),  # Closing full position
                 )
                 logger.debug(
                     f"Updated funds for closed position {pos.symbol}: "
-                    f"side={side}, qty={pos.quantity}, price={exit_price}"
+                    f"side={side}, qty={pos.quantity}, price={exit_price}, "
+                    f"product_type={product_type.value}"
                 )
 
         except Exception as e:
