@@ -1554,7 +1554,7 @@ async def create_smart_strategy(
     2. Applies any user overrides
     3. Creates universe and strategy
     """
-    from app.modules.algo.models import UserStrategy
+    from app.modules.algo.models import StrategyStatus, UserStrategy
     from app.modules.algo.schemas import UniverseCreate
     from app.modules.algo.strategy_inference import inference_engine
     from app.modules.screener.models import CustomScreener
@@ -1622,14 +1622,14 @@ async def create_smart_strategy(
         user_id=str(current_user.id),
         name=data.name,
         description=data.description or f"Smart strategy with {len(data.symbols)} symbols",
-        strategy_type=final_strategy_type,
+        strategy_name=final_strategy_type,
         universe_id=universe.id,
-        is_active=False,
-        product_type=data.product_type,
+        status=StrategyStatus.DISABLED,
         position_sizing_method=data.position_sizing_method,
-        position_size_value=data.position_size_value,
-        strategy_config={
+        portfolio_percent=data.position_size_value,
+        strategy_params={
             "source": "smart_screener",
+            "product_type": data.product_type,
             "inferred_params": inferred_params,
             "filters_used": [f.model_dump() for f in filters] if filters else [],
             "initial_symbols": data.symbols,
