@@ -18,6 +18,8 @@ from app.modules.data.service import get_user_data_provider
 from app.modules.screener.schemas import (
     CategoryPerformanceStats,
     CategoryRecommendations,
+    CreateSmartStrategyRequest,
+    CreateSmartStrategyResponse,
     CreateStrategyFromScreenerRequest,
     CreateStrategyFromScreenerResponse,
     CreateUniverseFromScreenerRequest,
@@ -28,6 +30,9 @@ from app.modules.screener.schemas import (
     CustomScreenerUpdate,
     DailyRecommendationsResponse,
     FilterConfig,
+    FilterAnalysisResponse,
+    InferStrategyRequest,
+    InferStrategyResponse,
     OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
@@ -40,6 +45,7 @@ from app.modules.screener.schemas import (
     ScreenerRunRequest,
     ScreenerRunResponse,
     StoreRecommendationsRequest,
+    StrategyRecommendationResponse,
     UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
@@ -1453,4 +1459,183 @@ async def create_strategy_from_screener(
         symbol_count=len(data.symbols),
         is_dynamic=data.is_dynamic_universe,
         created_at=strategy.created_at,
+    )
+
+
+# ============== Strategy Inference ==============
+
+
+@router.post("/infer-strategy", response_model=InferStrategyResponse)
+async def infer_strategy(
+    data: InferStrategyRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> InferStrategyResponse:
+    """Infer optimal strategy type and parameters from screener filters.
+
+    Analyzes the filter configuration to recommend the best strategy type
+    and derive optimal parameters from filter thresholds.
+    """
+    from app.modules.algo.strategy_inference import inference_engine
+    from app.modules.screener.models import CustomScreener
+
+    filters = data.filters
+
+    # If screener_run_id provided, get filters from the screener config
+    if data.screener_run_id and not filters:
+        screener = await db.get(CustomScreener, data.screener_run_id)
+        if not screener:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Screener run {data.screener_run_id} not found",
+            )
+        # Convert stored filter config to FilterConfig objects
+        filters = [FilterConfig(**f) for f in screener.filters]
+
+    if not filters:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No filters provided for inference",
+        )
+
+    # Run inference
+    result = inference_engine.infer(filters)
+
+    return InferStrategyResponse(
+        recommended_strategy=StrategyRecommendationResponse(
+            strategy_type=result.recommended_strategy.strategy_type,
+            strategy_name=result.recommended_strategy.strategy_name,
+            description=result.recommended_strategy.description,
+            suggested_params=result.recommended_strategy.suggested_params,
+            confidence=result.recommended_strategy.confidence,
+            reasoning=result.recommended_strategy.reasoning,
+        ),
+        alternative_strategies=[
+            StrategyRecommendationResponse(
+                strategy_type=alt.strategy_type,
+                strategy_name=alt.strategy_name,
+                description=alt.description,
+                suggested_params=alt.suggested_params,
+                confidence=alt.confidence,
+                reasoning=alt.reasoning,
+            )
+            for alt in result.alternative_strategies
+        ],
+        filter_analysis=FilterAnalysisResponse(
+            primary_intent=result.filter_analysis.primary_intent.value,
+            secondary_intent=(
+                result.filter_analysis.secondary_intent.value
+                if result.filter_analysis.secondary_intent
+                else None
+            ),
+            risk_profile=result.filter_analysis.risk_profile.value,
+            detected_patterns=result.filter_analysis.detected_patterns,
+        ),
+    )
+
+
+
+@router.post("/create-smart-strategy", response_model=CreateSmartStrategyResponse)
+async def create_smart_strategy(
+    data: CreateSmartStrategyRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CreateSmartStrategyResponse:
+    """Create a strategy with auto-inferred parameters from screener filters.
+
+    This combines strategy inference with strategy creation:
+    1. Infers optimal strategy type and parameters from filters
+    2. Applies any user overrides
+    3. Creates universe and strategy
+    """
+    from app.modules.algo.models import UserStrategy
+    from app.modules.algo.schemas import UniverseCreate
+    from app.modules.algo.strategy_inference import inference_engine
+    from app.modules.screener.models import CustomScreener
+
+    universe_svc = UniverseService(db)
+
+    filters = data.filters
+
+    # If screener_run_id provided, get filters from the screener config
+    if data.screener_run_id and not filters:
+        screener = await db.get(CustomScreener, data.screener_run_id)
+        if screener:
+            filters = [FilterConfig(**f) for f in screener.filters]
+
+    # Run inference to get recommended strategy
+    if filters:
+        result = inference_engine.infer(filters)
+        inferred_type = result.recommended_strategy.strategy_type
+        inferred_params = result.recommended_strategy.suggested_params.copy()
+        inference_reasoning = result.recommended_strategy.reasoning
+    else:
+        # Fallback if no filters
+        inferred_type = "vwap_momentum"
+        inferred_params = {}
+        inference_reasoning = ["No filters provided - using default strategy"]
+
+    # Apply overrides
+    final_strategy_type = data.strategy_type_override or inferred_type
+    params_overridden = []
+
+    if data.strategy_params_override:
+        for key, value in data.strategy_params_override.items():
+            if key in inferred_params and inferred_params[key] != value:
+                params_overridden.append(key)
+            inferred_params[key] = value
+
+    # Build filter_criteria for dynamic universes
+    filter_criteria = None
+    if data.is_dynamic_universe and data.screener_config:
+        filter_criteria = {
+            "source": "screener",
+            "screener_config": data.screener_config,
+        }
+
+    # Create the universe
+    universe_name = f"{data.name} Universe"
+    universe_data = UniverseCreate(
+        name=universe_name,
+        description=f"Smart strategy universe for '{data.name}'",
+        symbols=data.symbols,
+        filter_criteria=filter_criteria,
+        is_dynamic=data.is_dynamic_universe,
+    )
+    universe = await universe_svc.create(str(current_user.id), universe_data)
+
+    # Create the strategy with inferred config
+    strategy = UserStrategy(
+        user_id=str(current_user.id),
+        name=data.name,
+        description=data.description or f"Smart strategy with {len(data.symbols)} symbols",
+        strategy_type=final_strategy_type,
+        universe_id=universe.id,
+        is_active=False,
+        product_type=data.product_type,
+        position_sizing_method=data.position_sizing_method,
+        position_size_value=data.position_size_value,
+        strategy_config={
+            "source": "smart_screener",
+            "inferred_params": inferred_params,
+            "filters_used": [f.model_dump() for f in filters] if filters else [],
+            "initial_symbols": data.symbols,
+        },
+    )
+    db.add(strategy)
+    await db.commit()
+    await db.refresh(strategy)
+
+    return CreateSmartStrategyResponse(
+        strategy_id=strategy.id,
+        strategy_name=strategy.name,
+        universe_id=universe.id,
+        universe_name=universe.name,
+        symbol_count=len(data.symbols),
+        is_dynamic=data.is_dynamic_universe,
+        created_at=strategy.created_at,
+        inferred_strategy_type=inferred_type,
+        inferred_params=inferred_params,
+        params_overridden=params_overridden,
+        inference_reasoning=inference_reasoning,
     )

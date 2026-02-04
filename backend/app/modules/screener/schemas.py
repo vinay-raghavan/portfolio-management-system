@@ -372,6 +372,96 @@ class CreateStrategyFromScreenerResponse(BaseModel):
     created_at: datetime
 
 
+# ============== Strategy Inference Schemas ==============
+
+
+class InferStrategyRequest(BaseModel):
+    """Request to infer optimal strategy from screener filters."""
+
+    screener_run_id: str | None = Field(
+        default=None, description="ID of a completed screener run to infer from"
+    )
+    filters: list[FilterConfig] | None = Field(
+        default=None, description="Filter configs to infer from directly"
+    )
+
+    def model_post_init(self, __context) -> None:
+        """Validate that at least one source is provided."""
+        if not self.screener_run_id and not self.filters:
+            raise ValueError("Either screener_run_id or filters must be provided")
+
+
+class StrategyRecommendationResponse(BaseModel):
+    """A recommended strategy with suggested parameters."""
+
+    strategy_type: str
+    strategy_name: str
+    description: str
+    suggested_params: dict
+    confidence: float
+    reasoning: list[str]
+
+
+class FilterAnalysisResponse(BaseModel):
+    """Analysis of screener filters."""
+
+    primary_intent: str
+    secondary_intent: str | None = None
+    risk_profile: str
+    detected_patterns: list[str] = []
+
+
+class InferStrategyResponse(BaseModel):
+    """Response for strategy inference."""
+
+    recommended_strategy: StrategyRecommendationResponse
+    alternative_strategies: list[StrategyRecommendationResponse] = []
+    filter_analysis: FilterAnalysisResponse
+
+
+class CreateSmartStrategyRequest(BaseModel):
+    """Request to create a strategy with inferred parameters."""
+
+    screener_run_id: str | None = Field(
+        default=None, description="ID of a completed screener run"
+    )
+    filters: list[FilterConfig] | None = Field(
+        default=None, description="Filter configs if not using run_id"
+    )
+    symbols: list[str] = Field(..., min_length=1, description="Symbols for the strategy")
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    strategy_type_override: str | None = Field(
+        default=None, description="Override the inferred strategy type"
+    )
+    strategy_params_override: dict | None = Field(
+        default=None, description="Override specific inferred parameters"
+    )
+    product_type: str = Field(default="INTRADAY")
+    position_sizing_method: str = Field(default="PERCENT_OF_PORTFOLIO")
+    position_size_value: float = Field(default=5.0, ge=0.1, le=100)
+    is_dynamic_universe: bool = Field(default=False)
+    screener_config: dict | None = Field(
+        default=None, description="Screener config for dynamic universes"
+    )
+
+
+class CreateSmartStrategyResponse(BaseModel):
+    """Response after creating a smart strategy."""
+
+    strategy_id: str
+    strategy_name: str
+    universe_id: str
+    universe_name: str
+    symbol_count: int
+    is_dynamic: bool
+    created_at: datetime
+    inferred_strategy_type: str
+    inferred_params: dict
+    params_overridden: list[str] = []
+    inference_reasoning: list[str]
+
+
 # ============== Performance Tracking Schemas ==============
 
 
