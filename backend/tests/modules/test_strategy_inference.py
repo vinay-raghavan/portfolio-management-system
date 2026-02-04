@@ -390,4 +390,3 @@ class TestFullInference:
             "ma_crossover",
         ]
         assert "Volume spike" in str(result.filter_analysis.detected_patterns)
-

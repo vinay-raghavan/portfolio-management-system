@@ -29,8 +29,8 @@ from app.modules.screener.schemas import (
     CustomScreenerResponse,
     CustomScreenerUpdate,
     DailyRecommendationsResponse,
-    FilterConfig,
     FilterAnalysisResponse,
+    FilterConfig,
     InferStrategyRequest,
     InferStrategyResponse,
     OverallPerformanceStats,
@@ -1532,7 +1532,6 @@ async def infer_strategy(
             detected_patterns=result.filter_analysis.detected_patterns,
         ),
     )
-
 
 
 @router.post("/create-smart-strategy", response_model=CreateSmartStrategyResponse)

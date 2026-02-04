@@ -422,9 +422,7 @@ class InferStrategyResponse(BaseModel):
 class CreateSmartStrategyRequest(BaseModel):
     """Request to create a strategy with inferred parameters."""
 
-    screener_run_id: str | None = Field(
-        default=None, description="ID of a completed screener run"
-    )
+    screener_run_id: str | None = Field(default=None, description="ID of a completed screener run")
     filters: list[FilterConfig] | None = Field(
         default=None, description="Filter configs if not using run_id"
     )

@@ -6,7 +6,6 @@ Maps screener filter configurations to optimal strategy types and parameters.
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -251,7 +250,6 @@ class StrategyInferenceEngine:
             detected_patterns=context.detected_patterns,
         )
 
-
     def _get_primary_recommendation(
         self, context: FilterContext, analysis: FilterAnalysis
     ) -> StrategyRecommendation:
@@ -454,4 +452,3 @@ class StrategyInferenceEngine:
 
 # Singleton instance
 inference_engine = StrategyInferenceEngine()
-
