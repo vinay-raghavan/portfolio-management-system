@@ -174,7 +174,7 @@ export function ScreenerResults({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {onInferStrategy && screenerConfig?.filters && (
+                {onInferStrategy && (screenerConfig?.filters || screenerConfig?.preset) && (
                   <>
                     <DropdownMenuItem
                       onClick={async () => {
