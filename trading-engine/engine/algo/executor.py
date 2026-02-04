@@ -74,6 +74,7 @@ class StrategyConfig:
     fixed_amount: Decimal = Decimal("10000")
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
+    product_type: ProductType = ProductType.DELIVERY
 
 
 class StrategyExecutor:
@@ -281,7 +282,18 @@ class StrategyExecutor:
             logger.debug(f"Position size is 0 for {signal.symbol}, skipping")
             return None
 
-        # Run safety check (with funds validation for buy orders)
+        # Get existing position quantity for product type validation
+        existing_position_qty = Decimal("0")
+        try:
+            positions = await self.broker.get_positions(config.user_id)
+            for pos in positions:
+                if pos.symbol.upper() == signal.symbol.upper():
+                    existing_position_qty = pos.quantity
+                    break
+        except Exception as e:
+            logger.warning(f"Could not get existing position for {signal.symbol}: {e}")
+
+        # Run safety check (with funds/margin validation based on product type)
         price = signal.entry_price or signal.price_at_signal
         side = "BUY" if signal.signal_type == SignalType.BUY else "SELL"
 
@@ -291,6 +303,8 @@ class StrategyExecutor:
             side=side,
             quantity=quantity,
             price=price,
+            product_type=config.product_type.value,
+            existing_position_qty=existing_position_qty,
         )
 
         if not safety_check.passed:
@@ -301,14 +315,14 @@ class StrategyExecutor:
                 "reason": safety_check.reason,
             }
 
-        # Create order request
+        # Create order request with strategy's product type
         order_side = OrderSide.BUY if signal.signal_type == SignalType.BUY else OrderSide.SELL
         order_request = OrderRequest(
             symbol=signal.symbol,
             side=order_side,
             order_type=OrderType.MARKET,
             quantity=quantity,
-            product_type=ProductType.DELIVERY,
+            product_type=config.product_type,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
         )

@@ -7,7 +7,7 @@ to optionally sync with a database for persistent funds tracking.
 from abc import ABC, abstractmethod
 from decimal import Decimal
 
-from ..schemas import Funds
+from ..schemas import Funds, ProductType
 
 
 class FundsProvider(ABC):
@@ -37,11 +37,15 @@ class FundsProvider(ABC):
         quantity: Decimal,
         price: Decimal,
         fees: Decimal,
+        product_type: ProductType = ProductType.DELIVERY,
+        existing_position_qty: Decimal | None = None,
     ) -> Funds:
         """Update funds after a trade execution.
 
-        For BUY: Deduct (quantity * price + fees) from available cash
-        For SELL: Add (quantity * price - fees) to available cash
+        Behavior depends on product_type:
+        - DELIVERY (CNC): Full payment for BUY, must own shares to SELL
+        - INTRADAY (MIS): Block margin (25%) for both BUY and SELL (shorting allowed)
+        - MARGIN (MTF): Block margin (50%) for BUY only, no shorting
 
         Args:
             user_id: User identifier
@@ -49,9 +53,14 @@ class FundsProvider(ABC):
             quantity: Trade quantity
             price: Execution price
             fees: Trading fees
+            product_type: Product type (DELIVERY, INTRADAY, MARGIN)
+            existing_position_qty: Current position quantity (for SELL validation)
 
         Returns:
             Updated Funds object
+
+        Raises:
+            ValueError: If insufficient funds/margin or invalid operation
         """
         pass
 

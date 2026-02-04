@@ -70,6 +70,7 @@ class AlgoService:
             overall_profit_target=data.overall_profit_target,
             profit_cutoff_action=data.profit_cutoff_action,
             is_paper_trading=data.is_paper_trading,
+            product_type=data.product_type,
             default_trailing_stop_enabled=data.default_trailing_stop_enabled,
             default_trailing_stop_pct=data.default_trailing_stop_pct,
             default_profit_booking_rules=(

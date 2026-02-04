@@ -25,7 +25,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { algoApi, signalsApi } from '@/lib/api';
-import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule } from '@/types';
+import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule, StrategyProductType } from '@/types';
 
 interface StrategyDialogProps {
   open: boolean;
@@ -56,6 +56,12 @@ const profitCutoffActions: { value: ProfitCutoffAction; label: string; descripti
   { value: 'NOTIFY_ONLY', label: 'Notify Only', description: 'Send notification but continue trading' },
 ];
 
+const productTypes: { value: StrategyProductType; label: string; description: string }[] = [
+  { value: 'DELIVERY', label: 'Delivery (CNC)', description: 'Full payment, no shorting, hold indefinitely' },
+  { value: 'INTRADAY', label: 'Intraday (MIS)', description: '25% margin, shorting allowed, same-day square off' },
+  { value: 'MARGIN', label: 'Margin (MTF)', description: '50% margin, no shorting, leveraged buying' },
+];
+
 export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogProps) {
   const queryClient = useQueryClient();
   const isEditing = !!strategy;
@@ -79,6 +85,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [overallProfitTarget, setOverallProfitTarget] = useState('');
   const [profitCutoffAction, setProfitCutoffAction] = useState<ProfitCutoffAction>('PAUSE_STRATEGY');
   const [isPaperTrading, setIsPaperTrading] = useState(true);
+  // Product type state (CNC/MIS/MTF)
+  const [productType, setProductType] = useState<StrategyProductType>('DELIVERY');
   // Strategy-level default trailing stop state
   const [defaultTrailingStopEnabled, setDefaultTrailingStopEnabled] = useState(false);
   const [defaultTrailingStopPct, setDefaultTrailingStopPct] = useState('5');
@@ -122,6 +130,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setOverallProfitTarget(strategy.overall_profit_target ? String(strategy.overall_profit_target) : '');
       setProfitCutoffAction(strategy.profit_cutoff_action || 'PAUSE_STRATEGY');
       setIsPaperTrading(strategy.is_paper_trading);
+      // Product type
+      setProductType(strategy.product_type || 'DELIVERY');
       // Strategy-level trailing stop and profit booking
       setDefaultTrailingStopEnabled(strategy.default_trailing_stop_enabled || false);
       setDefaultTrailingStopPct(strategy.default_trailing_stop_pct ? String(strategy.default_trailing_stop_pct * 100) : '5');
@@ -156,6 +166,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setOverallProfitTarget('');
       setProfitCutoffAction('PAUSE_STRATEGY');
       setIsPaperTrading(true);
+      // Product type default
+      setProductType('DELIVERY');
       // Strategy-level trailing stop and profit booking defaults
       setDefaultTrailingStopEnabled(false);
       setDefaultTrailingStopPct('5');
@@ -210,6 +222,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       overall_profit_target: overallProfitTarget ? parseFloat(overallProfitTarget) : undefined,
       profit_cutoff_action: profitCutoffAction,
       is_paper_trading: isPaperTrading,
+      // Product type for orders
+      product_type: productType,
       // Strategy-level default trailing stop and profit booking
       default_trailing_stop_enabled: defaultTrailingStopEnabled,
       default_trailing_stop_pct: defaultTrailingStopEnabled ? parseFloat(defaultTrailingStopPct) / 100 : undefined,
@@ -379,6 +393,27 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 onCheckedChange={setIsPaperTrading}
               />
               <Label htmlFor="paperTrading">Paper Trading Mode</Label>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="productType">Product Type</Label>
+              <Select value={productType} onValueChange={(v) => setProductType(v as StrategyProductType)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select product type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productTypes.map((pt) => (
+                    <SelectItem key={pt.value} value={pt.value}>
+                      {pt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {productType && (
+                <p className="text-xs text-muted-foreground">
+                  {productTypes.find((pt) => pt.value === productType)?.description}
+                </p>
+              )}
             </div>
           </TabsContent>
 

@@ -623,6 +623,7 @@ export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' 
 export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'CLOSE_POSITIONS_AND_CONTINUE' | 'NOTIFY_ONLY';
+export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN';
 
 export interface AlgoStrategy {
   id: string;
@@ -647,6 +648,8 @@ export interface AlgoStrategy {
   overall_profit_target: number | null;
   profit_cutoff_action: ProfitCutoffAction;
   is_paper_trading: boolean;
+  // Product type for orders (CNC/MIS/MTF)
+  product_type: StrategyProductType;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
@@ -680,6 +683,8 @@ export interface AlgoStrategyCreate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Product type for orders (CNC/MIS/MTF)
+  product_type?: StrategyProductType;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
@@ -705,6 +710,8 @@ export interface AlgoStrategyUpdate {
   overall_profit_target?: number;
   profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
+  // Product type for orders (CNC/MIS/MTF)
+  product_type?: StrategyProductType;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;

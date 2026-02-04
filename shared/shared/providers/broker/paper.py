@@ -18,6 +18,7 @@ from ..schemas import (
     OrderStatus,
     OrderType,
     Position,
+    ProductType,
 )
 from .base import Broker
 
@@ -175,24 +176,131 @@ class PaperBroker(Broker):
         order_value = price * order.quantity
         fees = order_value * self.FEE_PERCENT
 
-        # Check funds for buy orders - use provider if available
+        # Get current position for validation
+        positions = self._positions.get(user_id, {})
+        existing_position = positions.get(order.symbol.upper())
+        existing_qty = existing_position.quantity if existing_position else Decimal("0")
+
+        # Normalize product type
+        product_type = ProductType.normalize(order.product_type)
+        margin_percent = Decimal(str(ProductType.get_margin_percent(order.product_type)))
+
+        # Validate order based on product type
         funds = await self.get_funds(user_id)
-        if order.side == OrderSide.BUY:
-            total_cost = order_value + fees
-            if total_cost > funds.available_cash:
-                return OrderResponse(
-                    order_id=order_id,
-                    status=OrderStatus.REJECTED,
-                    symbol=order.symbol,
-                    side=order.side,
-                    order_type=order.order_type,
-                    quantity=order.quantity,
-                    message=f"Insufficient funds. Required: {total_cost}, Available: {funds.available_cash}",
-                    placed_at=now,
-                )
+        validation_error = self._validate_order_for_product_type(
+            order=order,
+            product_type=product_type,
+            margin_percent=margin_percent,
+            order_value=order_value,
+            fees=fees,
+            funds=funds,
+            existing_qty=existing_qty,
+        )
+        if validation_error:
+            return OrderResponse(
+                order_id=order_id,
+                status=OrderStatus.REJECTED,
+                symbol=order.symbol,
+                side=order.side,
+                order_type=order.order_type,
+                quantity=order.quantity,
+                message=validation_error,
+                placed_at=now,
+            )
 
         # Handle different order types
         return await self._process_order(user_id, order, order_id, now, market_price, price, fees)
+
+    def _validate_order_for_product_type(
+        self,
+        order: OrderRequest,
+        product_type: ProductType,
+        margin_percent: Decimal,
+        order_value: Decimal,
+        fees: Decimal,
+        funds: Funds,
+        existing_qty: Decimal,
+    ) -> str | None:
+        """Validate order based on product type rules.
+
+        Returns:
+            Error message if validation fails, None if valid.
+        """
+        if order.side == OrderSide.BUY:
+            return self._validate_buy_order(product_type, margin_percent, order_value, fees, funds)
+        else:  # SELL
+            return self._validate_sell_order(
+                order, product_type, margin_percent, order_value, fees, funds, existing_qty
+            )
+
+    def _validate_buy_order(
+        self,
+        product_type: ProductType,
+        margin_percent: Decimal,
+        order_value: Decimal,
+        fees: Decimal,
+        funds: Funds,
+    ) -> str | None:
+        """Validate BUY order based on product type."""
+        if product_type == ProductType.DELIVERY:
+            # DELIVERY: Full payment required
+            total_cost = order_value + fees
+            if total_cost > funds.available_cash:
+                return (
+                    f"Insufficient funds for DELIVERY buy. "
+                    f"Required: ₹{total_cost:.2f}, Available: ₹{funds.available_cash:.2f}"
+                )
+        else:
+            # INTRADAY/MARGIN: Margin required
+            margin_required = order_value * margin_percent + fees
+            if margin_required > funds.available_cash:
+                return (
+                    f"Insufficient margin for {product_type.value} buy. "
+                    f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                    f"Available: ₹{funds.available_cash:.2f}"
+                )
+        return None
+
+    def _validate_sell_order(
+        self,
+        order: OrderRequest,
+        product_type: ProductType,
+        margin_percent: Decimal,
+        order_value: Decimal,
+        fees: Decimal,
+        funds: Funds,
+        existing_qty: Decimal,
+    ) -> str | None:
+        """Validate SELL order based on product type."""
+        if product_type == ProductType.DELIVERY:
+            # DELIVERY: Must own shares to sell (no shorting)
+            if existing_qty < order.quantity:
+                return (
+                    f"Cannot short sell in DELIVERY mode. "
+                    f"Trying to sell {order.quantity} shares but only own {existing_qty}."
+                )
+
+        elif product_type == ProductType.INTRADAY:
+            # INTRADAY: Short selling allowed with margin
+            # If opening a short (not closing existing long), check margin
+            if existing_qty <= 0:
+                margin_required = order_value * margin_percent + fees
+                if margin_required > funds.available_cash:
+                    return (
+                        f"Insufficient margin for INTRADAY short sell. "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                        f"Available: ₹{funds.available_cash:.2f}"
+                    )
+
+        elif product_type == ProductType.MARGIN:
+            # MARGIN (MTF): No short selling allowed
+            if existing_qty < order.quantity:
+                return (
+                    f"Cannot short sell in MARGIN (MTF) mode. "
+                    f"Trying to sell {order.quantity} shares but only own {existing_qty}."
+                )
+
+        return None
 
     async def _process_order(
         self,
@@ -341,6 +449,11 @@ class PaperBroker(Broker):
         """Execute an order immediately."""
         order_id = str(uuid4())
 
+        # Get existing position for funds update
+        positions = self._positions.get(user_id, {})
+        existing_position = positions.get(order.symbol.upper())
+        existing_qty = existing_position.quantity if existing_position else Decimal("0")
+
         # Update funds - use provider if available for database sync
         if self._funds_provider is not None:
             await self._funds_provider.update_funds_for_trade(
@@ -349,9 +462,11 @@ class PaperBroker(Broker):
                 quantity=Decimal(str(order.quantity)),
                 price=price,
                 fees=fees,
+                product_type=order.product_type,
+                existing_position_qty=existing_qty,
             )
         else:
-            # In-memory funds update (no persistence)
+            # In-memory funds update (no persistence) - simplified, no product type logic
             order_value = price * order.quantity
             funds = self._funds[user_id]
             if order.side == OrderSide.BUY:

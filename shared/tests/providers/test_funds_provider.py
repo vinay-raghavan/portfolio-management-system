@@ -123,7 +123,7 @@ class TestDatabaseFundsProvider:
 
     @pytest.mark.asyncio
     async def test_update_funds_for_sell_trade(self):
-        """Test that SELL trade adds to cash balance."""
+        """Test that SELL trade adds to cash balance when closing a position."""
         user_id = str(uuid4())
         existing_funds = MockUserFunds(
             user_id=user_id,
@@ -139,6 +139,7 @@ class TestDatabaseFundsProvider:
                 quantity=Decimal("10"),
                 price=Decimal("1100"),
                 fees=Decimal("10"),
+                existing_position_qty=Decimal("10"),  # Owns 10 shares
             )
 
         # Should add 10*1100 - 10 = 10990
@@ -254,6 +255,7 @@ class TestFundsReflection:
                 quantity=Decimal("100"),
                 price=Decimal("600"),
                 fees=Decimal("50"),
+                existing_position_qty=Decimal("100"),  # Owns 100 shares
             )
 
         # Available cash should increase by 100*600 - 50 = 59950
@@ -293,6 +295,7 @@ class TestFundsReflection:
                 quantity=Decimal("50"),
                 price=Decimal("1100"),
                 fees=Decimal("25"),
+                existing_position_qty=Decimal("50"),  # Owns 50 shares after buy
             )
 
         # Final balance: 49975 + (50*1100 - 25) = 49975 + 54975 = 104950
@@ -328,8 +331,205 @@ class TestFundsReflection:
                 quantity=Decimal("50"),
                 price=Decimal("900"),
                 fees=Decimal("25"),
+                existing_position_qty=Decimal("50"),  # Owns 50 shares after buy
             )
 
         # Final balance: 49975 + (50*900 - 25) = 49975 + 44975 = 94950
         assert existing_funds.cash_balance == Decimal("94950")
         # Net loss: 100000 - 94950 = 5050 (including fees)
+
+
+class TestProductTypeValidation:
+    """Tests for product type (CNC/MIS/MTF) validation in funds handling."""
+
+    @pytest.mark.asyncio
+    async def test_delivery_buy_deducts_full_amount(self):
+        """Test DELIVERY buy deducts full order value from cash."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="BUY",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="DELIVERY",
+            )
+
+        # Full deduction: 10 * 1000 + 10 = 10010
+        assert existing_funds.cash_balance == Decimal("89990")
+
+    @pytest.mark.asyncio
+    async def test_intraday_buy_blocks_margin(self):
+        """Test INTRADAY buy blocks only margin (25%) from available cash."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+            margin_used=Decimal("0"),
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="BUY",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="INTRADAY",
+            )
+
+        # Margin blocked: 10 * 1000 * 0.25 + 10 = 2510
+        # Cash reduced by margin amount
+        assert existing_funds.cash_balance == Decimal("97490")
+        assert existing_funds.margin_used == Decimal("2510")
+
+    @pytest.mark.asyncio
+    async def test_margin_buy_blocks_50_percent(self):
+        """Test MARGIN (MTF) buy blocks 50% margin."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+            margin_used=Decimal("0"),
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="BUY",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="MARGIN",
+            )
+
+        # Margin blocked: 10 * 1000 * 0.50 + 10 = 5010
+        assert existing_funds.cash_balance == Decimal("94990")
+        assert existing_funds.margin_used == Decimal("5010")
+
+    @pytest.mark.asyncio
+    async def test_intraday_short_sell_blocks_margin(self):
+        """Test INTRADAY short sell (no existing position) blocks margin."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+            margin_used=Decimal("0"),
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="SELL",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="INTRADAY",
+                existing_position_qty=Decimal("0"),  # No existing position = short sell
+            )
+
+        # Short sell margin: 10 * 1000 * 0.25 + 10 = 2510
+        assert existing_funds.margin_used == Decimal("2510")
+
+    @pytest.mark.asyncio
+    async def test_delivery_sell_closing_position_adds_proceeds(self):
+        """Test DELIVERY sell of owned shares adds proceeds to cash."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("50000")
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="SELL",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="DELIVERY",
+                existing_position_qty=Decimal("10"),  # Owns 10 shares
+            )
+
+        # Proceeds: 10 * 1000 - 10 = 9990
+        assert existing_funds.cash_balance == Decimal("59990")
+
+    @pytest.mark.asyncio
+    async def test_intraday_close_short_releases_margin(self):
+        """Test closing INTRADAY short position releases margin."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+        initial_margin = Decimal("2500")  # Margin blocked from short
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+            margin_used=initial_margin,
+        )
+
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="BUY",
+                quantity=Decimal("10"),
+                price=Decimal("900"),  # Buying back at lower price
+                fees=Decimal("10"),
+                product_type="INTRADAY",
+                existing_position_qty=Decimal("-10"),  # Short position
+            )
+
+        # Closing short:
+        # - Total cost: 10 * 900 + 10 = 9010
+        # - Margin to release: min(2500, 9000 * 0.25) = min(2500, 2250) = 2250
+        # - Cash: 100000 - 9010 + 2250 = 93240
+        # - Margin: 2500 - 2250 = 250
+        assert existing_funds.cash_balance == Decimal("93240")
+        assert existing_funds.margin_used == Decimal("250")
+
+    @pytest.mark.asyncio
+    async def test_product_type_aliases_work(self):
+        """Test that CNC, MIS, MTF aliases work correctly."""
+        user_id = str(uuid4())
+        initial_balance = Decimal("100000")
+
+        # Test CNC alias for DELIVERY
+        existing_funds = MockUserFunds(
+            user_id=user_id,
+            cash_balance=initial_balance,
+        )
+        provider = create_provider()
+
+        with patch.object(provider, "_get_or_create_funds", return_value=existing_funds):
+            await provider.update_funds_for_trade(
+                user_id=user_id,
+                side="BUY",
+                quantity=Decimal("10"),
+                price=Decimal("1000"),
+                fees=Decimal("10"),
+                product_type="CNC",  # Alias for DELIVERY
+            )
+
+        # Should behave like DELIVERY - full deduction
+        assert existing_funds.cash_balance == Decimal("89990")

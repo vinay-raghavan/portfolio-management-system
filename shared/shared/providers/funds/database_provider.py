@@ -2,6 +2,9 @@
 
 This module provides a FundsProvider implementation that directly
 interacts with the user_funds table, usable by both backend and trading-engine.
+
+Supports CNC (Delivery), MIS (Intraday), and MTF (Margin) product types with
+proper margin blocking and position validation.
 """
 
 import logging
@@ -13,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.providers.broker.funds_provider import FundsProvider
-from shared.providers.schemas import Funds
+from shared.providers.schemas import Funds, ProductType
 
 logger = logging.getLogger(__name__)
 
@@ -89,28 +92,41 @@ class DatabaseFundsProvider(FundsProvider):
         quantity: Decimal,
         price: Decimal,
         fees: Decimal,
+        product_type: ProductType = ProductType.DELIVERY,
+        existing_position_qty: Decimal | None = None,
     ) -> Funds:
-        """Update funds after a trade execution."""
+        """Update funds after a trade execution with product type rules.
+
+        Product type rules:
+        - DELIVERY (CNC): Full payment for BUY, must own shares to SELL
+        - INTRADAY (MIS): Block margin (25%) for both BUY and SELL
+        - MARGIN (MTF): Block margin (50%) for BUY only, no shorting
+        """
         trade_value = quantity * price
         funds = await self._get_or_create_funds(user_id)
+        normalized_type = ProductType.normalize(product_type)
+        margin_percent = Decimal(str(ProductType.get_margin_percent(product_type)))
 
         if side.upper() == "BUY":
-            total_cost = trade_value + fees
-            if funds.available_cash < total_cost:
-                raise ValueError(
-                    f"Insufficient funds. Required: {total_cost}, Available: {funds.available_cash}"
-                )
-            funds.cash_balance -= total_cost
-            logger.debug(
-                f"BUY: Deducted {total_cost} from user {user_id[:8]}... "
-                f"New balance: {funds.cash_balance}"
+            await self._handle_buy(
+                funds,
+                user_id,
+                trade_value,
+                fees,
+                normalized_type,
+                margin_percent,
+                existing_position_qty,
             )
         else:  # SELL
-            net_proceeds = trade_value - fees
-            funds.cash_balance += net_proceeds
-            logger.debug(
-                f"SELL: Added {net_proceeds} to user {user_id[:8]}... "
-                f"New balance: {funds.cash_balance}"
+            await self._handle_sell(
+                funds,
+                user_id,
+                trade_value,
+                fees,
+                quantity,
+                normalized_type,
+                margin_percent,
+                existing_position_qty,
             )
 
         await self.db.flush()
@@ -122,6 +138,168 @@ class DatabaseFundsProvider(FundsProvider):
             total_balance=funds.cash_balance + funds.margin_used,
             collateral=funds.collateral,
         )
+
+    async def _handle_buy(
+        self,
+        funds: Any,
+        user_id: str,
+        trade_value: Decimal,
+        fees: Decimal,
+        product_type: ProductType,
+        margin_percent: Decimal,
+        existing_position_qty: Decimal | None,
+    ) -> None:
+        """Handle BUY order funds update based on product type."""
+        total_cost = trade_value + fees
+
+        if product_type == ProductType.DELIVERY:
+            # DELIVERY: Full payment required
+            if funds.available_cash < total_cost:
+                raise ValueError(
+                    f"Insufficient funds for DELIVERY buy. "
+                    f"Required: ₹{total_cost:.2f}, Available: ₹{funds.available_cash:.2f}"
+                )
+            funds.cash_balance -= total_cost
+            logger.debug(
+                f"DELIVERY BUY: Deducted ₹{total_cost:.2f} from user {user_id[:8]}... "
+                f"New balance: ₹{funds.cash_balance:.2f}"
+            )
+
+        elif product_type == ProductType.INTRADAY:
+            # Check if this is closing a short position
+            is_closing_short = existing_position_qty is not None and existing_position_qty < 0
+
+            if is_closing_short:
+                # Closing short position - deduct cost and release margin
+                funds.cash_balance -= total_cost
+                # Release the margin that was blocked for the short
+                margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                if margin_to_release > 0:
+                    funds.margin_used -= margin_to_release
+                    funds.cash_balance += margin_to_release
+                logger.debug(
+                    f"INTRADAY BUY (close short): Cost ₹{total_cost:.2f}, "
+                    f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
+                )
+            else:
+                # Opening long position - block margin
+                margin_required = trade_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    raise ValueError(
+                        f"Insufficient margin for INTRADAY buy. "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                        f"Available: ₹{funds.available_cash:.2f}"
+                    )
+                funds.cash_balance -= margin_required
+                funds.margin_used += margin_required
+                logger.debug(
+                    f"INTRADAY BUY: Blocked margin ₹{margin_required:.2f} "
+                    f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
+                )
+
+        elif product_type == ProductType.MARGIN:
+            # MARGIN: Block margin instead of full payment
+            margin_required = trade_value * margin_percent + fees
+            if funds.available_cash < margin_required:
+                raise ValueError(
+                    f"Insufficient margin for MARGIN buy. "
+                    f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                    f"Available: ₹{funds.available_cash:.2f}"
+                )
+            # Block margin from available cash
+            funds.cash_balance -= margin_required
+            funds.margin_used += margin_required
+            logger.debug(
+                f"MARGIN BUY: Blocked margin ₹{margin_required:.2f} "
+                f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
+            )
+
+    async def _handle_sell(
+        self,
+        funds: Any,
+        user_id: str,
+        trade_value: Decimal,
+        fees: Decimal,
+        quantity: Decimal,
+        product_type: ProductType,
+        margin_percent: Decimal,
+        existing_position_qty: Decimal | None,
+    ) -> None:
+        """Handle SELL order funds update based on product type."""
+
+        if product_type == ProductType.DELIVERY:
+            # DELIVERY: Must own shares to sell (no shorting)
+            if existing_position_qty is None or existing_position_qty < quantity:
+                owned = existing_position_qty or Decimal("0")
+                raise ValueError(
+                    f"Cannot short sell in DELIVERY mode. "
+                    f"Trying to sell {quantity} shares but only own {owned}."
+                )
+            # Credit proceeds to cash
+            net_proceeds = trade_value - fees
+            funds.cash_balance += net_proceeds
+            logger.debug(
+                f"DELIVERY SELL: Credited ₹{net_proceeds:.2f} to user {user_id[:8]}... "
+                f"New balance: ₹{funds.cash_balance:.2f}"
+            )
+
+        elif product_type == ProductType.INTRADAY:
+            # INTRADAY: Short selling allowed with margin
+            # Check if this is closing an existing position or opening a short
+            is_closing = existing_position_qty is not None and existing_position_qty > 0
+
+            if is_closing:
+                # Closing long position - release margin and credit P&L
+                net_proceeds = trade_value - fees
+                funds.cash_balance += net_proceeds
+                # Release any margin that was blocked
+                margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                if margin_to_release > 0:
+                    funds.margin_used -= margin_to_release
+                    funds.cash_balance += margin_to_release
+                logger.debug(
+                    f"INTRADAY SELL (close): Credited ₹{net_proceeds:.2f}, "
+                    f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
+                )
+            else:
+                # Opening short position - block margin
+                margin_required = trade_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    raise ValueError(
+                        f"Insufficient margin for INTRADAY short sell. "
+                        f"Required: ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                        f"Available: ₹{funds.available_cash:.2f}"
+                    )
+                funds.cash_balance -= margin_required
+                funds.margin_used += margin_required
+                # Also credit the sale proceeds
+                net_proceeds = trade_value - fees
+                funds.cash_balance += net_proceeds
+                logger.debug(
+                    f"INTRADAY SHORT: Blocked margin ₹{margin_required:.2f}, "
+                    f"credited ₹{net_proceeds:.2f} for user {user_id[:8]}..."
+                )
+
+        elif product_type == ProductType.MARGIN:
+            # MARGIN (MTF): No short selling allowed
+            if existing_position_qty is None or existing_position_qty < quantity:
+                owned = existing_position_qty or Decimal("0")
+                raise ValueError(
+                    f"Cannot short sell in MARGIN (MTF) mode. "
+                    f"Trying to sell {quantity} shares but only own {owned}."
+                )
+            # Closing leveraged position - release margin and credit proceeds
+            net_proceeds = trade_value - fees
+            funds.cash_balance += net_proceeds
+            # Release the margin that was blocked
+            margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+            if margin_to_release > 0:
+                funds.margin_used -= margin_to_release
+                funds.cash_balance += margin_to_release
+            logger.debug(
+                f"MARGIN SELL: Credited ₹{net_proceeds:.2f}, "
+                f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
+            )
 
     async def initialize_funds(
         self,

@@ -21,9 +21,14 @@ from engine.core.locks import (
     DistributedLock,
 )
 from engine.core.redis import get_redis
-from engine.models.algo import PositionSizingMethod, StrategyStatus, UserStrategy
+from engine.models.algo import (
+    PositionSizingMethod,
+    StrategyStatus,
+    UserStrategy,
+)
 from engine.providers.broker import PaperBroker
 from engine.providers.data import DataProvider, get_data_provider
+from engine.providers.schemas import ProductType
 from engine.providers.user_broker import get_user_broker
 from engine.strategies.registry import StrategyRegistry
 
@@ -162,6 +167,7 @@ class ExecuteStrategyRequest(BaseModel):
     portfolio_percent: float = 5.0
     risk_per_trade_percent: float = 2.0
     is_paper_trading: bool = True
+    product_type: str = "DELIVERY"
 
 
 class ExecuteStrategyResponse(BaseModel):
@@ -204,6 +210,7 @@ async def execute_strategy_full(
             fixed_amount=Decimal(str(request.fixed_amount)),
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
+            product_type=ProductType.normalize(request.product_type),
         )
 
         # Get broker based on paper trading mode
@@ -397,6 +404,7 @@ async def run_scheduled_strategies(
                         fixed_amount=strategy.fixed_amount or Decimal("10000"),
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
+                        product_type=ProductType.normalize(strategy.product_type.value),
                     )
 
                     # Get broker based on paper trading mode
@@ -628,6 +636,7 @@ async def execute_strategy_by_id(
             fixed_amount=strategy.fixed_amount or Decimal("10000"),
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
+            product_type=ProductType.normalize(strategy.product_type.value),
         )
 
         # Get broker based on paper trading mode

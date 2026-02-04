@@ -10,6 +10,7 @@ from app.modules.algo.models import (
     PositionSizingMethod,
     ProfitCutoffAction,
     ScheduleType,
+    StrategyProductType,
     StrategyStatus,
 )
 from app.modules.portfolio.schemas import ProfitBookingRules
@@ -328,6 +329,8 @@ class StrategyCreate(BaseModel):
     overall_profit_target: Decimal | None = None
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
+    # Product type for orders (CNC/MIS/MTF)
+    product_type: StrategyProductType = StrategyProductType.DELIVERY
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -354,6 +357,8 @@ class StrategyUpdate(BaseModel):
     overall_profit_target: Decimal | None = None
     profit_cutoff_action: ProfitCutoffAction | None = None
     is_paper_trading: bool | None = None
+    # Product type for orders (CNC/MIS/MTF)
+    product_type: StrategyProductType | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
@@ -404,6 +409,8 @@ class StrategyResponse(BaseModel):
     overall_profit_target: Decimal | None
     profit_cutoff_action: ProfitCutoffAction
     is_paper_trading: bool
+    # Product type for orders (CNC/MIS/MTF)
+    product_type: StrategyProductType
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -490,6 +497,7 @@ class StrategyResponse(BaseModel):
                 "overall_profit_target": obj.overall_profit_target,
                 "profit_cutoff_action": obj.profit_cutoff_action,
                 "is_paper_trading": obj.is_paper_trading,
+                "product_type": obj.product_type,
                 "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
                 "default_trailing_stop_pct": obj.default_trailing_stop_pct,
                 "default_profit_booking_rules": (
