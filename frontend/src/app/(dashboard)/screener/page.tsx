@@ -17,6 +17,7 @@ import {
   type ScreenerResultItem,
   type CustomScreener,
   type StrictnessLevel,
+  type InferStrategyResponse,
 } from '@/lib/api';
 import { useNotificationStore, useTradingStore, useUIStore } from '@/store';
 import { useRouter } from 'next/navigation';
@@ -175,6 +176,88 @@ export default function ScreenerPage() {
     createUniverseMutation.mutate(data);
   };
 
+  // Strategy inference mutation
+  const inferStrategyMutation = useMutation({
+    mutationFn: (filtersToInfer: FilterConfig[]) =>
+      screenerApi.inferStrategy({ filters: filtersToInfer }),
+    onError: (error: any) => {
+      addNotification({
+        type: 'error',
+        title: 'Inference Failed',
+        message: error.response?.data?.detail || 'Could not analyze filters',
+      });
+    },
+  });
+
+  const handleInferStrategy = async (): Promise<InferStrategyResponse | null> => {
+    const filtersToUse = mode === 'custom' ? filters : [];
+    if (filtersToUse.length === 0) {
+      addNotification({
+        type: 'warning',
+        title: 'No Filters',
+        message: 'Smart strategy requires custom filters. Switch to custom mode and add filters.',
+      });
+      return null;
+    }
+    try {
+      const res = await inferStrategyMutation.mutateAsync(filtersToUse);
+      return res.data;
+    } catch {
+      return null;
+    }
+  };
+
+  // Create smart strategy mutation
+  const createSmartStrategyMutation = useMutation({
+    mutationFn: (data: {
+      name: string;
+      strategyType: string;
+      params: Record<string, unknown>;
+      productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+      symbols: string[];
+      filters?: FilterConfig[];
+      isDynamic: boolean;
+      screenerConfig?: Record<string, unknown>;
+    }) =>
+      screenerApi.createSmartStrategy({
+        name: data.name,
+        symbols: data.symbols,
+        filters: data.filters,
+        strategy_type_override: data.strategyType,
+        strategy_params_override: data.params,
+        product_type: data.productType,
+        is_dynamic_universe: data.isDynamic,
+        screener_config: data.screenerConfig,
+      }),
+    onSuccess: (res) => {
+      addNotification({
+        type: 'success',
+        title: 'Strategy Created',
+        message: `Created "${res.data.strategy_name}" with ${res.data.symbol_count} symbols using ${res.data.inferred_strategy_type} strategy`,
+      });
+    },
+    onError: (error: any) => {
+      addNotification({
+        type: 'error',
+        title: 'Failed to Create Strategy',
+        message: error.response?.data?.detail || 'Could not create strategy',
+      });
+    },
+  });
+
+  const handleCreateSmartStrategy = (data: {
+    name: string;
+    strategyType: string;
+    params: Record<string, unknown>;
+    productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+    symbols: string[];
+    filters?: FilterConfig[];
+    isDynamic: boolean;
+    screenerConfig?: Record<string, unknown>;
+  }) => {
+    createSmartStrategyMutation.mutate(data);
+  };
+
   // Build current screener config for dynamic universe support
   const currentScreenerConfig = mode === 'preset' && selectedPreset
     ? { universe, preset: selectedPreset, min_score: 0.5, top_n: 50 }
@@ -222,6 +305,10 @@ export default function ScreenerPage() {
             onViewChart={handleViewChart}
             onQuickTrade={handleQuickTrade}
             onCreateUniverse={handleCreateUniverse}
+            onInferStrategy={handleInferStrategy}
+            onCreateSmartStrategy={handleCreateSmartStrategy}
+            isInferring={inferStrategyMutation.isPending}
+            isCreatingStrategy={createSmartStrategyMutation.isPending}
           />
         </div>
 

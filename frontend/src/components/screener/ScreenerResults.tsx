@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap, BarChart3, Activity, Target, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap, BarChart3, Activity, Target, CheckCircle2, AlertCircle, Info, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +24,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { cn, formatPercent } from '@/lib/utils';
-import type { ScreenerResultItem, FilterConfig } from '@/lib/api';
+import type { ScreenerResultItem, FilterConfig, InferStrategyResponse } from '@/lib/api';
+import { StrategyRecommendationCard } from './StrategyRecommendationCard';
 
 interface ScreenerResultsProps {
   results: ScreenerResultItem[];
@@ -42,7 +43,20 @@ interface ScreenerResultsProps {
   onViewChart?: (symbol: string) => void;
   onCreateAlert?: (symbol: string) => void;
   onQuickTrade?: (symbol: string, side: 'buy' | 'sell') => void;
-  onCreateUniverse?: (data: { name: string; description?: string; symbols: string[]; screenerConfig?: object; isDynamic: boolean }) => void;
+  onCreateUniverse?: (data: { name: string; description?: string; symbols: string[]; screenerConfig?: Record<string, unknown>; isDynamic: boolean }) => void;
+  onInferStrategy?: () => Promise<InferStrategyResponse | null>;
+  onCreateSmartStrategy?: (data: {
+    name: string;
+    strategyType: string;
+    params: Record<string, unknown>;
+    productType: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+    symbols: string[];
+    filters?: FilterConfig[];
+    isDynamic: boolean;
+    screenerConfig?: Record<string, unknown>;
+  }) => void;
+  isInferring?: boolean;
+  isCreatingStrategy?: boolean;
 }
 
 export function ScreenerResults({
@@ -56,6 +70,10 @@ export function ScreenerResults({
   onCreateAlert,
   onQuickTrade,
   onCreateUniverse,
+  onInferStrategy,
+  onCreateSmartStrategy,
+  isInferring,
+  isCreatingStrategy,
 }: ScreenerResultsProps) {
   const [sortField, setSortField] = useState<'rank' | 'score' | 'symbol'>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -64,6 +82,9 @@ export function ScreenerResults({
   const [universeName, setUniverseName] = useState('');
   const [universeDescription, setUniverseDescription] = useState('');
   const [isDynamic, setIsDynamic] = useState(false);
+  const [showSmartStrategyDialog, setShowSmartStrategyDialog] = useState(false);
+  const [strategyInference, setStrategyInference] = useState<InferStrategyResponse | null>(null);
+  const [smartStrategyDynamic, setSmartStrategyDynamic] = useState(false);
 
   const passedSymbols = results.filter((r) => r.passed).map((r) => r.symbol);
 
@@ -102,7 +123,7 @@ export function ScreenerResults({
       name: universeName.trim(),
       description: universeDescription.trim() || undefined,
       symbols: passedSymbols,
-      screenerConfig: isDynamic ? screenerConfig : undefined,
+      screenerConfig: isDynamic ? (screenerConfig as Record<string, unknown>) : undefined,
       isDynamic,
     });
     setShowUniverseDialog(false);
@@ -153,6 +174,24 @@ export function ScreenerResults({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {onInferStrategy && screenerConfig?.filters && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        const inference = await onInferStrategy();
+                        if (inference) {
+                          setStrategyInference(inference);
+                          setShowSmartStrategyDialog(true);
+                        }
+                      }}
+                      disabled={isInferring}
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      {isInferring ? 'Analyzing...' : 'Create Smart Strategy'}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={() => setShowUniverseDialog(true)}>
                   <Layers className="h-4 w-4 mr-2" />
                   Create Universe ({passedSymbols.length} symbols)
@@ -388,6 +427,58 @@ export function ScreenerResults({
               Create Universe
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Smart Strategy Dialog */}
+      <Dialog open={showSmartStrategyDialog} onOpenChange={setShowSmartStrategyDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              Create Smart Strategy
+            </DialogTitle>
+            <DialogDescription>
+              AI-powered strategy recommendation based on your screener filters.
+            </DialogDescription>
+          </DialogHeader>
+          {strategyInference && (
+            <div className="py-2">
+              <StrategyRecommendationCard
+                inference={strategyInference}
+                symbolCount={passedSymbols.length}
+                onCreateStrategy={(data) => {
+                  onCreateSmartStrategy?.({
+                    name: data.name,
+                    strategyType: data.strategyType,
+                    params: data.params,
+                    productType: data.productType,
+                    symbols: passedSymbols,
+                    filters: screenerConfig?.filters,
+                    isDynamic: smartStrategyDynamic,
+                    screenerConfig: smartStrategyDynamic ? (screenerConfig as Record<string, unknown>) : undefined,
+                  });
+                  setShowSmartStrategyDialog(false);
+                  setStrategyInference(null);
+                }}
+                isCreating={isCreatingStrategy}
+              />
+              <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                <div className="space-y-0.5">
+                  <Label htmlFor="smart-dynamic" className="text-sm">Dynamic Universe</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-refresh symbols when screener is re-run
+                  </p>
+                </div>
+                <Switch
+                  id="smart-dynamic"
+                  checked={smartStrategyDynamic}
+                  onCheckedChange={setSmartStrategyDynamic}
+                  disabled={!screenerConfig}
+                />
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Card>

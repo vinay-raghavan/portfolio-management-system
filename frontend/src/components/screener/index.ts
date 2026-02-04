@@ -5,4 +5,5 @@ export { PresetSelector } from './PresetSelector';
 export { ScreenerConfig } from './ScreenerConfig';
 export { SavedScreenersList } from './SavedScreenersList';
 export { PerformanceWidget } from './PerformanceWidget';
+export { StrategyRecommendationCard } from './StrategyRecommendationCard';
 
