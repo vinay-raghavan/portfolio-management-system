@@ -769,6 +769,69 @@ export interface CreateUniverseFromScreenerResponse {
   created_at: string;
 }
 
+// ============== Strategy Inference Types ==============
+
+export type TradingIntent = 'momentum' | 'mean_reversion' | 'breakout' | 'trend_following' | 'swing';
+export type RiskProfile = 'conservative' | 'moderate' | 'aggressive';
+
+export interface InferStrategyRequest {
+  screener_run_id?: string;
+  filters?: FilterConfig[];
+  preset?: string;
+}
+
+export interface StrategyRecommendation {
+  strategy_type: string;
+  strategy_name: string;
+  description: string;
+  suggested_params: Record<string, unknown>;
+  confidence: number;
+  reasoning: string[];
+}
+
+export interface FilterAnalysis {
+  primary_intent: TradingIntent;
+  secondary_intent?: TradingIntent;
+  risk_profile: RiskProfile;
+  detected_patterns: string[];
+}
+
+export interface InferStrategyResponse {
+  recommended_strategy: StrategyRecommendation;
+  alternative_strategies: StrategyRecommendation[];
+  filter_analysis: FilterAnalysis;
+}
+
+export interface CreateSmartStrategyRequest {
+  screener_run_id?: string;
+  filters?: FilterConfig[];
+  preset?: string;
+  symbols: string[];
+  name: string;
+  description?: string;
+  strategy_type_override?: string;
+  strategy_params_override?: Record<string, unknown>;
+  product_type?: 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+  position_sizing_method?: string;
+  position_size_value?: number;
+  is_dynamic_universe?: boolean;
+  screener_config?: Record<string, unknown>;
+}
+
+export interface CreateSmartStrategyResponse {
+  strategy_id: string;
+  strategy_name: string;
+  universe_id: string;
+  universe_name: string;
+  symbol_count: number;
+  is_dynamic: boolean;
+  created_at: string;
+  inferred_strategy_type: string;
+  inferred_params: Record<string, unknown>;
+  params_overridden: string[];
+  inference_reasoning: string[];
+}
+
 export const screenerApi = {
   // Presets
   getPresets: () =>
@@ -813,6 +876,12 @@ export const screenerApi = {
   // Performance tracking
   getPerformance: (days: number = 30) =>
     api.get<ScreenerPerformanceStats>('/screener/performance', { params: { days } }),
+
+  // Strategy inference
+  inferStrategy: (data: InferStrategyRequest) =>
+    api.post<InferStrategyResponse>('/screener/infer-strategy', data),
+  createSmartStrategy: (data: CreateSmartStrategyRequest) =>
+    api.post<CreateSmartStrategyResponse>('/screener/create-smart-strategy', data),
 };
 
 // ============== Performance Tracking Types ==============
