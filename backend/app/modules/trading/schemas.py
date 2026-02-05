@@ -5,6 +5,7 @@ from decimal import Decimal
 from enum import Enum
 
 from pydantic import BaseModel, Field
+from shared.providers.schemas import ProductType
 
 
 class OrderSide(str, Enum):
@@ -44,6 +45,10 @@ class OrderCreate(BaseModel):
     price: Decimal | None = Field(None, gt=0)
     stop_loss: Decimal | None = Field(None, gt=0)
     take_profit: Decimal | None = Field(None, gt=0)
+    product_type: ProductType = Field(
+        default=ProductType.DELIVERY,
+        description="Product type: DELIVERY (CNC), INTRADAY (MIS), or MARGIN (MTF)",
+    )
     notes: str | None = None
     is_amo: bool = Field(
         default=False,

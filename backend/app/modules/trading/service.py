@@ -4,10 +4,10 @@ import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from shared.providers.schemas import ProductType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.portfolio.funds_service import FundsService
 from app.modules.portfolio.models import Trade
 from app.modules.portfolio.service import PortfolioService
 from app.modules.trading.models import Order, OrderStatus, OrderTemplate
@@ -72,7 +72,7 @@ class TradingService:
         """
         self.db = db
         self.portfolio_service = PortfolioService(db)
-        self.funds_service = FundsService(db)
+        self.funds_provider = DatabaseFundsProvider(db)
         self.validator = OrderValidator(db)
         self._broker = broker
         self._skip_validation = skip_validation
@@ -88,8 +88,7 @@ class TradingService:
             self._broker = get_broker()
             # Configure database-backed funds for paper trading
             if isinstance(self._broker, PaperBroker):
-                funds_provider = DatabaseFundsProvider(self.db)
-                self._broker.set_funds_provider(funds_provider)
+                self._broker.set_funds_provider(self.funds_provider)
         return self._broker
 
     @property
@@ -250,17 +249,25 @@ class TradingService:
             )
             self.db.add(trade)
 
-            # Settle funds (deduct for BUY, add for SELL)
-            await self.funds_service.process_trade_settlement(
+            # Get existing position for funds settlement
+            existing_position = await self.portfolio_service.get_position(user_id, order.symbol)
+            existing_qty = existing_position.quantity if existing_position else Decimal("0")
+            entry_price = existing_position.avg_cost if existing_position else None
+
+            # Settle funds with product type support
+            await self.funds_provider.update_funds_for_trade(
                 user_id=user_id,
                 side=order.side,
                 quantity=order.quantity,
                 price=response.filled_price,
                 fees=response.fees,
+                product_type=order_data.product_type,
+                existing_position_qty=existing_qty,
+                entry_price=entry_price,
             )
             logger.info(
                 f"Funds settled for {order.side} {order.quantity} {order.symbol} "
-                f"@ {response.filled_price}"
+                f"@ {response.filled_price} (product: {order_data.product_type.value})"
             )
 
             # Update position in database
@@ -270,6 +277,7 @@ class TradingService:
                 side=order.side,
                 quantity=order.quantity,
                 price=response.filled_price,
+                product_type=order_data.product_type,
             )
         elif response.status == ProviderOrderStatus.REJECTED:
             order.status = OrderStatus.REJECTED.value
@@ -329,16 +337,38 @@ class TradingService:
         side: str,
         quantity: Decimal,
         price: Decimal,
+        product_type: ProductType = ProductType.DELIVERY,
     ) -> None:
-        """Update position after a trade execution."""
+        """Update position after a trade execution.
+
+        Supports short selling for INTRADAY product type.
+        """
         position = await self.portfolio_service.get_position(user_id, symbol)
 
         if side == "BUY":
             if position is None:
-                # New position
+                # New long position
                 await self.portfolio_service.update_position(user_id, symbol, quantity, price)
+            elif position.quantity < 0:
+                # Closing a short position (INTRADAY)
+                new_quantity = position.quantity + quantity
+                if new_quantity == 0:
+                    # Fully closed
+                    await self.portfolio_service.update_position(
+                        user_id, symbol, Decimal("0"), position.avg_cost
+                    )
+                elif new_quantity > 0:
+                    # Closed short and opened long
+                    await self.portfolio_service.update_position(
+                        user_id, symbol, new_quantity, price
+                    )
+                else:
+                    # Partially closed short
+                    await self.portfolio_service.update_position(
+                        user_id, symbol, new_quantity, position.avg_cost
+                    )
             else:
-                # Average up/down
+                # Average up/down on long position
                 total_cost = (position.quantity * position.avg_cost) + (quantity * price)
                 new_quantity = position.quantity + quantity
                 new_avg_cost = total_cost / new_quantity
@@ -346,15 +376,30 @@ class TradingService:
                     user_id, symbol, new_quantity, new_avg_cost
                 )
         else:  # SELL
-            if position is None:
-                # Short selling not supported in paper trading
+            if position is None or position.quantity == 0:
+                # Opening a short position (only allowed for INTRADAY)
+                if ProductType.allows_short_selling(product_type):
+                    # Store as negative quantity to indicate short
+                    await self.portfolio_service.update_position(user_id, symbol, -quantity, price)
+                else:
+                    logger.warning(
+                        f"Short selling not allowed for {product_type.value}. "
+                        f"User {user_id[:8]} tried to sell {quantity} {symbol} without position."
+                    )
                 return
+
             new_quantity = position.quantity - quantity
             if new_quantity <= 0:
-                # Close position
-                await self.portfolio_service.update_position(
-                    user_id, symbol, Decimal("0"), position.avg_cost
-                )
+                if new_quantity < 0 and ProductType.allows_short_selling(product_type):
+                    # Closed long and opened short
+                    await self.portfolio_service.update_position(
+                        user_id, symbol, new_quantity, price
+                    )
+                else:
+                    # Close position
+                    await self.portfolio_service.update_position(
+                        user_id, symbol, Decimal("0"), position.avg_cost
+                    )
             else:
                 # Partial sell - keep same avg cost
                 await self.portfolio_service.update_position(
