@@ -1,5 +1,6 @@
 """Strategy registry for dynamic strategy loading and management."""
 
+import inspect
 import logging
 from typing import TYPE_CHECKING
 
@@ -7,6 +8,15 @@ if TYPE_CHECKING:
     from shared.strategies.base import BaseStrategy
 
 logger = logging.getLogger(__name__)
+
+# Metadata keys that are stored alongside strategy params but shouldn't be passed to __init__
+METADATA_KEYS = {
+    "source",
+    "filters_used",
+    "product_type",
+    "inferred_params",
+    "initial_symbols",
+}
 
 
 class StrategyRegistry:
@@ -61,7 +71,8 @@ class StrategyRegistry:
 
         Args:
             name: Strategy name
-            params: Optional parameters to pass to the strategy
+            params: Optional parameters to pass to the strategy (may contain metadata keys
+                   like 'source', 'filters_used', 'inferred_params' that will be filtered out)
 
         Returns:
             Strategy instance or None if not found
@@ -69,7 +80,33 @@ class StrategyRegistry:
         strategy_class = cls._strategies.get(name)
         if strategy_class:
             if params:
-                return strategy_class(**params)
+                # Extract inferred_params if present (these are the actual strategy params)
+                inferred = params.get("inferred_params", {})
+
+                # Filter out metadata keys and merge with inferred params
+                filtered_params = {
+                    k: v for k, v in params.items() if k not in METADATA_KEYS
+                }
+
+                # Inferred params take precedence (they're the ones extracted for the strategy)
+                if inferred:
+                    filtered_params.update(inferred)
+
+                # Get valid parameter names from the strategy class __init__
+                sig = inspect.signature(strategy_class.__init__)
+                valid_params = set(sig.parameters.keys()) - {"self"}
+
+                # Only pass parameters that the strategy accepts
+                final_params = {
+                    k: v for k, v in filtered_params.items() if k in valid_params
+                }
+
+                logger.debug(
+                    f"Creating strategy '{name}' with params: {final_params} "
+                    f"(filtered from {params})"
+                )
+
+                return strategy_class(**final_params)
             return strategy_class()
         return None
 
