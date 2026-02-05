@@ -5,12 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from shared.strategies import register_all_prebuilt_strategies
 
 # Import strategies module to trigger registration via decorators
 # This ensures all strategies are registered when the app starts
 import engine.strategies  # noqa: F401
 from engine.config import settings
-from shared.strategies import register_all_prebuilt_strategies
 from engine.core.redis import close_redis_pool
 from engine.routes import execution_router, health_router
 
