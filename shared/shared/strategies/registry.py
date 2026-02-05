@@ -84,9 +84,7 @@ class StrategyRegistry:
                 inferred = params.get("inferred_params", {})
 
                 # Filter out metadata keys and merge with inferred params
-                filtered_params = {
-                    k: v for k, v in params.items() if k not in METADATA_KEYS
-                }
+                filtered_params = {k: v for k, v in params.items() if k not in METADATA_KEYS}
 
                 # Inferred params take precedence (they're the ones extracted for the strategy)
                 if inferred:
@@ -97,9 +95,7 @@ class StrategyRegistry:
                 valid_params = set(sig.parameters.keys()) - {"self"}
 
                 # Only pass parameters that the strategy accepts
-                final_params = {
-                    k: v for k, v in filtered_params.items() if k in valid_params
-                }
+                final_params = {k: v for k, v in filtered_params.items() if k in valid_params}
 
                 logger.debug(
                     f"Creating strategy '{name}' with params: {final_params} "

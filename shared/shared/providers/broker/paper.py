@@ -449,10 +449,17 @@ class PaperBroker(Broker):
         """Execute an order immediately."""
         order_id = str(uuid4())
 
-        # Get existing position for funds update
-        positions = self._positions.get(user_id, {})
-        existing_position = positions.get(order.symbol.upper())
-        existing_qty = existing_position.quantity if existing_position else Decimal("0")
+        # Get existing position for funds update - use provider if available for database query
+        if self._funds_provider is not None:
+            existing_qty = await self._funds_provider.get_position_quantity(
+                user_id=user_id,
+                symbol=order.symbol.upper(),
+            )
+        else:
+            # Fall back to in-memory positions
+            positions = self._positions.get(user_id, {})
+            existing_position = positions.get(order.symbol.upper())
+            existing_qty = existing_position.quantity if existing_position else Decimal("0")
 
         # Update funds - use provider if available for database sync
         if self._funds_provider is not None:

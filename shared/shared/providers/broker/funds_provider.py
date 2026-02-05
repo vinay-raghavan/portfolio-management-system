@@ -97,3 +97,23 @@ class FundsProvider(ABC):
             True if user has sufficient funds
         """
         pass
+
+    @abstractmethod
+    async def get_position_quantity(
+        self,
+        user_id: str,
+        symbol: str,
+    ) -> Decimal:
+        """Get existing position quantity for a user and symbol.
+
+        This is used to determine if a SELL order is closing an existing position
+        (which releases margin) or opening a short position (which blocks margin).
+
+        Args:
+            user_id: User identifier
+            symbol: Stock symbol
+
+        Returns:
+            Current position quantity (positive for long, negative for short, 0 if no position)
+        """
+        pass
