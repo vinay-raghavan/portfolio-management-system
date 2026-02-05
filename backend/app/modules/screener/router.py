@@ -512,16 +512,33 @@ async def store_recommendations(
         )
     )
 
+    # Fetch current prices for all symbols to populate price_at_rec
+    symbols = [r.get("symbol", "") for r in data.results if r.get("symbol")]
+    price_map: dict[str, float] = {}
+
+    if symbols:
+        provider = get_data_provider("yahoo")
+        for symbol in symbols:
+            try:
+                quote = await provider.get_quote(symbol)
+                if quote and quote.price:
+                    price_map[symbol] = float(quote.price)
+            except Exception:
+                pass  # Price will default to 0.0 if fetch fails
+
     # Store new recommendations
     stored_count = 0
     for i, result in enumerate(data.results):
+        symbol = result.get("symbol", "")
+        # Use fetched price, or fallback to metadata, or 0.0
+        price_at_rec = price_map.get(symbol, result.get("metadata", {}).get("current_price", 0.0))
         rec = DailyRecommendation(
             date=rec_date,
             category=data.category,
-            symbol=result.get("symbol", ""),
+            symbol=symbol,
             rank=i + 1,
             score=result.get("score", 0.0),
-            price_at_rec=result.get("metadata", {}).get("current_price", 0.0),
+            price_at_rec=price_at_rec,
             filter_scores=result.get("filter_scores", {}),
             reasons=result.get("reasons", []),
             extra_data=result.get("metadata", {}),
@@ -778,27 +795,37 @@ async def update_recommendation_returns(
 
     # Update 1-day returns
     for rec in recs_1d:
-        if rec.symbol in price_map:
+        if rec.symbol in price_map and rec.price_at_rec and rec.price_at_rec > 0:
             current_price = price_map[rec.symbol]
             rec.price_1d = current_price
             rec.return_1d = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
             updated_1d += 1
+        elif rec.symbol in price_map:
+            # Can't calculate return without valid price_at_rec, but record current price
+            rec.price_1d = price_map[rec.symbol]
+            errors.append(f"{rec.symbol}: Missing price_at_rec for 1d return")
 
     # Update 1-week returns
     for rec in recs_1w:
-        if rec.symbol in price_map:
+        if rec.symbol in price_map and rec.price_at_rec and rec.price_at_rec > 0:
             current_price = price_map[rec.symbol]
             rec.price_1w = current_price
             rec.return_1w = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
             updated_1w += 1
+        elif rec.symbol in price_map:
+            rec.price_1w = price_map[rec.symbol]
+            errors.append(f"{rec.symbol}: Missing price_at_rec for 1w return")
 
     # Update 1-month returns
     for rec in recs_1m:
-        if rec.symbol in price_map:
+        if rec.symbol in price_map and rec.price_at_rec and rec.price_at_rec > 0:
             current_price = price_map[rec.symbol]
             rec.price_1m = current_price
             rec.return_1m = ((current_price - rec.price_at_rec) / rec.price_at_rec) * 100
             updated_1m += 1
+        elif rec.symbol in price_map:
+            rec.price_1m = price_map[rec.symbol]
+            errors.append(f"{rec.symbol}: Missing price_at_rec for 1m return")
 
     await db.commit()
 
