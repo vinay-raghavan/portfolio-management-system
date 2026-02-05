@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.config import settings
-from engine.models.algo import UserFunds
+from engine.models.algo import AlgoPosition, UserFunds
 from engine.models.broker import BrokerCredential, BrokerType
 from engine.providers.broker import Broker, get_broker
 
@@ -50,6 +50,7 @@ async def get_user_broker(
                 db=db,
                 user_funds_model=UserFunds,
                 initial_balance=initial_balance,
+                algo_position_model=AlgoPosition,
             )
             broker.set_funds_provider(funds_provider)
             logger.debug("Configured DatabaseFundsProvider for paper broker")
@@ -88,6 +89,7 @@ async def get_user_broker(
             db=db,
             user_funds_model=UserFunds,
             initial_balance=initial_balance,
+            algo_position_model=AlgoPosition,
         )
         broker.set_funds_provider(funds_provider)
     return broker

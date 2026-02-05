@@ -39,6 +39,8 @@ class DatabaseFundsProvider(FundsProvider):
         db: AsyncSession,
         user_funds_model: Any,
         initial_balance: Decimal = DEFAULT_INITIAL_BALANCE,
+        position_model: Any | None = None,
+        algo_position_model: Any | None = None,
     ):
         """Initialize with database session and model class.
 
@@ -46,10 +48,14 @@ class DatabaseFundsProvider(FundsProvider):
             db: SQLAlchemy async session
             user_funds_model: The UserFunds model class to use for queries
             initial_balance: Default balance for new users
+            position_model: Optional Position model for querying portfolio positions
+            algo_position_model: Optional AlgoPosition model for querying algo positions
         """
         self.db = db
         self.user_funds_model = user_funds_model
         self.initial_balance = initial_balance
+        self.position_model = position_model
+        self.algo_position_model = algo_position_model
 
     async def _get_or_create_funds(self, user_id: str) -> Any:
         """Get existing funds or create with initial balance."""
@@ -354,3 +360,55 @@ class DatabaseFundsProvider(FundsProvider):
         """
         funds = await self._get_or_create_funds(user_id)
         return funds.available_cash >= required_amount
+
+    async def get_position_quantity(
+        self,
+        user_id: str,
+        symbol: str,
+    ) -> Decimal:
+        """Get existing position quantity for a user and symbol.
+
+        Checks both portfolio positions and algo positions tables.
+
+        Args:
+            user_id: User identifier
+            symbol: Stock symbol
+
+        Returns:
+            Current position quantity (positive for long, negative for short, 0 if no position)
+        """
+        symbol = symbol.upper()
+        total_qty = Decimal("0")
+
+        # Check portfolio positions table
+        if self.position_model is not None:
+            result = await self.db.execute(
+                select(self.position_model).where(
+                    self.position_model.user_id == user_id,
+                    self.position_model.symbol == symbol,
+                )
+            )
+            position = result.scalar_one_or_none()
+            if position and hasattr(position, "quantity"):
+                total_qty += Decimal(str(position.quantity))
+
+        # Check algo positions table (only OPEN/PARTIAL positions)
+        if self.algo_position_model is not None:
+            # Sum remaining_quantity for all open algo positions for this symbol
+            # Note: For LONG positions, quantity is positive; for SHORT, we negate
+            result = await self.db.execute(
+                select(self.algo_position_model).where(
+                    self.algo_position_model.user_id == user_id,
+                    self.algo_position_model.symbol == symbol,
+                    self.algo_position_model.status.in_(["OPEN", "PARTIAL"]),
+                )
+            )
+            algo_positions = result.scalars().all()
+            for pos in algo_positions:
+                qty = Decimal(str(pos.remaining_quantity))
+                # Check if it's a SHORT position (negate quantity)
+                if hasattr(pos, "side") and str(pos.side).upper() == "SHORT":
+                    qty = -qty
+                total_qty += qty
+
+        return total_qty

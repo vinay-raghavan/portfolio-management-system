@@ -508,7 +508,7 @@ class StrategyExecutor:
         """
         from shared.providers.funds import DatabaseFundsProvider
 
-        from engine.models import UserFunds
+        from engine.models import AlgoPosition, UserFunds
 
         try:
             # Create a funds provider for this operation
@@ -516,6 +516,7 @@ class StrategyExecutor:
                 db=db,
                 user_funds_model=UserFunds,
                 initial_balance=Decimal("0"),  # Not used for updates
+                algo_position_model=AlgoPosition,
             )
 
             for pos in closed_positions:
