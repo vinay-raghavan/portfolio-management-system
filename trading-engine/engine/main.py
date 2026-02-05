@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from shared.strategies import register_all_prebuilt_strategies
 
 # Import strategies module to trigger registration via decorators
 # This ensures all strategies are registered when the app starts
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("Starting Trading Engine...")
+
+    # Register prebuilt composite strategies (e.g., rsi_macd_confluence, etc.)
+    prebuilt = register_all_prebuilt_strategies()
+    logger.info(f"Registered {len(prebuilt)} prebuilt composite strategies")
 
     # Load circuit breaker states from DB to Redis on startup
     try:
