@@ -21,10 +21,13 @@ dependencies = [
     "numpy>=2.1.0",
     "yfinance>=0.2.50",
     "ta>=0.11.0",
-    "python-multipart>=0.0.17",
+    "python-multipart>=0.0.22",
     "bcrypt<5.0.0",
     # Shared package
     "portfolio-shared",
+    "fyers-apiv3>=3.1.10",
+    "pyasn1>=0.6.2",
+    "urllib3>=2.6.3",
 ]
 
 [tool.uv.sources]
@@ -48,6 +51,8 @@ packages = ["app"]
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.0",
+    "bandit>=1.9.3",
+    "pip-audit>=2.10.0",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",

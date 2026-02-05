@@ -86,4 +86,5 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    # Binding to 0.0.0.0 is intentional for Docker container access
+    uvicorn.run(app, host="0.0.0.0", port=8001)  # nosec B104

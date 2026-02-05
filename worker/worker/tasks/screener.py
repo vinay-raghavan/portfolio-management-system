@@ -43,7 +43,8 @@ def _generate_cache_key(
     # Create a stable hash of the filter config
     filter_str = json.dumps(filters, sort_keys=True)
     config_str = f"{universe}:{filter_str}:{min_score}:{top_n}"
-    hash_val = hashlib.md5(config_str.encode()).hexdigest()[:12]
+    # MD5 used only for cache key generation, not security purposes
+    hash_val = hashlib.md5(config_str.encode(), usedforsecurity=False).hexdigest()[:12]
     return f"screener:results:{universe}:{hash_val}"
 
 

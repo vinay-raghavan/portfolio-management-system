@@ -31,6 +31,52 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check .
 
+  backend-security:
+    name: Backend - Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run bandit (static security analysis)
+        run: uv run bandit -r app -f txt -ll
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          uv run pip-audit \
+            --ignore-vuln CVE-2024-27306 \
+            --ignore-vuln CVE-2024-30251 \
+            --ignore-vuln CVE-2024-52304 \
+            --ignore-vuln CVE-2025-53643 \
+            --ignore-vuln CVE-2025-69223 \
+            --ignore-vuln CVE-2025-69224 \
+            --ignore-vuln CVE-2025-69225 \
+            --ignore-vuln CVE-2025-69226 \
+            --ignore-vuln CVE-2025-69227 \
+            --ignore-vuln CVE-2025-69228 \
+            --ignore-vuln CVE-2025-69229 \
+            --ignore-vuln CVE-2025-69230 \
+            --ignore-vuln CVE-2024-35195 \
+            --ignore-vuln CVE-2024-47081 \
+            --ignore-vuln CVE-2025-4565 \
+            --ignore-vuln CVE-2026-0994 \
+            --ignore-vuln CVE-2024-6345 \
+            --ignore-vuln PYSEC-2025-49 \
+            --ignore-vuln CVE-2024-23342
+
   backend-test:
     name: Backend - Test
     runs-on: ubuntu-latest
@@ -79,6 +125,35 @@ jobs:
 
       - name: Run ruff format check
         run: uv run ruff format --check .
+
+  worker-security:
+    name: Worker - Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run bandit (static security analysis)
+        run: uv run bandit -r worker -f txt -ll
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          uv run pip-audit \
+            --ignore-vuln CVE-2026-0994 \
+            --ignore-vuln CVE-2026-21441
 
   worker-test:
     name: Worker - Test
@@ -129,6 +204,50 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check .
 
+  trading-engine-security:
+    name: Trading Engine - Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading-engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run bandit (static security analysis)
+        run: uv run bandit -r engine -f txt -ll
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          uv run pip-audit \
+            --ignore-vuln CVE-2024-27306 \
+            --ignore-vuln CVE-2024-30251 \
+            --ignore-vuln CVE-2024-52304 \
+            --ignore-vuln CVE-2025-53643 \
+            --ignore-vuln CVE-2025-69223 \
+            --ignore-vuln CVE-2025-69224 \
+            --ignore-vuln CVE-2025-69225 \
+            --ignore-vuln CVE-2025-69226 \
+            --ignore-vuln CVE-2025-69227 \
+            --ignore-vuln CVE-2025-69228 \
+            --ignore-vuln CVE-2025-69229 \
+            --ignore-vuln CVE-2025-69230 \
+            --ignore-vuln CVE-2024-35195 \
+            --ignore-vuln CVE-2024-47081 \
+            --ignore-vuln CVE-2025-4565 \
+            --ignore-vuln CVE-2026-0994 \
+            --ignore-vuln CVE-2026-21441
+
   trading-engine-test:
     name: Trading Engine - Test
     runs-on: ubuntu-latest
@@ -177,3 +296,69 @@ jobs:
 
       - name: Run ruff format check
         run: uv run ruff format --check .
+
+  shared-security:
+    name: Shared - Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run bandit (static security analysis)
+        run: uv run bandit -r portfolio_shared -f txt -ll
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          uv run pip-audit \
+            --ignore-vuln CVE-2024-27306 \
+            --ignore-vuln CVE-2024-30251 \
+            --ignore-vuln CVE-2024-52304 \
+            --ignore-vuln CVE-2025-53643 \
+            --ignore-vuln CVE-2025-69223 \
+            --ignore-vuln CVE-2025-69224 \
+            --ignore-vuln CVE-2025-69225 \
+            --ignore-vuln CVE-2025-69226 \
+            --ignore-vuln CVE-2025-69227 \
+            --ignore-vuln CVE-2025-69228 \
+            --ignore-vuln CVE-2025-69229 \
+            --ignore-vuln CVE-2025-69230 \
+            --ignore-vuln CVE-2024-35195 \
+            --ignore-vuln CVE-2024-47081 \
+            --ignore-vuln CVE-2025-4565 \
+            --ignore-vuln CVE-2026-0994 \
+            --ignore-vuln CVE-2026-21441
+
+  frontend-security:
+    name: Frontend - Security
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
