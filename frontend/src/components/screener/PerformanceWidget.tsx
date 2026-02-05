@@ -70,10 +70,17 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch actual recommendations to show stocks
+  // Fetch yesterday's recommendations to show stocks with returns
+  // Today's recommendations don't have returns yet, so we fetch yesterday's
+  const getYesterdayDate = () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  };
+
   const { data: recommendationsData, error: recommendationsError } = useQuery({
-    queryKey: ['screener-recommendations'],
-    queryFn: () => screenerApi.getRecommendations(),
+    queryKey: ['screener-recommendations-with-returns'],
+    queryFn: () => screenerApi.getRecommendations(getYesterdayDate()),
     staleTime: 5 * 60 * 1000,
   });
 
