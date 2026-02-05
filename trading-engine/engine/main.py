@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # This ensures all strategies are registered when the app starts
 import engine.strategies  # noqa: F401
 from engine.config import settings
+from shared.strategies import register_all_prebuilt_strategies
 from engine.core.redis import close_redis_pool
 from engine.routes import execution_router, health_router
 
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info("Starting Trading Engine...")
+
+    # Register prebuilt composite strategies (e.g., rsi_macd_confluence, etc.)
+    prebuilt = register_all_prebuilt_strategies()
+    logger.info(f"Registered {len(prebuilt)} prebuilt composite strategies")
 
     # Load circuit breaker states from DB to Redis on startup
     try:
