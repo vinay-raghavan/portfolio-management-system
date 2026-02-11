@@ -1,7 +1,7 @@
 """Add realized_pnl and unrealized_pnl columns to user_funds table.
 
 Revision ID: add_pnl_columns_user_funds
-Revises: 20260203_1000_add_product_type_to_strategies
+Revises: add_product_type_strategies
 Create Date: 2026-02-05 10:00:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "add_pnl_columns_user_funds"
-down_revision = "20260203_1000_add_product_type_to_strategies"
+down_revision = "add_product_type_strategies"
 branch_labels = None
 depends_on = None
 
