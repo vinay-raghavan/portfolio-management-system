@@ -20,6 +20,7 @@ Usage:
 
 from .base import BaseNewsProvider
 from .factory import NewsProviderFactory, get_news_provider, set_default_news_provider
+from .sentiment import KeywordSentimentAnalyzer, analyze_sentiment
 from .yahoo import YahooNewsProvider
 
 # Register providers
@@ -32,6 +33,9 @@ __all__ = [
     "NewsProviderFactory",
     "get_news_provider",
     "set_default_news_provider",
+    # Sentiment analysis
+    "KeywordSentimentAnalyzer",
+    "analyze_sentiment",
     # Providers
     "YahooNewsProvider",
 ]

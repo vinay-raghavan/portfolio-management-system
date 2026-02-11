@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 
 import yfinance as yf
 
-from ..schemas import NewsArticle, NewsResponse, SentimentScore
+from ..schemas import NewsArticle, NewsResponse
 from .base import BaseNewsProvider
+from .sentiment import KeywordSentimentAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,23 @@ class YahooNewsProvider(BaseNewsProvider):
     """
 
     name = "yahoo"
+
+    def __init__(self):
+        """Initialize Yahoo news provider with sentiment analyzer."""
+        self._sentiment_analyzer = KeywordSentimentAnalyzer()
+
+    def analyze_sentiment(self, article: NewsArticle) -> NewsArticle:
+        """Analyze sentiment using keyword-based analyzer.
+
+        Overrides base class to use KeywordSentimentAnalyzer.
+
+        Args:
+            article: NewsArticle to analyze
+
+        Returns:
+            Same NewsArticle with updated sentiment fields
+        """
+        return self._sentiment_analyzer.analyze(article)
 
     async def get_company_news(
         self,
