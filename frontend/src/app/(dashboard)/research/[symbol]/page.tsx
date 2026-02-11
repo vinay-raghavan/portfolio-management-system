@@ -253,7 +253,7 @@ export default function StockResearchPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{symbol}</h1>
-              {quote && (
+              {quote && quote.change_pct != null && (
                 <Badge variant={quote.change_pct >= 0 ? 'default' : 'destructive'}>
                   {quote.change_pct >= 0 ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
                   {formatPercent(quote.change_pct)}
@@ -272,10 +272,12 @@ export default function StockResearchPage() {
         <div className="flex items-center gap-2">
           {quote && (
             <div className="text-right mr-4">
-              <div className="text-2xl font-bold">{formatPrice(quote.ltp)}</div>
-              <div className={cn('text-sm', quote.change >= 0 ? 'text-green-600' : 'text-red-600')}>
-                {quote.change >= 0 ? '+' : ''}{formatPrice(quote.change)}
-              </div>
+              <div className="text-2xl font-bold">{formatPrice(quote.price)}</div>
+              {quote.change != null && (
+                <div className={cn('text-sm', quote.change >= 0 ? 'text-green-600' : 'text-red-600')}>
+                  {quote.change >= 0 ? '+' : ''}{formatPrice(quote.change)}
+                </div>
+              )}
             </div>
           )}
           <Button variant="outline" size="sm" onClick={() => setSelectedSymbol(symbol)}>
@@ -353,13 +355,13 @@ export default function StockResearchPage() {
               <Card>
                 <CardContent className="p-4">
                   <div className="text-sm text-muted-foreground">52W High</div>
-                  <div className="text-lg font-bold">{formatPrice(fundamentals.fifty_two_week_high)}</div>
+                  <div className="text-lg font-bold">{fundamentals.fifty_two_week_high != null ? formatPrice(fundamentals.fifty_two_week_high) : '-'}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4">
                   <div className="text-sm text-muted-foreground">52W Low</div>
-                  <div className="text-lg font-bold">{formatPrice(fundamentals.fifty_two_week_low)}</div>
+                  <div className="text-lg font-bold">{fundamentals.fifty_two_week_low != null ? formatPrice(fundamentals.fifty_two_week_low) : '-'}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -438,7 +440,7 @@ export default function StockResearchPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <div className="text-sm text-muted-foreground">EPS</div>
-                      <div className="text-lg font-bold">{formatPrice(fundamentals.eps)}</div>
+                      <div className="text-lg font-bold">{fundamentals.eps != null ? formatPrice(fundamentals.eps) : '-'}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">EPS Growth</div>
