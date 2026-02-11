@@ -77,9 +77,7 @@ class ResearchService:
         """
         return await self.news_provider.get_company_news(symbol, limit=limit)
 
-    async def get_market_news(
-        self, category: str | None = None, limit: int = 10
-    ) -> NewsResponse:
+    async def get_market_news(self, category: str | None = None, limit: int = 10) -> NewsResponse:
         """Get general market news.
 
         Args:
@@ -144,7 +142,9 @@ class ResearchService:
             "industry": fundamentals.industry if fundamentals else None,
             "current_price": float(quote.last_price) if quote else None,
             "price_change": float(quote.change) if quote and quote.change else None,
-            "price_change_pct": float(quote.change_percent) if quote and quote.change_percent else None,
+            "price_change_pct": float(quote.change_percent)
+            if quote and quote.change_percent
+            else None,
             "fundamentals": fundamentals,
             "dividends": dividends,
             "news": news,
@@ -258,4 +258,3 @@ class ResearchService:
             "stocks": [],
             "total_count": 0,
         }
-

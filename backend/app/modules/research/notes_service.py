@@ -148,4 +148,3 @@ class ResearchNoteService:
         await self.db.flush()
         logger.info(f"Deleted research note {note_id}")
         return True
-

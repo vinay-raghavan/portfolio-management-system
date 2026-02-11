@@ -250,46 +250,6 @@ class SectorStocksResponse(BaseModel):
     last_updated: datetime | None = None
 
 
-# =============================================================================
-# Research Notes Schemas
-# =============================================================================
-
-
-class ResearchNoteCreate(BaseModel):
-    """Schema for creating a research note."""
-
-    symbol: str
-    title: str
-    content: str
-    rating: str | None = None  # STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL
-    target_price: float | None = None
-    tags: list[str] | None = None
-
-
-class ResearchNoteUpdate(BaseModel):
-    """Schema for updating a research note."""
-
-    title: str | None = None
-    content: str | None = None
-    rating: str | None = None
-    target_price: float | None = None
-    tags: list[str] | None = None
-
-
-class ResearchNoteResponse(BaseModel):
-    """Schema for research note response."""
-
-    id: str
-    symbol: str
-    title: str
-    content: str
-    rating: str | None = None
-    target_price: float | None = None
-    tags: list[str] | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
 class ResearchNoteListResponse(BaseModel):
     """Schema for list of research notes."""
 
