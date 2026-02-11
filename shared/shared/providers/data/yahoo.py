@@ -342,3 +342,86 @@ class YahooDataProvider(DataProvider):
         except Exception as e:
             logger.error(f"Error fetching fundamentals for {symbol}: {e}")
             return None
+
+    async def get_financials(self, symbol: str) -> FinancialData | None:
+        """Get financial statements data (income statement, balance sheet, cash flow).
+
+        Fetches quarterly and annual financial statements from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+
+            # Get financial statements (returns DataFrames)
+            income_stmt = ticker.quarterly_income_stmt
+            balance_sheet = ticker.quarterly_balance_sheet
+            cash_flow = ticker.quarterly_cashflow
+
+            if income_stmt.empty and balance_sheet.empty and cash_flow.empty:
+                return None
+
+            statements = []
+            # Process each period (columns are dates)
+            all_periods = set()
+            if not income_stmt.empty:
+                all_periods.update(income_stmt.columns)
+            if not balance_sheet.empty:
+                all_periods.update(balance_sheet.columns)
+            if not cash_flow.empty:
+                all_periods.update(cash_flow.columns)
+
+            for period_date in sorted(all_periods, reverse=True)[:8]:  # Last 8 quarters
+                stmt = FinancialStatement(
+                    period=period_date.strftime("%Y-Q%q") if hasattr(period_date, "strftime") else str(period_date),
+                    period_end_date=period_date.to_pydatetime() if hasattr(period_date, "to_pydatetime") else None,
+                )
+
+                # Income statement items
+                if not income_stmt.empty and period_date in income_stmt.columns:
+                    col = income_stmt[period_date]
+                    stmt.total_revenue = self._safe_float(col, "Total Revenue")
+                    stmt.cost_of_revenue = self._safe_float(col, "Cost Of Revenue")
+                    stmt.gross_profit = self._safe_float(col, "Gross Profit")
+                    stmt.operating_income = self._safe_float(col, "Operating Income")
+                    stmt.net_income = self._safe_float(col, "Net Income")
+                    stmt.ebitda = self._safe_float(col, "EBITDA")
+
+                # Balance sheet items
+                if not balance_sheet.empty and period_date in balance_sheet.columns:
+                    col = balance_sheet[period_date]
+                    stmt.total_assets = self._safe_float(col, "Total Assets")
+                    stmt.total_liabilities = self._safe_float(col, "Total Liabilities Net Minority Interest")
+                    stmt.total_equity = self._safe_float(col, "Stockholders Equity")
+                    stmt.total_debt = self._safe_float(col, "Total Debt")
+                    stmt.cash_and_equivalents = self._safe_float(col, "Cash And Cash Equivalents")
+
+                # Cash flow items
+                if not cash_flow.empty and period_date in cash_flow.columns:
+                    col = cash_flow[period_date]
+                    stmt.operating_cash_flow = self._safe_float(col, "Operating Cash Flow")
+                    stmt.capital_expenditure = self._safe_float(col, "Capital Expenditure")
+                    stmt.free_cash_flow = self._safe_float(col, "Free Cash Flow")
+
+                statements.append(stmt)
+
+            info = ticker.info
+            return FinancialData(
+                symbol=SymbolMapper.normalize(symbol),
+                statements=statements,
+                currency=info.get("currency"),
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching financials for {symbol}: {e}")
+            return None
+
+    def _safe_float(self, series, key: str) -> float | None:
+        """Safely extract a float value from a pandas Series."""
+        try:
+            if key in series.index:
+                val = series[key]
+                if val is not None and not (hasattr(val, "isna") and val.isna()):
+                    return float(val)
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
