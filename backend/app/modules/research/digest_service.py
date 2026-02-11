@@ -136,16 +136,17 @@ class DigestService:
         sentiment = self._calculate_market_sentiment(news)
 
         # Create digest record
+        # Use mode="json" to ensure datetime fields are serialized to ISO strings
         digest = DailyDigest(
             id=str(uuid4()),
             digest_date=digest_datetime,
             market_summary=market_summary,
-            top_gainers=[g.model_dump() for g in gainers],
-            top_losers=[loser.model_dump() for loser in losers],
+            top_gainers=[g.model_dump(mode="json") for g in gainers],
+            top_losers=[loser.model_dump(mode="json") for loser in losers],
             sector_performance=sector_perf,
-            volume_leaders=[v.model_dump() for v in volume_leaders],
-            breakout_candidates=[b.model_dump() for b in breakouts],
-            news_highlights=[n.model_dump() for n in news],
+            volume_leaders=[v.model_dump(mode="json") for v in volume_leaders],
+            breakout_candidates=[b.model_dump(mode="json") for b in breakouts],
+            news_highlights=[n.model_dump(mode="json") for n in news],
             market_sentiment=sentiment,
         )
 
