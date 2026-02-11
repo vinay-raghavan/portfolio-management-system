@@ -20,13 +20,17 @@ Usage:
 
 from .base import BaseNewsProvider
 from .factory import NewsProviderFactory, get_news_provider, set_default_news_provider
+from .finnhub import FinnhubNewsProvider
 from .google_rss import GoogleNewsRSSProvider
 from .sentiment import KeywordSentimentAnalyzer, analyze_sentiment
 from .yahoo import YahooNewsProvider
 
-# Register providers
+# Register default providers (available without API keys)
 NewsProviderFactory.register("yahoo", YahooNewsProvider)
 NewsProviderFactory.register("google_rss", GoogleNewsRSSProvider)
+
+# Note: FinnhubNewsProvider requires FINNHUB_API_KEY and is not auto-registered.
+# To enable: NewsProviderFactory.register("finnhub", FinnhubNewsProvider)
 
 __all__ = [
     # Base classes
@@ -41,5 +45,6 @@ __all__ = [
     # Providers
     "YahooNewsProvider",
     "GoogleNewsRSSProvider",
+    "FinnhubNewsProvider",  # Stub - requires API key
 ]
 
