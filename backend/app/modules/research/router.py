@@ -6,8 +6,11 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.modules.data.service import get_user_data_provider
+from app.modules.research.digest_service import DigestService
 from app.modules.research.notes_service import ResearchNoteService
 from app.modules.research.schemas import (
+    DailyDigestResponse,
+    DigestListResponse,
     DividendsResponse,
     FundamentalsResponse,
     NewsArticleResponse,
@@ -586,3 +589,129 @@ async def delete_research_note(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Research note not found: {note_id}",
         )
+
+
+# =============================================================================
+# Daily Digest Endpoints
+# =============================================================================
+
+
+@router.get("/digest", response_model=DigestListResponse)
+async def get_digests(
+    db: DbSession,
+    limit: int = Query(10, ge=1, le=50, description="Number of digests to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+) -> DigestListResponse:
+    """Get list of available daily digests.
+
+    Returns paginated list of daily market digests ordered by date (newest first).
+    Each digest contains market summary, top movers, sector performance, etc.
+    """
+    service = DigestService(db)
+    digests, total = await service.get_digests(limit=limit, offset=offset)
+
+    return DigestListResponse(
+        digests=[service.digest_to_response(d) for d in digests],
+        total_count=total,
+    )
+
+
+@router.get("/digest/latest", response_model=DailyDigestResponse | None)
+async def get_latest_digest(
+    db: DbSession,
+) -> DailyDigestResponse | None:
+    """Get the most recent daily digest.
+
+    Returns the latest generated digest, or null if no digests exist.
+    """
+    service = DigestService(db)
+    digest = await service.get_latest_digest()
+
+    if not digest:
+        return None
+
+    return service.digest_to_response(digest)
+
+
+@router.get("/digest/{date}", response_model=DailyDigestResponse)
+async def get_digest_by_date(
+    date: str,
+    db: DbSession,
+) -> DailyDigestResponse:
+    """Get daily digest for a specific date.
+
+    Args:
+        date: Date in YYYY-MM-DD format
+
+    Returns:
+        Daily digest for the specified date
+
+    Raises:
+        404: If no digest exists for the specified date
+    """
+    from datetime import date as date_type
+
+    try:
+        target_date = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: {date}. Expected YYYY-MM-DD",
+        )
+
+    service = DigestService(db)
+    digest = await service.get_digest_by_date(target_date)
+
+    if not digest:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No digest found for date: {date}",
+        )
+
+    return service.digest_to_response(digest)
+
+
+@router.post("/digest/generate", response_model=DailyDigestResponse)
+async def generate_digest(
+    db: DbSession,
+    current_user: CurrentUser,
+    date: str | None = Query(None, description="Date in YYYY-MM-DD format. Defaults to today."),
+) -> DailyDigestResponse:
+    """Generate a daily digest.
+
+    This endpoint is typically called by the Celery worker at market close,
+    but can be triggered manually by authenticated users.
+
+    Args:
+        date: Optional date to generate digest for. Defaults to today.
+
+    Returns:
+        The generated daily digest
+
+    Raises:
+        409: If a digest already exists for the specified date
+    """
+    from datetime import date as date_type
+
+    target_date = None
+    if date:
+        try:
+            target_date = date_type.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid date format: {date}. Expected YYYY-MM-DD",
+            )
+
+    service = DigestService(db)
+
+    # Check if digest already exists
+    existing = await service.get_digest_by_date(target_date or date_type.today())
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Digest already exists for date: {target_date or date_type.today()}",
+        )
+
+    digest = await service.generate_digest(target_date)
+    return service.digest_to_response(digest)
