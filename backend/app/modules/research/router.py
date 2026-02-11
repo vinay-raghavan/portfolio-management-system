@@ -1,5 +1,7 @@
 """Research API routes."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import DbSession, OptionalUser
@@ -9,10 +11,60 @@ from app.modules.research.schemas import (
     FundamentalsResponse,
     NewsArticleResponse,
     NewsResponse,
+    PeerComparisonResponse,
+    PeerStock,
+    StockResearchResponse,
 )
 from app.modules.research.service import ResearchService
 
 router = APIRouter()
+
+
+# =============================================================================
+# Full Research Endpoint
+# =============================================================================
+
+
+@router.get("/{symbol}", response_model=StockResearchResponse)
+async def get_stock_research(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    news_limit: int = Query(5, ge=1, le=20, description="Number of news articles to include"),
+) -> StockResearchResponse:
+    """Get comprehensive research data for a stock.
+
+    Combines fundamental analysis, dividend data, and recent news with sentiment
+    into a single response. This is the primary endpoint for stock research.
+
+    Uses the user's preferred data provider if authenticated.
+    Falls back to Yahoo Finance for unauthenticated requests.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    data = await service.get_full_research(symbol, news_limit=news_limit)
+
+    return StockResearchResponse(
+        symbol=data["symbol"],
+        name=data.get("name"),
+        sector=data.get("sector"),
+        industry=data.get("industry"),
+        current_price=data.get("current_price"),
+        price_change=data.get("price_change"),
+        price_change_pct=data.get("price_change_pct"),
+        fundamentals=data.get("fundamentals"),
+        dividends=data.get("dividends"),
+        news=data.get("news"),
+        last_updated=datetime.now(UTC),
+    )
+
+
+# =============================================================================
+# Fundamentals Endpoint
+# =============================================================================
 
 
 @router.get("/{symbol}/fundamentals", response_model=FundamentalsResponse)

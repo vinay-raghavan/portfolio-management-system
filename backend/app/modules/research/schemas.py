@@ -146,3 +146,106 @@ class NewsResponse(BaseModel):
     neutral_count: int = 0
     last_updated: datetime | None = None
 
+
+# =============================================================================
+# Full Research Response
+# =============================================================================
+
+
+class StockResearchResponse(BaseModel):
+    """Complete research data for a stock symbol.
+
+    Combines fundamentals, dividends, and news into a single response.
+    """
+
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+
+    # Current price info
+    current_price: float | None = None
+    price_change: float | None = None
+    price_change_pct: float | None = None
+
+    # Fundamentals summary
+    fundamentals: FundamentalsResponse | None = None
+
+    # Dividends summary
+    dividends: DividendsResponse | None = None
+
+    # Recent news with sentiment
+    news: NewsResponse | None = None
+
+    # Timestamps
+    last_updated: datetime | None = None
+
+
+# =============================================================================
+# Peer Comparison Schemas
+# =============================================================================
+
+
+class PeerStock(BaseModel):
+    """A peer stock with comparative metrics."""
+
+    symbol: str
+    name: str | None = None
+    current_price: float | None = None
+    price_change_pct: float | None = None
+    market_cap: float | None = None
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    dividend_yield: float | None = None
+    roe: float | None = None
+    revenue_growth: float | None = None
+
+
+class PeerComparisonResponse(BaseModel):
+    """Peer comparison for a stock."""
+
+    symbol: str
+    sector: str | None = None
+    industry: str | None = None
+    peers: list[PeerStock] = []
+    # Sector averages for comparison
+    sector_avg_pe: float | None = None
+    sector_avg_pb: float | None = None
+    sector_avg_dividend_yield: float | None = None
+    last_updated: datetime | None = None
+
+
+# =============================================================================
+# Sector Performance Schemas
+# =============================================================================
+
+
+class SectorPerformance(BaseModel):
+    """Performance data for a sector."""
+
+    sector: str
+    change_1d: float | None = None  # 1-day change %
+    change_1w: float | None = None  # 1-week change %
+    change_1m: float | None = None  # 1-month change %
+    change_3m: float | None = None  # 3-month change %
+    change_1y: float | None = None  # 1-year change %
+    stock_count: int = 0
+    top_gainer: str | None = None
+    top_loser: str | None = None
+
+
+class SectorListResponse(BaseModel):
+    """List of all sectors with performance."""
+
+    sectors: list[SectorPerformance] = []
+    last_updated: datetime | None = None
+
+
+class SectorStocksResponse(BaseModel):
+    """Stocks within a specific sector."""
+
+    sector: str
+    stocks: list[PeerStock] = []
+    total_count: int = 0
+    last_updated: datetime | None = None
+

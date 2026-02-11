@@ -91,3 +91,102 @@ class ResearchService:
         """
         return await self.news_provider.get_market_news(category=category, limit=limit)
 
+    async def get_full_research(
+        self,
+        symbol: str,
+        news_limit: int = 5,
+    ) -> dict:
+        """Get complete research data for a stock.
+
+        Combines fundamentals, dividends, and news into a single response.
+
+        Args:
+            symbol: Stock symbol
+            news_limit: Maximum number of news articles
+
+        Returns:
+            Dict with fundamentals, dividends, news, and quote data
+        """
+        import asyncio
+
+        # Fetch all data concurrently
+        fundamentals_task = self.get_fundamentals(symbol)
+        dividends_task = self.get_dividends(symbol)
+        news_task = self.get_news(symbol, limit=news_limit)
+        quote_task = self.provider.get_quote(symbol)
+
+        fundamentals, dividends, news, quote = await asyncio.gather(
+            fundamentals_task,
+            dividends_task,
+            news_task,
+            quote_task,
+            return_exceptions=True,
+        )
+
+        # Handle exceptions gracefully
+        if isinstance(fundamentals, Exception):
+            logger.warning(f"Error fetching fundamentals for {symbol}: {fundamentals}")
+            fundamentals = None
+        if isinstance(dividends, Exception):
+            logger.warning(f"Error fetching dividends for {symbol}: {dividends}")
+            dividends = None
+        if isinstance(news, Exception):
+            logger.warning(f"Error fetching news for {symbol}: {news}")
+            news = None
+        if isinstance(quote, Exception):
+            logger.warning(f"Error fetching quote for {symbol}: {quote}")
+            quote = None
+
+        return {
+            "symbol": symbol,
+            "name": fundamentals.symbol if fundamentals else None,
+            "sector": fundamentals.sector if fundamentals else None,
+            "industry": fundamentals.industry if fundamentals else None,
+            "current_price": float(quote.last_price) if quote else None,
+            "price_change": float(quote.change) if quote and quote.change else None,
+            "price_change_pct": float(quote.change_percent) if quote and quote.change_percent else None,
+            "fundamentals": fundamentals,
+            "dividends": dividends,
+            "news": news,
+        }
+
+    async def get_peers(self, symbol: str, limit: int = 10) -> dict:
+        """Get peer stocks for comparison.
+
+        Finds stocks in the same industry/sector and fetches their metrics.
+
+        Args:
+            symbol: Stock symbol
+            limit: Maximum number of peers
+
+        Returns:
+            Dict with peer stocks and sector averages
+        """
+        # First get the target stock's sector/industry
+        fundamentals = await self.get_fundamentals(symbol)
+
+        if not fundamentals:
+            return {
+                "symbol": symbol,
+                "sector": None,
+                "industry": None,
+                "peers": [],
+            }
+
+        # For now, return empty peers - would need a stock universe to search
+        # In production, this would query a database of stocks by sector/industry
+        logger.info(
+            f"Peer lookup for {symbol} in sector={fundamentals.sector}, "
+            f"industry={fundamentals.industry} - requires stock universe"
+        )
+
+        return {
+            "symbol": symbol,
+            "sector": fundamentals.sector,
+            "industry": fundamentals.industry,
+            "peers": [],
+            "sector_avg_pe": None,
+            "sector_avg_pb": None,
+            "sector_avg_dividend_yield": None,
+        }
+
