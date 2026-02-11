@@ -12,6 +12,7 @@ import {
   RecommendationsWidget,
   TotalAccountValue,
 } from '@/components/dashboard';
+import { DigestWidget, SectorHeatmap } from '@/components/research';
 
 export default function DashboardPage() {
   const { data: portfolio, isLoading } = useQuery({
@@ -44,6 +45,12 @@ export default function DashboardPage() {
         <FundsSummary />
         <AlgoSummary />
         <MarketOverview />
+      </div>
+
+      {/* Research Digest & Sector Heatmap */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <DigestWidget />
+        <SectorHeatmap compact />
       </div>
 
       {/* Daily Recommendations */}
