@@ -70,12 +70,13 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch recommendations from 31 days ago to show stocks with 1D, 1W, and 1M returns
-  // 1D returns are populated after 1 day, 1W after 7 days, 1M after 30 days
-  // Using 31 days ensures all return periods are available when data exists
+  // Fetch recommendations from 8 days ago to show stocks with 1D and 1W returns
+  // 1D returns are populated after 1 day, 1W after 7 days
+  // Using 8 days ensures at least 1D and 1W returns are available
+  // (1M returns will show when data is 30+ days old)
   const getDateWithReturns = () => {
     const date = new Date();
-    date.setDate(date.getDate() - 31);
+    date.setDate(date.getDate() - 8);
     return date.toISOString().split('T')[0];
   };
 
