@@ -371,3 +371,49 @@ class DividendData(BaseModel):
     dividend_growth_rate: float | None = None  # 5-year CAGR
     consecutive_years: int | None = None  # Years of consecutive dividends
     last_updated: datetime | None = None
+
+
+# =============================================================================
+# News Schemas (Section 1.11.3 - News Integration)
+# =============================================================================
+
+
+class SentimentScore(str, Enum):
+    """News sentiment classification."""
+
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+
+
+class NewsArticle(BaseModel):
+    """Individual news article with metadata and sentiment."""
+
+    title: str
+    url: str
+    source: str  # e.g., "Yahoo Finance", "Reuters", "Finnhub"
+    published_at: datetime
+    summary: str | None = None
+    thumbnail_url: str | None = None
+    # Related symbols (for multi-symbol news)
+    related_symbols: list[str] = []
+    # Sentiment analysis
+    sentiment: SentimentScore = SentimentScore.NEUTRAL
+    sentiment_score: float = 0.0  # -1.0 (negative) to 1.0 (positive)
+    # Provider metadata
+    provider: str = "unknown"  # Provider that fetched this article
+    article_id: str | None = None  # Unique ID from provider
+
+
+class NewsResponse(BaseModel):
+    """Collection of news articles for a symbol or topic."""
+
+    symbol: str | None = None  # None for general market news
+    articles: list[NewsArticle] = []
+    total_count: int = 0
+    # Aggregate sentiment
+    average_sentiment: float = 0.0  # Average sentiment score
+    positive_count: int = 0
+    negative_count: int = 0
+    neutral_count: int = 0
+    last_updated: datetime | None = None
