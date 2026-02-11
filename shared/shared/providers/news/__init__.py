@@ -47,4 +47,3 @@ __all__ = [
     "GoogleNewsRSSProvider",
     "FinnhubNewsProvider",  # Stub - requires API key
 ]
-

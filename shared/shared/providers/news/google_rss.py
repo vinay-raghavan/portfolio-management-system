@@ -199,4 +199,3 @@ class GoogleNewsRSSProvider(BaseNewsProvider):
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
-

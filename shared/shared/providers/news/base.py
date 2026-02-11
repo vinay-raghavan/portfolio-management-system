@@ -127,4 +127,3 @@ class BaseNewsProvider(ABC):
             return len(response.articles) > 0
         except Exception:
             return False
-

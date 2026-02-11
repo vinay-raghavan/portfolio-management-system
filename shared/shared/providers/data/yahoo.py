@@ -372,8 +372,12 @@ class YahooDataProvider(DataProvider):
 
             for period_date in sorted(all_periods, reverse=True)[:8]:  # Last 8 quarters
                 stmt = FinancialStatement(
-                    period=period_date.strftime("%Y-Q%q") if hasattr(period_date, "strftime") else str(period_date),
-                    period_end_date=period_date.to_pydatetime() if hasattr(period_date, "to_pydatetime") else None,
+                    period=period_date.strftime("%Y-Q%q")
+                    if hasattr(period_date, "strftime")
+                    else str(period_date),
+                    period_end_date=period_date.to_pydatetime()
+                    if hasattr(period_date, "to_pydatetime")
+                    else None,
                 )
 
                 # Income statement items
@@ -390,7 +394,9 @@ class YahooDataProvider(DataProvider):
                 if not balance_sheet.empty and period_date in balance_sheet.columns:
                     col = balance_sheet[period_date]
                     stmt.total_assets = self._safe_float(col, "Total Assets")
-                    stmt.total_liabilities = self._safe_float(col, "Total Liabilities Net Minority Interest")
+                    stmt.total_liabilities = self._safe_float(
+                        col, "Total Liabilities Net Minority Interest"
+                    )
                     stmt.total_equity = self._safe_float(col, "Stockholders Equity")
                     stmt.total_debt = self._safe_float(col, "Total Debt")
                     stmt.cash_and_equivalents = self._safe_float(col, "Cash And Cash Equivalents")
@@ -457,7 +463,9 @@ class YahooDataProvider(DataProvider):
             dividend_growth_rate = None
             if len(history) >= 20:  # At least 5 years of quarterly dividends
                 recent_year = sum(d.amount for d in history[:4])  # Last 4 dividends
-                five_years_ago = sum(d.amount for d in history[16:20])  # 4 dividends from 5 years ago
+                five_years_ago = sum(
+                    d.amount for d in history[16:20]
+                )  # 4 dividends from 5 years ago
                 if five_years_ago > 0 and recent_year > 0:
                     dividend_growth_rate = ((recent_year / five_years_ago) ** 0.2 - 1) * 100
 

@@ -175,4 +175,3 @@ class YahooNewsProvider(BaseNewsProvider):
         except Exception as e:
             logger.warning(f"Error parsing Yahoo news item: {e}")
             return None
-

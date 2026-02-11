@@ -152,4 +152,3 @@ class FinnhubNewsProvider(BaseNewsProvider):
             total_count=0,
             last_updated=datetime.now(UTC),
         )
-

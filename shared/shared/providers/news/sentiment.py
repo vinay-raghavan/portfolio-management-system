@@ -163,4 +163,3 @@ _default_analyzer = KeywordSentimentAnalyzer()
 def analyze_sentiment(article: NewsArticle) -> NewsArticle:
     """Analyze sentiment of a news article using default analyzer."""
     return _default_analyzer.analyze(article)
-
