@@ -4,8 +4,9 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import DbSession, OptionalUser
+from app.api.deps import CurrentUser, DbSession, OptionalUser
 from app.modules.data.service import get_user_data_provider
+from app.modules.research.notes_service import ResearchNoteService
 from app.modules.research.schemas import (
     DividendsResponse,
     FundamentalsResponse,
@@ -13,6 +14,10 @@ from app.modules.research.schemas import (
     NewsResponse,
     PeerComparisonResponse,
     PeerStock,
+    ResearchNoteCreate,
+    ResearchNoteListResponse,
+    ResearchNoteResponse,
+    ResearchNoteUpdate,
     SectorListResponse,
     SectorPerformance,
     SectorStocksResponse,
@@ -418,3 +423,166 @@ async def get_sector_stocks(
         total_count=data.get("total_count", 0),
         last_updated=datetime.now(UTC),
     )
+
+
+# =============================================================================
+# Research Notes Endpoints
+# =============================================================================
+
+
+@router.get("/notes", response_model=ResearchNoteListResponse)
+async def get_research_notes(
+    db: DbSession,
+    current_user: CurrentUser,
+    symbol: str | None = Query(default=None, description="Filter by symbol"),
+    limit: int = Query(default=50, ge=1, le=100, description="Maximum number of notes"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+) -> ResearchNoteListResponse:
+    """Get research notes for the current user.
+
+    Optionally filter by stock symbol. Requires authentication.
+
+    Args:
+        symbol: Optional symbol to filter notes by
+        limit: Maximum number of notes to return (1-100, default 50)
+        offset: Offset for pagination (default 0)
+    """
+    service = ResearchNoteService(db)
+    notes, total_count = await service.get_notes(
+        user_id=current_user.id,
+        symbol=symbol,
+        limit=limit,
+        offset=offset,
+    )
+
+    return ResearchNoteListResponse(
+        notes=[
+            ResearchNoteResponse(
+                id=n.id,
+                symbol=n.symbol,
+                title=n.title,
+                content=n.content,
+                rating=n.rating,
+                target_price=float(n.target_price) if n.target_price else None,
+                tags=n.tags,
+                created_at=n.created_at,
+                updated_at=n.updated_at,
+            )
+            for n in notes
+        ],
+        total_count=total_count,
+    )
+
+
+@router.post("/notes", response_model=ResearchNoteResponse, status_code=status.HTTP_201_CREATED)
+async def create_research_note(
+    data: ResearchNoteCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ResearchNoteResponse:
+    """Create a new research note.
+
+    Saves personal research notes, ratings, and target prices for a stock.
+    Requires authentication.
+    """
+    service = ResearchNoteService(db)
+    note = await service.create_note(user_id=current_user.id, data=data)
+
+    return ResearchNoteResponse(
+        id=note.id,
+        symbol=note.symbol,
+        title=note.title,
+        content=note.content,
+        rating=note.rating,
+        target_price=float(note.target_price) if note.target_price else None,
+        tags=note.tags,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.get("/notes/{note_id}", response_model=ResearchNoteResponse)
+async def get_research_note(
+    note_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ResearchNoteResponse:
+    """Get a specific research note by ID.
+
+    Requires authentication. Users can only access their own notes.
+    """
+    service = ResearchNoteService(db)
+    note = await service.get_note(user_id=current_user.id, note_id=note_id)
+
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Research note not found: {note_id}",
+        )
+
+    return ResearchNoteResponse(
+        id=note.id,
+        symbol=note.symbol,
+        title=note.title,
+        content=note.content,
+        rating=note.rating,
+        target_price=float(note.target_price) if note.target_price else None,
+        tags=note.tags,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.patch("/notes/{note_id}", response_model=ResearchNoteResponse)
+async def update_research_note(
+    note_id: str,
+    data: ResearchNoteUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ResearchNoteResponse:
+    """Update a research note.
+
+    Partial update - only provided fields will be updated.
+    Requires authentication. Users can only update their own notes.
+    """
+    service = ResearchNoteService(db)
+    note = await service.update_note(user_id=current_user.id, note_id=note_id, data=data)
+
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Research note not found: {note_id}",
+        )
+
+    return ResearchNoteResponse(
+        id=note.id,
+        symbol=note.symbol,
+        title=note.title,
+        content=note.content,
+        rating=note.rating,
+        target_price=float(note.target_price) if note.target_price else None,
+        tags=note.tags,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_research_note(
+    note_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """Delete a research note.
+
+    Permanently deletes the note. Requires authentication.
+    Users can only delete their own notes.
+    """
+    service = ResearchNoteService(db)
+    deleted = await service.delete_note(user_id=current_user.id, note_id=note_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Research note not found: {note_id}",
+        )
