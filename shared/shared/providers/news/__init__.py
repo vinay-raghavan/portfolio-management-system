@@ -20,11 +20,13 @@ Usage:
 
 from .base import BaseNewsProvider
 from .factory import NewsProviderFactory, get_news_provider, set_default_news_provider
+from .google_rss import GoogleNewsRSSProvider
 from .sentiment import KeywordSentimentAnalyzer, analyze_sentiment
 from .yahoo import YahooNewsProvider
 
 # Register providers
 NewsProviderFactory.register("yahoo", YahooNewsProvider)
+NewsProviderFactory.register("google_rss", GoogleNewsRSSProvider)
 
 __all__ = [
     # Base classes
@@ -38,5 +40,6 @@ __all__ = [
     "analyze_sentiment",
     # Providers
     "YahooNewsProvider",
+    "GoogleNewsRSSProvider",
 ]
 
