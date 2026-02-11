@@ -21,6 +21,7 @@ celery_app = Celery(
         "worker.tasks.backtest",
         "worker.tasks.algo",
         "worker.tasks.screener",
+        "worker.tasks.research",
     ],
 )
 
@@ -133,5 +134,10 @@ celery_app.conf.beat_schedule = {
     "process-screener-alerts": {
         "task": "worker.tasks.screener.process_screener_alerts",
         "schedule": 900.0,  # Every 15 minutes
+    },
+    # Daily research digest - at market close 4:00 PM IST (10:30 UTC)
+    "generate-daily-digest": {
+        "task": "worker.tasks.research.generate_daily_digest",
+        "schedule": crontab(hour=10, minute=30),  # 4:00 PM IST = 10:30 UTC
     },
 }
