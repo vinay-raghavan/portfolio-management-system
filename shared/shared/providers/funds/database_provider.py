@@ -232,9 +232,7 @@ class DatabaseFundsProvider(FundsProvider):
                     )
 
                 # Release the margin that was blocked for the short (use entry price)
-                margin_to_release = min(
-                    funds.margin_used, margin_base_value * margin_percent
-                )
+                margin_to_release = min(funds.margin_used, margin_base_value * margin_percent)
                 if margin_to_release > 0:
                     funds.margin_used -= margin_to_release
                 logger.debug(
