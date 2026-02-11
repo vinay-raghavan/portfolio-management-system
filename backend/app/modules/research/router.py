@@ -13,6 +13,9 @@ from app.modules.research.schemas import (
     NewsResponse,
     PeerComparisonResponse,
     PeerStock,
+    SectorListResponse,
+    SectorPerformance,
+    SectorStocksResponse,
     StockResearchResponse,
 )
 from app.modules.research.service import ResearchService
@@ -325,3 +328,93 @@ async def get_market_news(
         last_updated=news.last_updated,
     )
 
+
+# =============================================================================
+# Sector Endpoints
+# =============================================================================
+
+
+@router.get("/sectors", response_model=SectorListResponse)
+async def get_sectors(
+    db: DbSession,
+    current_user: OptionalUser,
+) -> SectorListResponse:
+    """Get all sectors with performance metrics.
+
+    Returns a list of all sectors with their daily/weekly/monthly performance,
+    stock count, and top gainers/losers.
+
+    Note: Currently returns a predefined sector list. Performance data
+    requires a stock universe database to calculate.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    sectors_data = await service.get_sectors()
+
+    return SectorListResponse(
+        sectors=[
+            SectorPerformance(
+                sector=s["sector"],
+                change_1d=s.get("change_1d"),
+                change_1w=s.get("change_1w"),
+                change_1m=s.get("change_1m"),
+                change_3m=s.get("change_3m"),
+                change_1y=s.get("change_1y"),
+                stock_count=s.get("stock_count", 0),
+                top_gainer=s.get("top_gainer"),
+                top_loser=s.get("top_loser"),
+            )
+            for s in sectors_data
+        ],
+        last_updated=datetime.now(UTC),
+    )
+
+
+@router.get("/sectors/{sector}", response_model=SectorStocksResponse)
+async def get_sector_stocks(
+    sector: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    limit: int = Query(default=20, ge=1, le=50, description="Maximum number of stocks"),
+) -> SectorStocksResponse:
+    """Get stocks within a specific sector.
+
+    Returns stocks belonging to the specified sector with their metrics
+    including price, market cap, P/E ratio, and performance.
+
+    Note: Currently a stub - requires a stock universe database to implement.
+
+    Args:
+        sector: Sector name (e.g., "Technology", "Healthcare")
+        limit: Maximum number of stocks to return (1-50, default 20)
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    data = await service.get_sector_stocks(sector, limit=limit)
+
+    return SectorStocksResponse(
+        sector=data["sector"],
+        stocks=[
+            PeerStock(
+                symbol=s.get("symbol", ""),
+                name=s.get("name"),
+                current_price=s.get("current_price"),
+                price_change_pct=s.get("price_change_pct"),
+                market_cap=s.get("market_cap"),
+                pe_ratio=s.get("pe_ratio"),
+                pb_ratio=s.get("pb_ratio"),
+                dividend_yield=s.get("dividend_yield"),
+                roe=s.get("roe"),
+                revenue_growth=s.get("revenue_growth"),
+            )
+            for s in data.get("stocks", [])
+        ],
+        total_count=data.get("total_count", 0),
+        last_updated=datetime.now(UTC),
+    )

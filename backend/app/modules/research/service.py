@@ -190,3 +190,72 @@ class ResearchService:
             "sector_avg_dividend_yield": None,
         }
 
+    async def get_sectors(self) -> list[dict]:
+        """Get all sectors with performance data.
+
+        Returns performance metrics for each sector. Currently returns a
+        predefined list of sectors - in production this would aggregate
+        from a stock universe database.
+
+        Returns:
+            List of sector dicts with performance data
+        """
+        # Standard sectors (GICS sectors)
+        sectors = [
+            "Technology",
+            "Healthcare",
+            "Financials",
+            "Consumer Discretionary",
+            "Communication Services",
+            "Industrials",
+            "Consumer Staples",
+            "Energy",
+            "Utilities",
+            "Real Estate",
+            "Materials",
+        ]
+
+        # Return sectors with placeholder performance data
+        # In production, this would calculate from actual stock data
+        logger.info("get_sectors() - returning predefined sector list (no stock universe)")
+
+        return [
+            {
+                "sector": sector,
+                "change_1d": None,
+                "change_1w": None,
+                "change_1m": None,
+                "change_3m": None,
+                "change_1y": None,
+                "stock_count": 0,
+                "top_gainer": None,
+                "top_loser": None,
+            }
+            for sector in sectors
+        ]
+
+    async def get_sector_stocks(
+        self,
+        sector: str,
+        limit: int = 20,
+    ) -> dict:
+        """Get stocks within a specific sector.
+
+        Returns stocks belonging to the specified sector with their metrics.
+        Currently a stub - requires a stock universe database to implement.
+
+        Args:
+            sector: Sector name
+            limit: Maximum number of stocks
+
+        Returns:
+            Dict with sector stocks and count
+        """
+        logger.info(f"get_sector_stocks({sector}) - requires stock universe database")
+
+        return {
+            "sector": sector,
+            "stocks": [],
+            "total_count": 0,
+        }
+
