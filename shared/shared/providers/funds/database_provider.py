@@ -233,7 +233,7 @@ class DatabaseFundsProvider(FundsProvider):
 
                 # Release the margin that was blocked for the short (use entry price)
                 margin_to_release = min(
-                    funds.margin_used, margin_base_value * margin_percent + fees
+                    funds.margin_used, margin_base_value * margin_percent
                 )
                 if margin_to_release > 0:
                     funds.margin_used -= margin_to_release
@@ -323,25 +323,33 @@ class DatabaseFundsProvider(FundsProvider):
             is_closing = existing_position_qty is not None and existing_position_qty > 0
 
             if is_closing:
-                # Closing long position - release margin and credit proceeds
-                net_proceeds = trade_value - fees
-                funds.cash_balance += net_proceeds
+                # Closing long position - release margin and credit P&L only
+                # For INTRADAY: we only blocked margin when opening, so we only release margin
+                # and credit/debit the P&L (not the full proceeds)
 
                 # Release the margin that was blocked - use entry price if available
-                # to release the correct amount that was originally blocked
                 if entry_price:
                     original_value = quantity * entry_price
-                    margin_to_release = min(
-                        funds.margin_used, original_value * margin_percent + fees
-                    )
+                    margin_to_release = min(funds.margin_used, original_value * margin_percent)
+                    # P&L = (exit_price - entry_price) * quantity
+                    pnl = trade_value - original_value - fees
                 else:
-                    # Fallback: use current trade value (less accurate)
-                    margin_to_release = min(funds.margin_used, trade_value * margin_percent + fees)
+                    # Fallback: use current trade value (less accurate, assume no P&L)
+                    margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                    pnl = -fees  # Only fees as loss if no entry price
+                    logger.warning(
+                        f"INTRADAY SELL (close): No entry price provided for user {user_id[:8]}..., "
+                        f"cannot calculate accurate P&L"
+                    )
 
                 if margin_to_release > 0:
                     funds.margin_used -= margin_to_release
+
+                # Credit/debit only the P&L to cash balance (not full proceeds)
+                funds.cash_balance += pnl
+
                 logger.debug(
-                    f"INTRADAY SELL (close): Credited ₹{net_proceeds:.2f}, "
+                    f"INTRADAY SELL (close): P&L ₹{pnl:.2f}, "
                     f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
                 )
             else:
@@ -369,22 +377,33 @@ class DatabaseFundsProvider(FundsProvider):
                     f"Cannot short sell in MARGIN (MTF) mode. "
                     f"Trying to sell {quantity} shares but only own {owned}."
                 )
-            # Closing leveraged position - release margin and credit proceeds
-            net_proceeds = trade_value - fees
-            funds.cash_balance += net_proceeds
+            # Closing leveraged position - release margin and credit P&L only
+            # For MTF: we only blocked margin when opening, so we only release margin
+            # and credit/debit the P&L (not the full proceeds)
 
             # Release the margin that was blocked - use entry price if available
             if entry_price:
                 original_value = quantity * entry_price
-                margin_to_release = min(funds.margin_used, original_value * margin_percent + fees)
+                margin_to_release = min(funds.margin_used, original_value * margin_percent)
+                # P&L = (exit_price - entry_price) * quantity
+                pnl = trade_value - original_value - fees
             else:
-                # Fallback: use current trade value (less accurate)
-                margin_to_release = min(funds.margin_used, trade_value * margin_percent + fees)
+                # Fallback: use current trade value (less accurate, assume no P&L)
+                margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                pnl = -fees  # Only fees as loss if no entry price
+                logger.warning(
+                    f"MARGIN SELL: No entry price provided for user {user_id[:8]}..., "
+                    f"cannot calculate accurate P&L"
+                )
 
             if margin_to_release > 0:
                 funds.margin_used -= margin_to_release
+
+            # Credit/debit only the P&L to cash balance (not full proceeds)
+            funds.cash_balance += pnl
+
             logger.debug(
-                f"MARGIN SELL: Credited ₹{net_proceeds:.2f}, "
+                f"MARGIN SELL: P&L ₹{pnl:.2f}, "
                 f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
             )
 

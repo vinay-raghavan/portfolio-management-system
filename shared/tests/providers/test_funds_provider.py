@@ -489,11 +489,15 @@ class TestProductTypeValidation:
         With the updated logic, entry_price should be provided to correctly:
         - Calculate P&L for the short trade
         - Release the correct margin amount based on entry price
+
+        Note: Fees are NOT included in margin blocking/release - they are
+        deducted from P&L directly.
         """
         user_id = str(uuid4())
         initial_balance = Decimal("100000")
-        # Short was opened at 1000, blocking 25% margin = 10*1000*0.25 + 10 = 2510
-        initial_margin = Decimal("2510")
+        # Short was opened at 1000, blocking 25% margin = 10*1000*0.25 = 2500
+        # (fees are NOT part of margin)
+        initial_margin = Decimal("2500")
         existing_funds = MockUserFunds(
             user_id=user_id,
             cash_balance=initial_balance,
@@ -518,8 +522,8 @@ class TestProductTypeValidation:
         # - P&L = (entry_price - exit_price) * qty = (1000 - 900) * 10 = 1000 profit
         # - Cash change: +1000 (profit) - 10 (fees) = +990
         # - New cash: 100000 + 990 = 100990
-        # - Margin to release: min(2510, 10*1000*0.25 + 10) = min(2510, 2510) = 2510
-        # - New margin: 2510 - 2510 = 0
+        # - Margin to release: min(2500, 10*1000*0.25) = min(2500, 2500) = 2500
+        # - New margin: 2500 - 2500 = 0
         assert existing_funds.cash_balance == Decimal("100990")
         assert existing_funds.margin_used == Decimal("0")
 
