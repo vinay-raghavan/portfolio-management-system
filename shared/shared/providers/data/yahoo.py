@@ -7,7 +7,18 @@ from zoneinfo import ZoneInfo
 
 import yfinance as yf
 
-from ..schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
+from ..schemas import (
+    OHLCV,
+    DividendData,
+    DividendRecord,
+    FinancialData,
+    FinancialStatement,
+    FundamentalData,
+    InstrumentInfo,
+    MarketSession,
+    Quote,
+    SearchResult,
+)
 from ..symbols import Exchange, SymbolMapper
 from .base import DataProvider
 
@@ -263,3 +274,71 @@ class YahooDataProvider(DataProvider):
             current_time = now.time()
             return NSE_MARKET_OPEN <= current_time <= NSE_MARKET_CLOSE
         return True
+
+    # =========================================================================
+    # Research / Fundamental Data Methods
+    # =========================================================================
+
+    async def get_fundamentals(self, symbol: str) -> FundamentalData | None:
+        """Get fundamental analysis data for a stock.
+
+        Fetches valuation ratios, earnings, profitability, and other metrics
+        from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+            info = ticker.info
+
+            if not info.get("symbol"):
+                return None
+
+            return FundamentalData(
+                symbol=SymbolMapper.normalize(symbol),
+                # Valuation ratios
+                pe_ratio=info.get("trailingPE"),
+                forward_pe=info.get("forwardPE"),
+                pb_ratio=info.get("priceToBook"),
+                ps_ratio=info.get("priceToSalesTrailing12Months"),
+                peg_ratio=info.get("pegRatio"),
+                # Earnings
+                eps=info.get("trailingEps"),
+                eps_forward=info.get("forwardEps"),
+                eps_growth_yoy=info.get("earningsQuarterlyGrowth"),
+                # Revenue
+                revenue=info.get("totalRevenue"),
+                revenue_per_share=info.get("revenuePerShare"),
+                revenue_growth_yoy=info.get("revenueGrowth"),
+                # Profitability
+                profit_margin=info.get("profitMargins"),
+                operating_margin=info.get("operatingMargins"),
+                gross_margin=info.get("grossMargins"),
+                # Returns
+                roe=info.get("returnOnEquity"),
+                roa=info.get("returnOnAssets"),
+                # Dividends
+                dividend_yield=info.get("dividendYield"),
+                dividend_rate=info.get("dividendRate"),
+                payout_ratio=info.get("payoutRatio"),
+                # Balance sheet
+                market_cap=info.get("marketCap"),
+                enterprise_value=info.get("enterpriseValue"),
+                book_value=info.get("bookValue"),
+                debt_to_equity=info.get("debtToEquity"),
+                current_ratio=info.get("currentRatio"),
+                quick_ratio=info.get("quickRatio"),
+                # Other
+                beta=info.get("beta"),
+                shares_outstanding=info.get("sharesOutstanding"),
+                float_shares=info.get("floatShares"),
+                # Classification
+                sector=info.get("sector"),
+                industry=info.get("industry"),
+                # Metadata
+                currency=info.get("currency"),
+                fiscal_year_end=info.get("fiscalYearEnd"),
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching fundamentals for {symbol}: {e}")
+            return None
