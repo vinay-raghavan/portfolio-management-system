@@ -20,6 +20,10 @@ Usage:
 
 from .base import BaseNewsProvider
 from .factory import NewsProviderFactory, get_news_provider, set_default_news_provider
+from .yahoo import YahooNewsProvider
+
+# Register providers
+NewsProviderFactory.register("yahoo", YahooNewsProvider)
 
 __all__ = [
     # Base classes
@@ -28,5 +32,7 @@ __all__ = [
     "NewsProviderFactory",
     "get_news_provider",
     "set_default_news_provider",
+    # Providers
+    "YahooNewsProvider",
 ]
 
