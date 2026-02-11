@@ -425,3 +425,59 @@ class YahooDataProvider(DataProvider):
         except (KeyError, TypeError, ValueError):
             pass
         return None
+
+    async def get_dividends(self, symbol: str) -> DividendData | None:
+        """Get dividend history and metrics for a stock.
+
+        Fetches dividend history and current dividend metrics from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+            info = ticker.info
+
+            # Get dividend history (returns a pandas Series)
+            div_history = ticker.dividends
+
+            # Build dividend records from history
+            history = []
+            if not div_history.empty:
+                for date, amount in div_history.items():
+                    history.append(
+                        DividendRecord(
+                            ex_date=date.to_pydatetime(),
+                            amount=float(amount),
+                            currency=info.get("currency"),
+                        )
+                    )
+                # Sort by date descending (most recent first)
+                history.sort(key=lambda x: x.ex_date, reverse=True)
+
+            # Calculate dividend growth rate (5-year CAGR) if enough history
+            dividend_growth_rate = None
+            if len(history) >= 20:  # At least 5 years of quarterly dividends
+                recent_year = sum(d.amount for d in history[:4])  # Last 4 dividends
+                five_years_ago = sum(d.amount for d in history[16:20])  # 4 dividends from 5 years ago
+                if five_years_ago > 0 and recent_year > 0:
+                    dividend_growth_rate = ((recent_year / five_years_ago) ** 0.2 - 1) * 100
+
+            # Get ex-dividend date
+            ex_div_timestamp = info.get("exDividendDate")
+            ex_dividend_date = None
+            if ex_div_timestamp:
+                ex_dividend_date = datetime.fromtimestamp(ex_div_timestamp, tz=UTC)
+
+            return DividendData(
+                symbol=SymbolMapper.normalize(symbol),
+                dividend_yield=info.get("dividendYield"),
+                dividend_rate=info.get("dividendRate"),
+                payout_ratio=info.get("payoutRatio"),
+                ex_dividend_date=ex_dividend_date,
+                history=history[:40],  # Last 40 dividends (~10 years quarterly)
+                five_year_avg_yield=info.get("fiveYearAvgDividendYield"),
+                dividend_growth_rate=dividend_growth_rate,
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching dividends for {symbol}: {e}")
+            return None
