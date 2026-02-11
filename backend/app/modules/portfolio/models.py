@@ -164,6 +164,16 @@ class UserFunds(Base):
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
 
+    # Cumulative realized P&L from closed positions
+    realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    # Current unrealized P&L from open positions
+    unrealized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -183,6 +193,11 @@ class UserFunds(Base):
     def available_margin(self) -> Decimal:
         """Calculate available margin for new positions."""
         return self.cash_balance + self.collateral - self.margin_used
+
+    @property
+    def net_pnl(self) -> Decimal:
+        """Calculate total P&L (realized + unrealized)."""
+        return self.realized_pnl + self.unrealized_pnl
 
     def __repr__(self) -> str:
         return f"<UserFunds user={self.user_id} cash={self.cash_balance}>"

@@ -519,6 +519,8 @@ class StrategyExecutor:
                 algo_position_model=AlgoPosition,
             )
 
+            total_realized_pnl = Decimal("0")
+
             for pos in closed_positions:
                 # For LONG positions, closing means SELL (credit proceeds)
                 # For SHORT positions, closing means BUY (debit cost)
@@ -539,7 +541,18 @@ class StrategyExecutor:
                 logger.debug(
                     f"Updated funds for closed position {pos.symbol}: "
                     f"side={side}, qty={pos.quantity}, price={exit_price}, "
-                    f"product_type={product_type.value}"
+                    f"pnl={pos.realized_pnl}, product_type={product_type.value}"
+                )
+
+                # Accumulate realized P&L
+                if pos.realized_pnl:
+                    total_realized_pnl += Decimal(str(pos.realized_pnl))
+
+            # Update cumulative realized P&L in user funds
+            if total_realized_pnl != Decimal("0"):
+                await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
+                logger.info(
+                    f"Updated realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
                 )
 
         except Exception as e:
@@ -674,6 +687,26 @@ class StrategyExecutor:
                             aggregated_pnl.total_pnl += pnl_stats.total_pnl
                             if pnl_stats.consecutive_losses > 0:
                                 aggregated_pnl.consecutive_losses += pnl_stats.consecutive_losses
+
+                            # Update realized P&L in user funds when positions are closed
+                            if pnl_stats.trades_closed > 0 and pnl_stats.total_pnl != Decimal("0"):
+                                from shared.providers.funds import DatabaseFundsProvider
+
+                                from engine.models import AlgoPosition, UserFunds
+
+                                funds_provider = DatabaseFundsProvider(
+                                    db=db,
+                                    user_funds_model=UserFunds,
+                                    initial_balance=Decimal("0"),
+                                    algo_position_model=AlgoPosition,
+                                )
+                                await funds_provider.update_realized_pnl(
+                                    config.user_id, pnl_stats.total_pnl
+                                )
+                                logger.info(
+                                    f"Updated realized P&L for user {config.user_id[:8]}...: "
+                                    f"+₹{pnl_stats.total_pnl:.2f}"
+                                )
                         except Exception as e:
                             logger.warning(
                                 f"Position tracking failed for {order_data.get('symbol')}: {e}"

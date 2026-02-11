@@ -324,12 +324,18 @@ async def close_position(
                 detail=f"Could not fetch current price for {symbol}. Please provide exit_price.",
             )
 
+    # Map strategy product type to shared ProductType for funds handling
+    from shared.providers.schemas import ProductType
+
+    product_type = ProductType(strategy.product_type.value)
+
     result = await service.close_position(
         user_id=current_user.id,
         strategy_id=strategy_id,
         symbol=symbol,
         exit_price=exit_price,
         quantity=quantity,
+        product_type=product_type,
     )
 
     if not result:

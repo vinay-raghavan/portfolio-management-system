@@ -235,8 +235,15 @@ class Funds(BaseModel):
     used_margin: Decimal = Decimal("0")
     total_balance: Decimal
     collateral: Decimal = Decimal("0")
+    realized_pnl: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
 
     @property
     def available_margin(self) -> Decimal:
         """Calculate available margin."""
         return self.available_cash + self.collateral - self.used_margin
+
+    @property
+    def net_pnl(self) -> Decimal:
+        """Calculate total P&L (realized + unrealized)."""
+        return self.realized_pnl + self.unrealized_pnl

@@ -70,17 +70,19 @@ export function PerformanceWidget({ days = 30, compact = false }: PerformanceWid
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch yesterday's recommendations to show stocks with returns
-  // Today's recommendations don't have returns yet, so we fetch yesterday's
-  const getYesterdayDate = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
+  // Fetch recommendations from 8 days ago to show stocks with 1D and 1W returns
+  // 1D returns are populated after 1 day, 1W after 7 days
+  // Using 8 days ensures at least 1D and 1W returns are available
+  // (1M returns will show when data is 30+ days old)
+  const getDateWithReturns = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 8);
+    return date.toISOString().split('T')[0];
   };
 
   const { data: recommendationsData, error: recommendationsError } = useQuery({
     queryKey: ['screener-recommendations-with-returns'],
-    queryFn: () => screenerApi.getRecommendations(getYesterdayDate()),
+    queryFn: () => screenerApi.getRecommendations(getDateWithReturns()),
     staleTime: 5 * 60 * 1000,
   });
 

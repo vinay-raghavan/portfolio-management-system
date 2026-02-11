@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
+from shared.providers.schemas import ProductType
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +37,7 @@ from app.modules.portfolio.schemas import (
     TrailingStopConfig,
     TrailingStopUpdate,
 )
+from app.providers.funds_provider import DatabaseFundsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -792,8 +794,12 @@ class AlgoService:
         symbol: str,
         exit_price: Decimal,
         quantity: int | None = None,
+        product_type: ProductType = ProductType.DELIVERY,
     ) -> ClosePositionResponse | None:
         """Close a position (fully or partially) and calculate P&L.
+
+        Also updates user_funds: releases margin (if applicable) and
+        updates cumulative realized_pnl.
 
         Args:
             user_id: User ID
@@ -801,6 +807,7 @@ class AlgoService:
             symbol: Symbol to close
             exit_price: Exit price
             quantity: Quantity to close (None = full close)
+            product_type: Product type (DELIVERY, INTRADAY, MARGIN)
 
         Returns:
             ClosePositionResponse or None if position not found
@@ -844,6 +851,17 @@ class AlgoService:
 
         await self.db.flush()
 
+        # Update user_funds: credit sale proceeds and update realized P&L
+        await self._update_funds_for_closed_position(
+            user_id=user_id,
+            side=position.side,
+            close_qty=close_qty,
+            entry_price=position.entry_price,
+            exit_price=exit_price,
+            pnl=pnl,
+            product_type=product_type,
+        )
+
         logger.info(f"Closed position {symbol}: qty={close_qty}, pnl={pnl}, is_winner={is_winner}")
 
         return ClosePositionResponse(
@@ -860,6 +878,61 @@ class AlgoService:
             status=final_status,
             message=f"Successfully closed {close_qty} units of {symbol}",
         )
+
+    async def _update_funds_for_closed_position(
+        self,
+        user_id: str,
+        side: PositionSide,
+        close_qty: int,
+        entry_price: Decimal,
+        exit_price: Decimal,
+        pnl: Decimal,
+        product_type: ProductType = ProductType.DELIVERY,
+    ) -> None:
+        """Update user_funds when a position is closed.
+
+        This handles:
+        1. Crediting sale proceeds (for LONG) or debiting buy cost (for SHORT)
+        2. Releasing margin (for INTRADAY/MARGIN products)
+        3. Updating cumulative realized P&L
+
+        Args:
+            user_id: User ID
+            side: Position side (LONG or SHORT)
+            close_qty: Quantity being closed
+            entry_price: Original entry price (for margin release)
+            exit_price: Exit price
+            pnl: Realized P&L from this close
+            product_type: Product type for margin handling
+        """
+        try:
+            funds_provider = DatabaseFundsProvider(db=self.db)
+
+            # For LONG positions, closing means SELL (credit proceeds)
+            # For SHORT positions, closing means BUY (debit cost to cover)
+            trade_side = "SELL" if side == PositionSide.LONG else "BUY"
+
+            await funds_provider.update_funds_for_trade(
+                user_id=user_id,
+                side=trade_side,
+                quantity=Decimal(str(close_qty)),
+                price=exit_price,
+                fees=Decimal("0"),  # Fees handled separately if needed
+                product_type=product_type,
+                existing_position_qty=Decimal(str(close_qty)),  # Closing position
+                entry_price=entry_price,  # For proper margin release
+            )
+
+            # Update cumulative realized P&L
+            if pnl != Decimal("0"):
+                await funds_provider.update_realized_pnl(user_id, pnl)
+                logger.debug(
+                    f"Updated realized P&L for user {user_id[:8]}...: "
+                    f"{'+' if pnl > 0 else ''}₹{pnl:.2f}"
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to update funds for closed position: {e}")
 
     async def square_off_strategy(
         self,
@@ -907,6 +980,9 @@ class AlgoService:
         closed_responses: list[ClosePositionResponse] = []
         total_pnl = Decimal("0")
 
+        # Map strategy product type to shared ProductType for funds handling
+        strategy_product_type = ProductType(strategy.product_type.value)
+
         for position in open_positions:
             exit_price = exit_prices.get(position.symbol, position.entry_price)
             response = await self.close_position(
@@ -914,6 +990,7 @@ class AlgoService:
                 strategy_id=strategy_id,
                 symbol=position.symbol,
                 exit_price=exit_price,
+                product_type=strategy_product_type,
             )
             if response:
                 closed_responses.append(response)

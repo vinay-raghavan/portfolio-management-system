@@ -29,7 +29,7 @@ dependencies = [
     "tenacity>=9.0.0",
     # Shared package
     "portfolio-shared",
-    "cryptography>=46.0.3",
+    "cryptography>=46.0.5",
 ]
 
 [tool.uv.sources]

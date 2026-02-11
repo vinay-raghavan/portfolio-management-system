@@ -39,6 +39,7 @@ class FundsProvider(ABC):
         fees: Decimal,
         product_type: ProductType = ProductType.DELIVERY,
         existing_position_qty: Decimal | None = None,
+        entry_price: Decimal | None = None,
     ) -> Funds:
         """Update funds after a trade execution.
 
@@ -55,6 +56,9 @@ class FundsProvider(ABC):
             fees: Trading fees
             product_type: Product type (DELIVERY, INTRADAY, MARGIN)
             existing_position_qty: Current position quantity (for SELL validation)
+            entry_price: Original entry price (for correct margin release calculation
+                when closing positions). If not provided, uses current price which
+                may release incorrect margin amount.
 
         Returns:
             Updated Funds object
@@ -115,5 +119,37 @@ class FundsProvider(ABC):
 
         Returns:
             Current position quantity (positive for long, negative for short, 0 if no position)
+        """
+        pass
+
+    @abstractmethod
+    async def update_realized_pnl(
+        self,
+        user_id: str,
+        pnl_amount: Decimal,
+    ) -> None:
+        """Update cumulative realized P&L for a user.
+
+        This is called when positions are closed to track total realized profit/loss.
+
+        Args:
+            user_id: User identifier
+            pnl_amount: P&L amount to add (positive for profit, negative for loss)
+        """
+        pass
+
+    @abstractmethod
+    async def update_unrealized_pnl(
+        self,
+        user_id: str,
+        unrealized_pnl: Decimal,
+    ) -> None:
+        """Update current unrealized P&L for a user.
+
+        This is called periodically to update paper profit/loss from open positions.
+
+        Args:
+            user_id: User identifier
+            unrealized_pnl: Current unrealized P&L (replaces previous value)
         """
         pass

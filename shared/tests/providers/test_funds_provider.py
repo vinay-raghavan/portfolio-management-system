@@ -26,6 +26,8 @@ class MockUserFunds:
         cash_balance: Decimal = Decimal("1000000"),
         margin_used: Decimal = Decimal("0"),
         collateral: Decimal = Decimal("0"),
+        realized_pnl: Decimal = Decimal("0"),
+        unrealized_pnl: Decimal = Decimal("0"),
         **kwargs,
     ):
         self.id = kwargs.get("id", str(uuid4()))
@@ -33,6 +35,8 @@ class MockUserFunds:
         self.cash_balance = cash_balance
         self.margin_used = margin_used
         self.collateral = collateral
+        self.realized_pnl = realized_pnl
+        self.unrealized_pnl = unrealized_pnl
 
     @property
     def available_cash(self) -> Decimal:
@@ -391,8 +395,9 @@ class TestProductTypeValidation:
             )
 
         # Margin blocked: 10 * 1000 * 0.25 + 10 = 2510
-        # Cash reduced by margin amount
-        assert existing_funds.cash_balance == Decimal("97490")
+        # Cash NOT reduced - only margin_used increases
+        # (available_cash = cash_balance - margin_used handles the reduction)
+        assert existing_funds.cash_balance == Decimal("100000")
         assert existing_funds.margin_used == Decimal("2510")
 
     @pytest.mark.asyncio
@@ -419,7 +424,9 @@ class TestProductTypeValidation:
             )
 
         # Margin blocked: 10 * 1000 * 0.50 + 10 = 5010
-        assert existing_funds.cash_balance == Decimal("94990")
+        # Cash NOT reduced - only margin_used increases
+        # (available_cash = cash_balance - margin_used handles the reduction)
+        assert existing_funds.cash_balance == Decimal("100000")
         assert existing_funds.margin_used == Decimal("5010")
 
     @pytest.mark.asyncio
@@ -477,10 +484,20 @@ class TestProductTypeValidation:
 
     @pytest.mark.asyncio
     async def test_intraday_close_short_releases_margin(self):
-        """Test closing INTRADAY short position releases margin."""
+        """Test closing INTRADAY short position releases margin.
+
+        With the updated logic, entry_price should be provided to correctly:
+        - Calculate P&L for the short trade
+        - Release the correct margin amount based on entry price
+
+        Note: Fees are NOT included in margin blocking/release - they are
+        deducted from P&L directly.
+        """
         user_id = str(uuid4())
         initial_balance = Decimal("100000")
-        initial_margin = Decimal("2500")  # Margin blocked from short
+        # Short was opened at 1000, blocking 25% margin = 10*1000*0.25 = 2500
+        # (fees are NOT part of margin)
+        initial_margin = Decimal("2500")
         existing_funds = MockUserFunds(
             user_id=user_id,
             cash_balance=initial_balance,
@@ -494,19 +511,21 @@ class TestProductTypeValidation:
                 user_id=user_id,
                 side="BUY",
                 quantity=Decimal("10"),
-                price=Decimal("900"),  # Buying back at lower price
+                price=Decimal("900"),  # Buying back at lower price (profit!)
                 fees=Decimal("10"),
                 product_type="INTRADAY",
                 existing_position_qty=Decimal("-10"),  # Short position
+                entry_price=Decimal("1000"),  # Original short entry price
             )
 
-        # Closing short:
-        # - Total cost: 10 * 900 + 10 = 9010
-        # - Margin to release: min(2500, 9000 * 0.25) = min(2500, 2250) = 2250
-        # - Cash: 100000 - 9010 + 2250 = 93240
-        # - Margin: 2500 - 2250 = 250
-        assert existing_funds.cash_balance == Decimal("93240")
-        assert existing_funds.margin_used == Decimal("250")
+        # Closing short with entry_price:
+        # - P&L = (entry_price - exit_price) * qty = (1000 - 900) * 10 = 1000 profit
+        # - Cash change: +1000 (profit) - 10 (fees) = +990
+        # - New cash: 100000 + 990 = 100990
+        # - Margin to release: min(2500, 10*1000*0.25) = min(2500, 2500) = 2500
+        # - New margin: 2500 - 2500 = 0
+        assert existing_funds.cash_balance == Decimal("100990")
+        assert existing_funds.margin_used == Decimal("0")
 
     @pytest.mark.asyncio
     async def test_product_type_aliases_work(self):

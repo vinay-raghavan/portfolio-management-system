@@ -13,6 +13,7 @@ from app.modules.algo.models import (
     PositionSizingMethod,
     PositionStatus,
     ScheduleType,
+    StrategyProductType,
     StrategyStatus,
     UserStrategy,
 )
@@ -240,6 +241,7 @@ class TestSquareOffStrategy:
         strategy.id = "test-strategy-id"
         strategy.user_id = "test-user-id"
         strategy.name = "Test Strategy"
+        strategy.product_type = StrategyProductType.DELIVERY
         return strategy
 
     @pytest.fixture
@@ -282,7 +284,9 @@ class TestSquareOffStrategy:
             mock_db.execute.return_value = mock_result
 
             # Mock close_position to return realistic responses
-            async def mock_close_position(user_id, strategy_id, symbol, exit_price, quantity=None):
+            async def mock_close_position(
+                user_id, strategy_id, symbol, exit_price, quantity=None, product_type=None
+            ):
                 from app.modules.algo.schemas import ClosePositionResponse
 
                 return ClosePositionResponse(
