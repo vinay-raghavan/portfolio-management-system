@@ -114,3 +114,35 @@ class DividendsResponse(BaseModel):
     history: list[DividendRecordResponse] = []
     last_updated: datetime | None = None
 
+
+# =============================================================================
+# News Schemas
+# =============================================================================
+
+
+class NewsArticleResponse(BaseModel):
+    """Response schema for a news article."""
+
+    title: str
+    url: str
+    source: str
+    published_at: datetime
+    summary: str | None = None
+    thumbnail_url: str | None = None
+    related_symbols: list[str] = []
+    sentiment: str = "neutral"  # positive, negative, neutral
+    sentiment_score: float = 0.0
+
+
+class NewsResponse(BaseModel):
+    """Response schema for news feed."""
+
+    symbol: str | None = None
+    articles: list[NewsArticleResponse] = []
+    total_count: int = 0
+    average_sentiment: float = 0.0
+    positive_count: int = 0
+    negative_count: int = 0
+    neutral_count: int = 0
+    last_updated: datetime | None = None
+

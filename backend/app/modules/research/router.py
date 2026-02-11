@@ -1,10 +1,15 @@
 """Research API routes."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import DbSession, OptionalUser
 from app.modules.data.service import get_user_data_provider
-from app.modules.research.schemas import DividendsResponse, FundamentalsResponse
+from app.modules.research.schemas import (
+    DividendsResponse,
+    FundamentalsResponse,
+    NewsArticleResponse,
+    NewsResponse,
+)
 from app.modules.research.service import ResearchService
 
 router = APIRouter()
@@ -114,5 +119,106 @@ async def get_dividends(
             for d in dividends.history
         ],
         last_updated=dividends.last_updated,
+    )
+
+
+@router.get("/{symbol}/news", response_model=NewsResponse)
+async def get_news(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    limit: int = Query(default=10, ge=1, le=50),
+) -> NewsResponse:
+    """Get news articles for a stock with sentiment analysis.
+
+    Fetches recent news articles related to the stock symbol and analyzes
+    their sentiment (positive, negative, neutral).
+
+    Args:
+        symbol: Stock symbol (e.g., "AAPL", "MSFT")
+        limit: Maximum number of articles to return (1-50, default 10)
+
+    Returns:
+        News articles with sentiment scores and aggregate statistics.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    news = await service.get_news(symbol, limit=limit)
+
+    return NewsResponse(
+        symbol=news.symbol,
+        articles=[
+            NewsArticleResponse(
+                title=a.title,
+                url=a.url,
+                source=a.source,
+                published_at=a.published_at,
+                summary=a.summary,
+                thumbnail_url=a.thumbnail_url,
+                related_symbols=a.related_symbols,
+                sentiment=a.sentiment.value,
+                sentiment_score=a.sentiment_score,
+            )
+            for a in news.articles
+        ],
+        total_count=news.total_count,
+        average_sentiment=news.average_sentiment,
+        positive_count=news.positive_count,
+        negative_count=news.negative_count,
+        neutral_count=news.neutral_count,
+        last_updated=news.last_updated,
+    )
+
+
+@router.get("/market/news", response_model=NewsResponse)
+async def get_market_news(
+    db: DbSession,
+    current_user: OptionalUser,
+    category: str | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> NewsResponse:
+    """Get general market news with sentiment analysis.
+
+    Fetches recent market-wide news articles and analyzes their sentiment.
+
+    Args:
+        category: Optional category filter (e.g., "technology", "finance")
+        limit: Maximum number of articles to return (1-50, default 10)
+
+    Returns:
+        Market news articles with sentiment scores and aggregate statistics.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    news = await service.get_market_news(category=category, limit=limit)
+
+    return NewsResponse(
+        symbol=None,
+        articles=[
+            NewsArticleResponse(
+                title=a.title,
+                url=a.url,
+                source=a.source,
+                published_at=a.published_at,
+                summary=a.summary,
+                thumbnail_url=a.thumbnail_url,
+                related_symbols=a.related_symbols,
+                sentiment=a.sentiment.value,
+                sentiment_score=a.sentiment_score,
+            )
+            for a in news.articles
+        ],
+        total_count=news.total_count,
+        average_sentiment=news.average_sentiment,
+        positive_count=news.positive_count,
+        negative_count=news.negative_count,
+        neutral_count=news.neutral_count,
+        last_updated=news.last_updated,
     )
 
