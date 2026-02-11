@@ -296,3 +296,116 @@ class ResearchNoteListResponse(BaseModel):
     notes: list[ResearchNoteResponse] = []
     total_count: int = 0
 
+
+# =============================================================================
+# Daily Digest Schemas
+# =============================================================================
+
+
+class IndexPerformance(BaseModel):
+    """Performance data for a market index."""
+
+    symbol: str
+    name: str | None = None
+    close: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+
+
+class MarketSummary(BaseModel):
+    """Market summary with major index performance."""
+
+    indices: list[IndexPerformance] = []
+    overall_trend: str | None = None  # bullish, bearish, neutral
+    trading_date: datetime | None = None
+
+
+class TopMover(BaseModel):
+    """A top gainer or loser stock."""
+
+    symbol: str
+    name: str | None = None
+    close: float | None = None
+    change_pct: float
+    volume: int | None = None
+    reason: str | None = None  # Why it moved
+
+
+class SectorDigest(BaseModel):
+    """Sector performance for digest."""
+
+    sector: str
+    change_pct: float | None = None
+    top_stock: str | None = None
+    stock_count: int = 0
+
+
+class VolumeLeader(BaseModel):
+    """Stock with unusual volume activity."""
+
+    symbol: str
+    name: str | None = None
+    volume: int
+    avg_volume: int | None = None
+    volume_ratio: float | None = None  # volume / avg_volume
+    price_change_pct: float | None = None
+
+
+class BreakoutCandidate(BaseModel):
+    """Stock showing breakout pattern."""
+
+    symbol: str
+    name: str | None = None
+    pattern: str | None = None  # e.g., "52-week high", "resistance breakout"
+    current_price: float | None = None
+    breakout_level: float | None = None
+    strength: float | None = None  # 0-100 breakout strength score
+
+
+class NewsHighlight(BaseModel):
+    """Top market-moving news item."""
+
+    title: str
+    source: str | None = None
+    url: str | None = None
+    published_at: datetime | None = None
+    sentiment: str | None = None  # positive, negative, neutral
+    related_symbols: list[str] = []
+
+
+class DailyDigestResponse(BaseModel):
+    """Complete daily research digest response."""
+
+    id: str
+    digest_date: datetime
+
+    # Market Overview
+    market_summary: MarketSummary | None = None
+
+    # Top Movers
+    top_gainers: list[TopMover] = []
+    top_losers: list[TopMover] = []
+
+    # Sector Analysis
+    sector_performance: list[SectorDigest] = []
+
+    # Volume Analysis
+    volume_leaders: list[VolumeLeader] = []
+
+    # Technical Signals
+    breakout_candidates: list[BreakoutCandidate] = []
+
+    # News
+    news_highlights: list[NewsHighlight] = []
+
+    # Overall sentiment
+    market_sentiment: float | None = None  # -1.0 to 1.0
+
+    created_at: datetime
+
+
+class DigestListResponse(BaseModel):
+    """List of available digests."""
+
+    digests: list[DailyDigestResponse] = []
+    total_count: int = 0

@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -54,3 +54,67 @@ class ResearchNote(Base):
     def __repr__(self) -> str:
         return f"<ResearchNote {self.symbol}: {self.title}>"
 
+
+class DailyDigest(Base):
+    """Daily market intelligence digest.
+
+    Generated automatically at market close with:
+    - Market summary (index performance)
+    - Top gainers and losers
+    - Sector performance
+    - Volume leaders
+    - Breakout candidates
+    - News highlights
+    """
+
+    __tablename__ = "daily_digests"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+
+    # Date of the digest (unique per day)
+    digest_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, unique=True
+    )
+
+    # Market Summary - JSON with index performance
+    # {"NIFTY50": {"close": 22000, "change": 0.5}, "BANKNIFTY": {...}, "SENSEX": {...}}
+    market_summary: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
+
+    # Top Gainers - JSON array with symbol, name, change_pct, reason
+    top_gainers: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+
+    # Top Losers - JSON array with symbol, name, change_pct, reason
+    top_losers: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+
+    # Sector Performance - JSON object with sector -> performance data
+    sector_performance: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
+
+    # Volume Leaders - JSON array with unusual volume activity
+    volume_leaders: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+
+    # Breakout Candidates - JSON array from breakout screener
+    breakout_candidates: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True, default=list
+    )
+
+    # News Highlights - JSON array of top market-moving news
+    news_highlights: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+
+    # Overall market sentiment score (-1.0 to 1.0)
+    market_sentiment: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_daily_digests_date", "digest_date"),)
+
+    def __repr__(self) -> str:
+        return f"<DailyDigest {self.digest_date.date()}>"
