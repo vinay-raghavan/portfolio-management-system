@@ -748,26 +748,24 @@ async def update_recommendation_returns(
     )
     recs_1d = result.scalars().all()
 
-    # Get recommendations that need 1-week update (from 7 days ago)
+    # Get recommendations that need 1-week update (7+ days old, missing return_1w)
     one_week_ago = today - timedelta(days=7)
     result = await db.execute(
         select(DailyRecommendation).where(
             and_(
-                DailyRecommendation.date >= dt.combine(one_week_ago, time.min),
-                DailyRecommendation.date < dt.combine(one_week_ago + timedelta(days=1), time.min),
+                DailyRecommendation.date <= dt.combine(one_week_ago, time.min),
                 DailyRecommendation.return_1w == None,  # noqa: E711
             )
         )
     )
     recs_1w = result.scalars().all()
 
-    # Get recommendations that need 1-month update (from 30 days ago)
+    # Get recommendations that need 1-month update (30+ days old, missing return_1m)
     one_month_ago = today - timedelta(days=30)
     result = await db.execute(
         select(DailyRecommendation).where(
             and_(
-                DailyRecommendation.date >= dt.combine(one_month_ago, time.min),
-                DailyRecommendation.date < dt.combine(one_month_ago + timedelta(days=1), time.min),
+                DailyRecommendation.date <= dt.combine(one_month_ago, time.min),
                 DailyRecommendation.return_1m == None,  # noqa: E711
             )
         )
