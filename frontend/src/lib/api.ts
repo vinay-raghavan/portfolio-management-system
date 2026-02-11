@@ -916,3 +916,77 @@ export interface ScreenerPerformanceStats {
   overall_avg_return_1w: number | null;
   overall_avg_return_1m: number | null;
 }
+
+// ============================================================================
+// Research API
+// ============================================================================
+
+import type {
+  DailyDigestResponse,
+  DigestListResponse,
+  SectorListResponse,
+  SectorStocksResponse,
+  FundamentalsResponse,
+  NewsResponse,
+  PeerComparisonResponse,
+  ResearchNote,
+  ResearchNoteCreate,
+  ResearchNoteUpdate,
+  ResearchNoteListResponse,
+  StockResearchResponse,
+} from '@/types';
+
+export const researchApi = {
+  // Stock research
+  getResearch: (symbol: string) =>
+    api.get<StockResearchResponse>(`/research/${symbol}`),
+
+  getFundamentals: (symbol: string) =>
+    api.get<FundamentalsResponse>(`/research/${symbol}/fundamentals`),
+
+  getNews: (symbol: string, limit = 20) =>
+    api.get<NewsResponse>(`/research/${symbol}/news`, { params: { limit } }),
+
+  getPeers: (symbol: string, limit = 10) =>
+    api.get<PeerComparisonResponse>(`/research/${symbol}/peers`, { params: { limit } }),
+
+  // Market research
+  getMarketNews: (limit = 20) =>
+    api.get<NewsResponse>('/research/market/news', { params: { limit } }),
+
+  // Daily digest
+  getDigests: (limit = 10, offset = 0) =>
+    api.get<DigestListResponse>('/research/digest', { params: { limit, offset } }),
+
+  getLatestDigest: () =>
+    api.get<DailyDigestResponse | null>('/research/digest/latest'),
+
+  getDigestByDate: (date: string) =>
+    api.get<DailyDigestResponse>(`/research/digest/${date}`),
+
+  generateDigest: (date?: string) =>
+    api.post<DailyDigestResponse>('/research/digest/generate', null, { params: date ? { date } : {} }),
+
+  // Sectors
+  getSectors: () =>
+    api.get<SectorListResponse>('/research/sectors'),
+
+  getSectorStocks: (sector: string) =>
+    api.get<SectorStocksResponse>(`/research/sectors/${encodeURIComponent(sector)}`),
+
+  // Research notes
+  getNotes: (symbol?: string, limit = 50, offset = 0) =>
+    api.get<ResearchNoteListResponse>('/research/notes', { params: { symbol, limit, offset } }),
+
+  getNote: (noteId: string) =>
+    api.get<ResearchNote>(`/research/notes/${noteId}`),
+
+  createNote: (data: ResearchNoteCreate) =>
+    api.post<ResearchNote>('/research/notes', data),
+
+  updateNote: (noteId: string, data: ResearchNoteUpdate) =>
+    api.patch<ResearchNote>(`/research/notes/${noteId}`, data),
+
+  deleteNote: (noteId: string) =>
+    api.delete(`/research/notes/${noteId}`),
+};

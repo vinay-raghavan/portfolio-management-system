@@ -971,3 +971,222 @@ export interface SquareOffStrategyResponse {
   closed_positions: ClosePositionResponse[];
   message: string;
 }
+
+// ============== Research Types ==============
+
+export interface IndexPerformance {
+  symbol: string;
+  name?: string | null;
+  close?: number | null;
+  change?: number | null;
+  change_pct?: number | null;
+}
+
+export interface MarketSummary {
+  indices: IndexPerformance[];
+  overall_trend?: string | null;
+}
+
+export interface TopMover {
+  symbol: string;
+  name?: string | null;
+  close?: number | null;
+  change_pct?: number | null;
+  volume?: number | null;
+  reason?: string | null;
+}
+
+export interface SectorDigest {
+  sector: string;
+  change_pct?: number | null;
+  top_stock?: string | null;
+  stock_count?: number | null;
+}
+
+export interface VolumeLeader {
+  symbol: string;
+  name?: string | null;
+  volume?: number | null;
+  avg_volume?: number | null;
+  volume_ratio?: number | null;
+  price_change_pct?: number | null;
+}
+
+export interface BreakoutCandidate {
+  symbol: string;
+  name?: string | null;
+  pattern?: string | null;
+  current_price?: number | null;
+  breakout_level?: number | null;
+  strength?: number | null;
+}
+
+export interface NewsHighlight {
+  title: string;
+  source?: string | null;
+  url?: string | null;
+  published_at?: string | null;
+  sentiment?: string | null;
+  related_symbols?: string[] | null;
+}
+
+export interface DailyDigestResponse {
+  id: string;
+  digest_date: string;
+  market_summary?: MarketSummary | null;
+  top_gainers?: TopMover[] | null;
+  top_losers?: TopMover[] | null;
+  sector_performance?: SectorDigest[] | null;
+  volume_leaders?: VolumeLeader[] | null;
+  breakout_candidates?: BreakoutCandidate[] | null;
+  news_highlights?: NewsHighlight[] | null;
+  market_sentiment?: number | null;
+  created_at: string;
+}
+
+export interface DigestListResponse {
+  digests: DailyDigestResponse[];
+  total_count: number;
+}
+
+export interface SectorPerformance {
+  sector: string;
+  change_pct: number;
+  stock_count: number;
+  top_gainer?: string | null;
+  top_loser?: string | null;
+  avg_volume_ratio?: number | null;
+}
+
+export interface SectorListResponse {
+  sectors: SectorPerformance[];
+  last_updated?: string | null;
+}
+
+export interface SectorStock {
+  symbol: string;
+  name: string;
+  close: number;
+  change_pct: number;
+  volume: number;
+  market_cap?: number | null;
+}
+
+export interface SectorStocksResponse {
+  sector: string;
+  stocks: SectorStock[];
+  total_count: number;
+  last_updated?: string | null;
+}
+
+export interface FundamentalsResponse {
+  symbol: string;
+  pe_ratio?: number | null;
+  forward_pe?: number | null;
+  pb_ratio?: number | null;
+  ps_ratio?: number | null;
+  peg_ratio?: number | null;
+  eps?: number | null;
+  eps_growth?: number | null;
+  revenue?: number | null;
+  revenue_growth?: number | null;
+  profit_margin?: number | null;
+  operating_margin?: number | null;
+  roe?: number | null;
+  roa?: number | null;
+  debt_to_equity?: number | null;
+  current_ratio?: number | null;
+  quick_ratio?: number | null;
+  market_cap?: number | null;
+  enterprise_value?: number | null;
+  dividend_yield?: number | null;
+  dividend_rate?: number | null;
+  payout_ratio?: number | null;
+  beta?: number | null;
+  fifty_two_week_high?: number | null;
+  fifty_two_week_low?: number | null;
+  avg_volume?: number | null;
+  shares_outstanding?: number | null;
+  float_shares?: number | null;
+  sector?: string | null;
+  industry?: string | null;
+  last_updated?: string | null;
+}
+
+export interface NewsArticle {
+  title: string;
+  url: string;
+  source?: string | null;
+  published_at?: string | null;
+  summary?: string | null;
+  sentiment?: string | null;
+  sentiment_score?: number | null;
+  related_symbols?: string[] | null;
+}
+
+export interface NewsResponse {
+  symbol?: string | null;
+  articles: NewsArticle[];
+  total_count: number;
+}
+
+export interface PeerStock {
+  symbol: string;
+  name: string;
+  close: number;
+  change_pct: number;
+  pe_ratio?: number | null;
+  market_cap?: number | null;
+  relative_strength?: number | null;
+}
+
+export interface PeerComparisonResponse {
+  symbol: string;
+  sector?: string | null;
+  industry?: string | null;
+  peers: PeerStock[];
+  total_count: number;
+}
+
+export interface ResearchNote {
+  id: string;
+  symbol: string;
+  title: string;
+  content: string;
+  rating?: string | null;
+  target_price?: number | null;
+  tags?: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResearchNoteCreate {
+  symbol: string;
+  title: string;
+  content: string;
+  rating?: string | null;
+  target_price?: number | null;
+  tags?: string[] | null;
+}
+
+export interface ResearchNoteUpdate {
+  title?: string | null;
+  content?: string | null;
+  rating?: string | null;
+  target_price?: number | null;
+  tags?: string[] | null;
+}
+
+export interface ResearchNoteListResponse {
+  notes: ResearchNote[];
+  total_count: number;
+}
+
+export interface StockResearchResponse {
+  symbol: string;
+  name?: string | null;
+  fundamentals?: FundamentalsResponse | null;
+  news?: NewsResponse | null;
+  peers?: PeerComparisonResponse | null;
+  last_updated?: string | null;
+}
