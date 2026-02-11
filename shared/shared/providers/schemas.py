@@ -247,3 +247,127 @@ class Funds(BaseModel):
     def net_pnl(self) -> Decimal:
         """Calculate total P&L (realized + unrealized)."""
         return self.realized_pnl + self.unrealized_pnl
+
+
+# =============================================================================
+# Research Module Schemas
+# =============================================================================
+
+
+class FundamentalData(BaseModel):
+    """Fundamental analysis data for a stock.
+
+    Contains key financial ratios and metrics used for fundamental analysis.
+    """
+
+    symbol: str
+    # Valuation ratios
+    pe_ratio: float | None = None  # Price to Earnings
+    forward_pe: float | None = None  # Forward P/E
+    pb_ratio: float | None = None  # Price to Book
+    ps_ratio: float | None = None  # Price to Sales
+    peg_ratio: float | None = None  # Price/Earnings to Growth
+    # Earnings
+    eps: float | None = None  # Earnings Per Share (TTM)
+    eps_forward: float | None = None  # Forward EPS
+    eps_growth_yoy: float | None = None  # YoY EPS growth %
+    # Revenue
+    revenue: float | None = None  # Total Revenue (TTM)
+    revenue_per_share: float | None = None
+    revenue_growth_yoy: float | None = None  # YoY Revenue growth %
+    # Profitability
+    profit_margin: float | None = None  # Net Profit Margin %
+    operating_margin: float | None = None  # Operating Margin %
+    gross_margin: float | None = None  # Gross Margin %
+    # Returns
+    roe: float | None = None  # Return on Equity %
+    roa: float | None = None  # Return on Assets %
+    roic: float | None = None  # Return on Invested Capital %
+    # Dividends
+    dividend_yield: float | None = None  # Annual Dividend Yield %
+    dividend_rate: float | None = None  # Annual Dividend Rate
+    payout_ratio: float | None = None  # Dividend Payout Ratio %
+    # Balance sheet
+    market_cap: float | None = None
+    enterprise_value: float | None = None
+    book_value: float | None = None  # Book Value Per Share
+    debt_to_equity: float | None = None
+    current_ratio: float | None = None
+    quick_ratio: float | None = None
+    # Other
+    beta: float | None = None
+    shares_outstanding: float | None = None
+    float_shares: float | None = None
+    # Classification
+    sector: str | None = None
+    industry: str | None = None
+    # Metadata
+    currency: str | None = None
+    fiscal_year_end: str | None = None
+    last_updated: datetime | None = None
+
+
+class FinancialStatement(BaseModel):
+    """A single financial statement entry (income statement, balance sheet, cash flow)."""
+
+    period: str  # e.g., "2024-Q4", "2024-FY"
+    period_end_date: datetime | None = None
+    currency: str | None = None
+    # Income Statement items
+    total_revenue: float | None = None
+    cost_of_revenue: float | None = None
+    gross_profit: float | None = None
+    operating_income: float | None = None
+    net_income: float | None = None
+    ebitda: float | None = None
+    # Balance Sheet items
+    total_assets: float | None = None
+    total_liabilities: float | None = None
+    total_equity: float | None = None
+    total_debt: float | None = None
+    cash_and_equivalents: float | None = None
+    # Cash Flow items
+    operating_cash_flow: float | None = None
+    capital_expenditure: float | None = None
+    free_cash_flow: float | None = None
+
+
+class FinancialData(BaseModel):
+    """Financial statements data for a stock.
+
+    Contains historical income statement, balance sheet, and cash flow data.
+    """
+
+    symbol: str
+    statements: list[FinancialStatement] = []
+    currency: str | None = None
+    last_updated: datetime | None = None
+
+
+class DividendRecord(BaseModel):
+    """A single dividend payment record."""
+
+    ex_date: datetime
+    payment_date: datetime | None = None
+    record_date: datetime | None = None
+    declaration_date: datetime | None = None
+    amount: float
+    currency: str | None = None
+
+
+class DividendData(BaseModel):
+    """Dividend history and metrics for a stock."""
+
+    symbol: str
+    # Current dividend info
+    dividend_yield: float | None = None  # Annual yield %
+    dividend_rate: float | None = None  # Annual dividend rate
+    payout_ratio: float | None = None  # % of earnings paid as dividends
+    ex_dividend_date: datetime | None = None
+    # Dividend history
+    history: list[DividendRecord] = []
+    # Dividend growth
+    five_year_avg_yield: float | None = None
+    dividend_growth_rate: float | None = None  # 5-year CAGR
+    consecutive_years: int | None = None  # Years of consecutive dividends
+    last_updated: datetime | None = None
