@@ -383,3 +383,122 @@ class StockScreener(BaseScreener):
             )
         )
         return screener
+
+    # =========================================================================
+    # Fundamental Screener Presets
+    # =========================================================================
+
+    @classmethod
+    def create_value_screener(
+        cls,
+        data_provider: "BaseDataProvider | None" = None,
+    ) -> "StockScreener":
+        """Factory method to create a value investing screener.
+
+        Finds undervalued stocks based on low P/E, P/B, and PEG ratios.
+        Benjamin Graham / Warren Buffett style criteria.
+        """
+        from app.modules.screener.filters import FundamentalFilter, VolumeFilter
+
+        screener = cls(name="value_screener", data_provider=data_provider)
+        screener.add_filter(VolumeFilter(min_avg_volume=100000, weight=0.5))
+        screener.add_filter(
+            FundamentalFilter(
+                max_pe=15.0,  # Low P/E
+                max_pb=1.5,  # Low P/B
+                max_peg=1.0,  # Reasonable PEG
+                min_current_ratio=1.5,  # Financially stable
+                max_debt_to_equity=0.5,  # Low debt
+                min_roe=0.10,  # Profitable
+                weight=3.0,
+            )
+        )
+        return screener
+
+    @classmethod
+    def create_growth_screener(
+        cls,
+        data_provider: "BaseDataProvider | None" = None,
+    ) -> "StockScreener":
+        """Factory method to create a growth investing screener.
+
+        Finds high-growth stocks with strong earnings and revenue momentum.
+        Peter Lynch / CAN SLIM style criteria.
+        """
+        from app.modules.screener.filters import (
+            FundamentalFilter,
+            MomentumFilter,
+            VolumeFilter,
+        )
+
+        screener = cls(name="growth_screener", data_provider=data_provider)
+        screener.add_filter(VolumeFilter(min_avg_volume=100000, weight=0.5))
+        screener.add_filter(
+            FundamentalFilter(
+                min_eps_growth=0.15,  # 15%+ EPS growth
+                min_revenue_growth=0.10,  # 10%+ revenue growth
+                min_roe=0.15,  # Strong returns
+                max_peg=2.0,  # Growth at reasonable price
+                weight=2.5,
+            )
+        )
+        screener.add_filter(
+            MomentumFilter(
+                momentum_mode="bullish",
+                near_52w_high_pct=25,
+                weight=1.0,
+            )
+        )
+        return screener
+
+    @classmethod
+    def create_dividend_screener(
+        cls,
+        data_provider: "BaseDataProvider | None" = None,
+    ) -> "StockScreener":
+        """Factory method to create a dividend investing screener.
+
+        Finds high-yield dividend stocks with sustainable payouts.
+        Income-focused criteria for dividend growth investing.
+        """
+        from app.modules.screener.filters import FundamentalFilter, VolumeFilter
+
+        screener = cls(name="dividend_screener", data_provider=data_provider)
+        screener.add_filter(VolumeFilter(min_avg_volume=50000, weight=0.5))
+        screener.add_filter(
+            FundamentalFilter(
+                min_dividend_yield=0.03,  # 3%+ yield
+                max_payout_ratio=0.75,  # Sustainable payout (<75%)
+                min_roe=0.10,  # Profitable
+                max_debt_to_equity=1.0,  # Manageable debt
+                weight=3.0,
+            )
+        )
+        return screener
+
+    @classmethod
+    def create_quality_screener(
+        cls,
+        data_provider: "BaseDataProvider | None" = None,
+    ) -> "StockScreener":
+        """Factory method to create a quality investing screener.
+
+        Finds high-quality companies with strong fundamentals and moats.
+        Focus on profitability, returns, and financial strength.
+        """
+        from app.modules.screener.filters import FundamentalFilter, VolumeFilter
+
+        screener = cls(name="quality_screener", data_provider=data_provider)
+        screener.add_filter(VolumeFilter(min_avg_volume=100000, weight=0.5))
+        screener.add_filter(
+            FundamentalFilter(
+                min_roe=0.15,  # High ROE
+                min_roa=0.08,  # Good asset efficiency
+                min_profit_margin=0.10,  # 10%+ profit margin
+                min_operating_margin=0.15,  # Strong operating margin
+                max_debt_to_equity=0.75,  # Conservative leverage
+                min_current_ratio=1.2,  # Liquid
+                weight=3.0,
+            )
+        )
+        return screener
