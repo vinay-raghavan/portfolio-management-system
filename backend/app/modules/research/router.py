@@ -1,6 +1,7 @@
 """Research API routes."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -11,6 +12,7 @@ from app.modules.research.notes_service import ResearchNoteService
 from app.modules.research.schemas import (
     DailyDigestResponse,
     DigestListResponse,
+    DividendRecordResponse,
     DividendsResponse,
     FundamentalsResponse,
     NewsArticleResponse,
@@ -32,44 +34,61 @@ router = APIRouter()
 
 
 # =============================================================================
-# Full Research Endpoint
+# Helper Functions for Type Conversion
 # =============================================================================
 
 
-@router.get("/{symbol}", response_model=StockResearchResponse)
-async def get_stock_research(
-    symbol: str,
-    db: DbSession,
-    current_user: OptionalUser,
-    news_limit: int = Query(5, ge=1, le=20, description="Number of news articles to include"),
-) -> StockResearchResponse:
-    """Get comprehensive research data for a stock.
+def _convert_dividends(dividends: Any) -> DividendsResponse | None:
+    """Convert shared DividendData to research DividendsResponse."""
+    if dividends is None:
+        return None
+    return DividendsResponse(
+        symbol=dividends.symbol,
+        dividend_yield=dividends.dividend_yield,
+        dividend_rate=dividends.dividend_rate,
+        payout_ratio=dividends.payout_ratio,
+        ex_dividend_date=dividends.ex_dividend_date,
+        five_year_avg_yield=dividends.five_year_avg_yield,
+        dividend_growth_rate=dividends.dividend_growth_rate,
+        history=[
+            DividendRecordResponse(
+                ex_date=d.ex_date,
+                payment_date=d.payment_date,
+                amount=d.amount,
+                currency=d.currency,
+            )
+            for d in dividends.history
+        ],
+        last_updated=dividends.last_updated,
+    )
 
-    Combines fundamental analysis, dividend data, and recent news with sentiment
-    into a single response. This is the primary endpoint for stock research.
 
-    Uses the user's preferred data provider if authenticated.
-    Falls back to Yahoo Finance for unauthenticated requests.
-    """
-    provider = None
-    if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
-
-    service = ResearchService(provider=provider)
-    data = await service.get_full_research(symbol, news_limit=news_limit)
-
-    return StockResearchResponse(
-        symbol=data["symbol"],
-        name=data.get("name"),
-        sector=data.get("sector"),
-        industry=data.get("industry"),
-        current_price=data.get("current_price"),
-        price_change=data.get("price_change"),
-        price_change_pct=data.get("price_change_pct"),
-        fundamentals=data.get("fundamentals"),
-        dividends=data.get("dividends"),
-        news=data.get("news"),
-        last_updated=datetime.now(UTC),
+def _convert_news(news: Any) -> NewsResponse | None:
+    """Convert shared NewsResponse to research NewsResponse."""
+    if news is None:
+        return None
+    return NewsResponse(
+        symbol=news.symbol,
+        articles=[
+            NewsArticleResponse(
+                title=a.title,
+                url=a.url,
+                source=a.source,
+                published_at=a.published_at,
+                summary=a.summary,
+                thumbnail_url=a.thumbnail_url,
+                related_symbols=a.related_symbols,
+                sentiment=a.sentiment.value if hasattr(a.sentiment, "value") else str(a.sentiment),
+                sentiment_score=a.sentiment_score,
+            )
+            for a in news.articles
+        ],
+        total_count=news.total_count,
+        average_sentiment=news.average_sentiment,
+        positive_count=news.positive_count,
+        negative_count=news.negative_count,
+        neutral_count=news.neutral_count,
+        last_updated=news.last_updated,
     )
 
 
@@ -715,3 +734,52 @@ async def generate_digest(
 
     digest = await service.generate_digest(target_date)
     return service.digest_to_response(digest)
+
+
+# =============================================================================
+# Full Research Endpoint (Catch-All - Must Be Last)
+# =============================================================================
+
+
+@router.get("/{symbol}", response_model=StockResearchResponse)
+async def get_stock_research(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    news_limit: int = Query(5, ge=1, le=20, description="Number of news articles to include"),
+) -> StockResearchResponse:
+    """Get comprehensive research data for a stock.
+
+    Combines fundamental analysis, dividend data, and recent news with sentiment
+    into a single response. This is the primary endpoint for stock research.
+
+    Uses the user's preferred data provider if authenticated.
+    Falls back to Yahoo Finance for unauthenticated requests.
+
+    Note: This route is defined last because it matches any path segment.
+    More specific routes like /sectors, /digest, etc. are defined above.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    data = await service.get_full_research(symbol, news_limit=news_limit)
+
+    # Convert shared module types to research response types
+    dividends_response = _convert_dividends(data.get("dividends"))
+    news_response = _convert_news(data.get("news"))
+
+    return StockResearchResponse(
+        symbol=data["symbol"],
+        name=data.get("name"),
+        sector=data.get("sector"),
+        industry=data.get("industry"),
+        current_price=data.get("current_price"),
+        price_change=data.get("price_change"),
+        price_change_pct=data.get("price_change_pct"),
+        fundamentals=data.get("fundamentals"),
+        dividends=dividends_response,
+        news=news_response,
+        last_updated=datetime.now(UTC),
+    )

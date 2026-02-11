@@ -140,10 +140,10 @@ class ResearchService:
             "name": fundamentals.symbol if fundamentals else None,
             "sector": fundamentals.sector if fundamentals else None,
             "industry": fundamentals.industry if fundamentals else None,
-            "current_price": float(quote.last_price) if quote else None,
+            "current_price": float(quote.price) if quote else None,
             "price_change": float(quote.change) if quote and quote.change else None,
-            "price_change_pct": float(quote.change_percent)
-            if quote and quote.change_percent
+            "price_change_pct": float(quote.change_pct)
+            if quote and quote.change_pct
             else None,
             "fundamentals": fundamentals,
             "dividends": dividends,
