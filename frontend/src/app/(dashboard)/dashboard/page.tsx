@@ -10,6 +10,7 @@ import {
   AlgoSummary,
   FundsSummary,
   RecommendationsWidget,
+  TotalAccountValue,
 } from '@/components/dashboard';
 
 export default function DashboardPage() {
@@ -24,9 +25,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Portfolio overview and performance</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Portfolio overview and performance</p>
+        </div>
+        <TotalAccountValue />
       </div>
 
       {/* Portfolio Summary Cards */}
