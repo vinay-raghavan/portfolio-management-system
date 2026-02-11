@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from shared.providers.schemas import FundamentalData
 
 from app.modules.screener.base import BaseFilter, FilterResult, FilterType, sanitize_for_json
-from shared.providers.schemas import FundamentalData
 
 logger = logging.getLogger(__name__)
 
@@ -761,9 +761,7 @@ class FundamentalFilter(BaseFilter):
             reason="Use apply_with_fundamentals() for fundamental screening",
         )
 
-    def apply_with_fundamentals(
-        self, symbol: str, fundamentals: FundamentalData
-    ) -> FilterResult:
+    def apply_with_fundamentals(self, symbol: str, fundamentals: FundamentalData) -> FilterResult:
         """Apply fundamental filter with fundamental data.
 
         Args:
@@ -824,7 +822,10 @@ class FundamentalFilter(BaseFilter):
                     reasons.append(f"EPS growth {fundamentals.eps_growth_yoy:.1f}%")
                 metadata["eps_growth_yoy"] = fundamentals.eps_growth_yoy
 
-            if self.criteria.min_revenue_growth is not None and fundamentals.revenue_growth_yoy is not None:
+            if (
+                self.criteria.min_revenue_growth is not None
+                and fundamentals.revenue_growth_yoy is not None
+            ):
                 total_checks += 1
                 if fundamentals.revenue_growth_yoy >= self.criteria.min_revenue_growth:
                     checks_passed += 1
@@ -841,7 +842,10 @@ class FundamentalFilter(BaseFilter):
                     reasons.append(f"ROE {fundamentals.roe:.1f}%")
                 metadata["roe"] = fundamentals.roe
 
-            if self.criteria.min_profit_margin is not None and fundamentals.profit_margin is not None:
+            if (
+                self.criteria.min_profit_margin is not None
+                and fundamentals.profit_margin is not None
+            ):
                 total_checks += 1
                 if fundamentals.profit_margin >= self.criteria.min_profit_margin:
                     checks_passed += 1
@@ -849,7 +853,10 @@ class FundamentalFilter(BaseFilter):
                 metadata["profit_margin"] = fundamentals.profit_margin
 
             # Dividend checks
-            if self.criteria.min_dividend_yield is not None and fundamentals.dividend_yield is not None:
+            if (
+                self.criteria.min_dividend_yield is not None
+                and fundamentals.dividend_yield is not None
+            ):
                 total_checks += 1
                 if fundamentals.dividend_yield >= self.criteria.min_dividend_yield:
                     checks_passed += 1
@@ -858,14 +865,20 @@ class FundamentalFilter(BaseFilter):
                 metadata["dividend_yield"] = fundamentals.dividend_yield
 
             # Balance sheet checks
-            if self.criteria.max_debt_to_equity is not None and fundamentals.debt_to_equity is not None:
+            if (
+                self.criteria.max_debt_to_equity is not None
+                and fundamentals.debt_to_equity is not None
+            ):
                 total_checks += 1
                 if fundamentals.debt_to_equity <= self.criteria.max_debt_to_equity:
                     checks_passed += 1
                     score += 5
                 metadata["debt_to_equity"] = fundamentals.debt_to_equity
 
-            if self.criteria.min_current_ratio is not None and fundamentals.current_ratio is not None:
+            if (
+                self.criteria.min_current_ratio is not None
+                and fundamentals.current_ratio is not None
+            ):
                 total_checks += 1
                 if fundamentals.current_ratio >= self.criteria.min_current_ratio:
                     checks_passed += 1
@@ -907,12 +920,13 @@ class FundamentalFilter(BaseFilter):
                 )
 
             passed = checks_passed == total_checks
-            pass_rate = checks_passed / total_checks
 
             return FilterResult(
                 passed=passed,
                 score=min(100, score),
-                reason="; ".join(reasons[:5]) if reasons else f"Passed {checks_passed}/{total_checks} checks",
+                reason="; ".join(reasons[:5])
+                if reasons
+                else f"Passed {checks_passed}/{total_checks} checks",
                 metadata=sanitize_for_json(metadata),
             )
         except Exception as e:

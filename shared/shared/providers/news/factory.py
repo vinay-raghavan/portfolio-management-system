@@ -1,7 +1,7 @@
 """Factory for creating news provider instances."""
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from .base import BaseNewsProvider
 
@@ -115,4 +115,3 @@ def set_config_getter(getter: Callable[[], str]) -> None:
     """
     global _config_getter
     _config_getter = getter
-

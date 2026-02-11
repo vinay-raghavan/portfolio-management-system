@@ -3,12 +3,16 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+
+# Use JSONB for PostgreSQL (production), JSON for SQLite (testing)
+# This allows tests to run with SQLite while production uses PostgreSQL's optimized JSONB
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 
 class ResearchNote(Base):
@@ -37,7 +41,8 @@ class ResearchNote(Base):
     target_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Tags for categorization (e.g., "value", "growth", "dividend")
-    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True, default=list)
+    # Using JSON instead of ARRAY for SQLite compatibility in tests
+    tags: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -80,25 +85,25 @@ class DailyDigest(Base):
 
     # Market Summary - JSON with index performance
     # {"NIFTY50": {"close": 22000, "change": 0.5}, "BANKNIFTY": {...}, "SENSEX": {...}}
-    market_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    market_summary: Mapped[dict | None] = mapped_column(JSONType, nullable=True, default=dict)
 
     # Top Gainers - JSON array with symbol, name, change_pct, reason
-    top_gainers: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    top_gainers: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # Top Losers - JSON array with symbol, name, change_pct, reason
-    top_losers: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    top_losers: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # Sector Performance - JSON object with sector -> performance data
-    sector_performance: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    sector_performance: Mapped[dict | None] = mapped_column(JSONType, nullable=True, default=dict)
 
     # Volume Leaders - JSON array with unusual volume activity
-    volume_leaders: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    volume_leaders: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # Breakout Candidates - JSON array from breakout screener
-    breakout_candidates: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    breakout_candidates: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # News Highlights - JSON array of top market-moving news
-    news_highlights: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    news_highlights: Mapped[list | None] = mapped_column(JSONType, nullable=True, default=list)
 
     # Overall market sentiment score (-1.0 to 1.0)
     market_sentiment: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)

@@ -9,7 +9,7 @@ Create Date: 2026-02-11 10:00:00.000000+00:00
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from alembic import op
 
@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("rating", sa.String(length=20), nullable=True),
         sa.Column("target_price", sa.Numeric(precision=12, scale=2), nullable=True),
-        sa.Column("tags", ARRAY(sa.String(50)), nullable=True),
+        sa.Column("tags", JSONB(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
