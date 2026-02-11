@@ -225,6 +225,57 @@ async def get_news(
     )
 
 
+@router.get("/{symbol}/peers", response_model=PeerComparisonResponse)
+async def get_peers(
+    symbol: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    limit: int = Query(default=10, ge=1, le=20, description="Maximum number of peers"),
+) -> PeerComparisonResponse:
+    """Get peer stocks for comparison.
+
+    Finds stocks in the same industry/sector and returns comparative metrics.
+
+    Args:
+        symbol: Stock symbol (e.g., "AAPL", "MSFT")
+        limit: Maximum number of peer stocks to return (1-20, default 10)
+
+    Returns:
+        Peer stocks with comparative metrics and sector averages.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    data = await service.get_peers(symbol, limit=limit)
+
+    return PeerComparisonResponse(
+        symbol=data["symbol"],
+        sector=data.get("sector"),
+        industry=data.get("industry"),
+        peers=[
+            PeerStock(
+                symbol=p.get("symbol", ""),
+                name=p.get("name"),
+                current_price=p.get("current_price"),
+                price_change_pct=p.get("price_change_pct"),
+                market_cap=p.get("market_cap"),
+                pe_ratio=p.get("pe_ratio"),
+                pb_ratio=p.get("pb_ratio"),
+                dividend_yield=p.get("dividend_yield"),
+                roe=p.get("roe"),
+                revenue_growth=p.get("revenue_growth"),
+            )
+            for p in data.get("peers", [])
+        ],
+        sector_avg_pe=data.get("sector_avg_pe"),
+        sector_avg_pb=data.get("sector_avg_pb"),
+        sector_avg_dividend_yield=data.get("sector_avg_dividend_yield"),
+        last_updated=datetime.now(UTC),
+    )
+
+
 @router.get("/market/news", response_model=NewsResponse)
 async def get_market_news(
     db: DbSession,
