@@ -39,6 +39,7 @@ export const navigationGroups: NavGroup[] = [
     name: 'Research',
     icon: Microscope,
     items: [
+      { name: 'Research', href: '/research', icon: Microscope, shortcut: 'G E' },
       { name: 'Screener', href: '/screener', icon: Search, shortcut: 'G R' },
       { name: 'Analysis', href: '/analysis', icon: LineChart, shortcut: 'G A' },
       { name: 'Charts', href: '/charts', icon: LayoutGrid, shortcut: 'G C' },
