@@ -66,8 +66,10 @@ class YahooNewsProvider(BaseNewsProvider):
 
             # Sort articles by published date (newest first)
             articles.sort(
-                key=lambda a: a.published_at if a.published_at else datetime.min.replace(tzinfo=UTC),
-                reverse=True
+                key=lambda a: a.published_at
+                if a.published_at
+                else datetime.min.replace(tzinfo=UTC),
+                reverse=True,
             )
 
             # Take only the top `limit` newest articles
@@ -110,16 +112,16 @@ class YahooNewsProvider(BaseNewsProvider):
             # ^NSEI = Nifty 50, ^NSEBANK = Bank Nifty
             # Major Indian stocks with .NS suffix for NSE
             tickers = [
-                "^NSEI",        # Nifty 50 Index
-                "^NSEBANK",     # Bank Nifty Index
+                "^NSEI",  # Nifty 50 Index
+                "^NSEBANK",  # Bank Nifty Index
                 "RELIANCE.NS",  # Reliance Industries
-                "TCS.NS",       # TCS
+                "TCS.NS",  # TCS
                 "HDFCBANK.NS",  # HDFC Bank
-                "INFY.NS",      # Infosys
-                "ICICIBANK.NS", # ICICI Bank
-                "HINDUNILVR.NS",# Hindustan Unilever
-                "SBIN.NS",      # State Bank of India
-                "BHARTIARTL.NS",# Bharti Airtel
+                "INFY.NS",  # Infosys
+                "ICICIBANK.NS",  # ICICI Bank
+                "HINDUNILVR.NS",  # Hindustan Unilever
+                "SBIN.NS",  # State Bank of India
+                "BHARTIARTL.NS",  # Bharti Airtel
             ]
             seen_urls: set[str] = set()
             articles = []
@@ -154,8 +156,10 @@ class YahooNewsProvider(BaseNewsProvider):
 
             # Sort articles by published date (newest first)
             articles.sort(
-                key=lambda a: a.published_at if a.published_at else datetime.min.replace(tzinfo=UTC),
-                reverse=True
+                key=lambda a: a.published_at
+                if a.published_at
+                else datetime.min.replace(tzinfo=UTC),
+                reverse=True,
             )
 
             # Take only the top `limit` newest articles
