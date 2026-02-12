@@ -279,7 +279,8 @@ class TestSquareOffStrategy:
             patch.object(service, "get_strategy", new_callable=AsyncMock) as mock_get_strategy,
             patch.object(service, "close_position", new_callable=AsyncMock) as mock_close,
         ):
-            mock_get_strategy.return_value = mock_strategy
+            # get_strategy now returns a tuple (strategy, executions)
+            mock_get_strategy.return_value = (mock_strategy, [])
             # Set up the db.execute to return our mock result
             mock_db.execute.return_value = mock_result
 
@@ -335,7 +336,8 @@ class TestSquareOffStrategy:
         mock_result.scalars.return_value = mock_scalars
 
         with patch.object(service, "get_strategy", new_callable=AsyncMock) as mock_get_strategy:
-            mock_get_strategy.return_value = mock_strategy
+            # get_strategy now returns a tuple (strategy, executions)
+            mock_get_strategy.return_value = (mock_strategy, [])
             mock_db.execute.return_value = mock_result
 
             result = await service.square_off_strategy(
@@ -354,7 +356,8 @@ class TestSquareOffStrategy:
         service = AlgoService(mock_db)
 
         with patch.object(service, "get_strategy", new_callable=AsyncMock) as mock_get_strategy:
-            mock_get_strategy.return_value = None
+            # get_strategy returns tuple (strategy, executions) - None strategy means not found
+            mock_get_strategy.return_value = (None, [])
 
             result = await service.square_off_strategy(
                 user_id="test-user-id",

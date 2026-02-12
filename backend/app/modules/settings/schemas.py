@@ -44,6 +44,7 @@ class UserSettingsResponse(BaseModel):
     id: str
     user_id: str
     data_provider: DataProviderType
+    research_data_provider: DataProviderType
     default_market: MarketType
     currency: CurrencyType
     theme: ThemeType
@@ -59,6 +60,14 @@ class UserSettingsResponse(BaseModel):
         default=None,
         description="Message about the data provider status",
     )
+    research_data_provider_available: bool = Field(
+        default=True,
+        description="Whether the research data provider is available",
+    )
+    research_data_provider_message: str | None = Field(
+        default=None,
+        description="Message about the research data provider status",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -67,6 +76,7 @@ class UserSettingsUpdate(BaseModel):
     """Schema for updating user settings."""
 
     data_provider: DataProviderType | None = None
+    research_data_provider: DataProviderType | None = None
     default_market: MarketType | None = None
     currency: CurrencyType | None = None
     theme: ThemeType | None = None

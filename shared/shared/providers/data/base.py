@@ -3,7 +3,16 @@
 from abc import ABC, abstractmethod
 from decimal import Decimal
 
-from ..schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
+from ..schemas import (
+    OHLCV,
+    DividendData,
+    FinancialData,
+    FundamentalData,
+    InstrumentInfo,
+    MarketSession,
+    Quote,
+    SearchResult,
+)
 
 
 class DataProvider(ABC):
@@ -69,6 +78,47 @@ class DataProvider(ABC):
             InstrumentInfo with details, or None if not found
         """
         pass
+
+    # =========================================================================
+    # Research / Fundamental Data Methods
+    # =========================================================================
+
+    async def get_fundamentals(self, symbol: str) -> FundamentalData | None:
+        """Get fundamental analysis data for a stock.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            FundamentalData with ratios and metrics, or None if not found
+        """
+        return None
+
+    async def get_financials(self, symbol: str) -> FinancialData | None:
+        """Get financial statements data (income statement, balance sheet, cash flow).
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            FinancialData with historical statements, or None if not found
+        """
+        return None
+
+    async def get_dividends(self, symbol: str) -> DividendData | None:
+        """Get dividend history and metrics for a stock.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            DividendData with dividend history, or None if not found
+        """
+        return None
+
+    # =========================================================================
+    # Convenience Methods
+    # =========================================================================
 
     async def get_current_price(self, symbol: str) -> float | None:
         """Convenience method to get just the current price.

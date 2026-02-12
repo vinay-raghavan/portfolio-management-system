@@ -65,10 +65,12 @@ async def list_strategies(
 ) -> list[StrategyResponse]:
     """List all strategies for the current user with recent execution details."""
     service = AlgoService(db)
-    strategies = await service.get_user_strategies(
+    strategies, executions_map = await service.get_user_strategies(
         current_user.id, status_filter, load_recent_executions=True
     )
-    return [StrategyResponse.model_validate(s) for s in strategies]
+    return [
+        StrategyResponse.from_model(s, executions=executions_map.get(s.id, [])) for s in strategies
+    ]
 
 
 @router.post("/strategies", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
@@ -81,7 +83,7 @@ async def create_strategy(
     service = AlgoService(db)
     strategy = await service.create_strategy(current_user.id, data)
     await db.commit()
-    return StrategyResponse.model_validate(strategy)
+    return StrategyResponse.from_model(strategy, executions=[])
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyResponse)
@@ -92,10 +94,12 @@ async def get_strategy(
 ) -> StrategyResponse:
     """Get a specific strategy with recent execution details."""
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id, load_recent_executions=True)
+    strategy, executions = await service.get_strategy(
+        current_user.id, strategy_id, load_recent_executions=True
+    )
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
-    return StrategyResponse.model_validate(strategy)
+    return StrategyResponse.from_model(strategy, executions=executions)
 
 
 @router.patch("/strategies/{strategy_id}", response_model=StrategyResponse)
@@ -169,7 +173,7 @@ async def trigger_strategy(
     from app.core.celery_client import celery_client
 
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id, load_universe=True)
+    strategy, _ = await service.get_strategy(current_user.id, strategy_id, load_universe=True)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
@@ -219,7 +223,7 @@ async def get_circuit_breaker_status(
 ) -> CircuitBreakerStatus:
     """Get circuit breaker status for a strategy."""
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy, _ = await service.get_strategy(current_user.id, strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
@@ -254,7 +258,7 @@ async def reset_circuit_breaker(
 ) -> dict:
     """Reset circuit breaker for a strategy."""
     service = AlgoService(db)
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy, _ = await service.get_strategy(current_user.id, strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
@@ -289,7 +293,7 @@ async def close_position(
     service = AlgoService(db)
 
     # Verify strategy exists and belongs to user
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy, _ = await service.get_strategy(current_user.id, strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
@@ -374,7 +378,7 @@ async def square_off_strategy(
     service = AlgoService(db)
 
     # Verify strategy exists and belongs to user
-    strategy = await service.get_strategy(current_user.id, strategy_id)
+    strategy, _ = await service.get_strategy(current_user.id, strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 

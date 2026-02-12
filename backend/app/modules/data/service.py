@@ -19,30 +19,28 @@ from app.providers.data import DataProvider, get_data_provider
 logger = logging.getLogger(__name__)
 
 
-async def get_user_data_provider(db: AsyncSession, user_id: str) -> DataProvider | None:
-    """Get a data provider instance based on user's settings.
+async def _get_provider_for_setting(
+    db: AsyncSession, user_id: str, provider_setting: str
+) -> DataProvider | None:
+    """Get a data provider instance based on a provider setting value.
 
     Args:
         db: Database session
         user_id: User ID
+        provider_setting: Provider setting value (yahoo, fyers, nse)
 
     Returns:
-        DataProvider instance configured for the user, or None to use default
+        DataProvider instance or None to use default (Yahoo)
     """
     from shared.providers.data.fyers import FyersDataProvider
 
     from app.modules.broker.models import BrokerCredential
-    from app.modules.settings.models import UserSettings
 
-    # Get user settings
-    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
-    settings = result.scalar_one_or_none()
-
-    if not settings or settings.data_provider == "yahoo":
+    if provider_setting == "yahoo":
         # Use default Yahoo provider
         return None
 
-    if settings.data_provider == "fyers":
+    if provider_setting == "fyers":
         # Get Fyers credentials
         result = await db.execute(
             select(BrokerCredential).where(
@@ -66,12 +64,59 @@ async def get_user_data_provider(db: AsyncSession, user_id: str) -> DataProvider
         )
         return None
 
-    if settings.data_provider == "nse":
+    if provider_setting == "nse":
         # NSE provider doesn't need special credentials
         return get_data_provider("nse")
 
     # Unknown provider, use default
     return None
+
+
+async def get_user_data_provider(db: AsyncSession, user_id: str) -> DataProvider | None:
+    """Get a data provider instance based on user's real-time data settings.
+
+    Args:
+        db: Database session
+        user_id: User ID
+
+    Returns:
+        DataProvider instance configured for the user, or None to use default
+    """
+    from app.modules.settings.models import UserSettings
+
+    # Get user settings
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        return None
+
+    return await _get_provider_for_setting(db, user_id, settings.data_provider)
+
+
+async def get_user_research_data_provider(db: AsyncSession, user_id: str) -> DataProvider | None:
+    """Get a data provider instance based on user's research/fundamental data settings.
+
+    This is separate from real-time data provider because fundamental data
+    quality varies by provider. Yahoo tends to have better fundamental data.
+
+    Args:
+        db: Database session
+        user_id: User ID
+
+    Returns:
+        DataProvider instance configured for the user, or None to use default (Yahoo)
+    """
+    from app.modules.settings.models import UserSettings
+
+    # Get user settings
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        return None
+
+    return await _get_provider_for_setting(db, user_id, settings.research_data_provider)
 
 
 class MarketDataService:

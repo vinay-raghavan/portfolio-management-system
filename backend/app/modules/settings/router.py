@@ -31,15 +31,19 @@ async def get_user_settings(
     service = UserSettingsService(db)
     settings = await service.get_settings(current_user.id)
 
-    # Check if selected provider is available
+    # Check if selected providers are available
     is_available, message = await service.is_provider_available(
         current_user.id, DataProviderType(settings.data_provider)
+    )
+    research_available, research_message = await service.is_provider_available(
+        current_user.id, DataProviderType(settings.research_data_provider)
     )
 
     return UserSettingsResponse(
         id=settings.id,
         user_id=settings.user_id,
         data_provider=DataProviderType(settings.data_provider),
+        research_data_provider=DataProviderType(settings.research_data_provider),
         default_market=MarketType(settings.default_market),
         currency=CurrencyType(settings.currency),
         theme=ThemeType(settings.theme),
@@ -47,6 +51,8 @@ async def get_user_settings(
         updated_at=settings.updated_at,
         data_provider_available=is_available,
         data_provider_message=message,
+        research_data_provider_available=research_available,
+        research_data_provider_message=research_message,
     )
 
 
@@ -60,15 +66,19 @@ async def update_user_settings(
     service = UserSettingsService(db)
     settings = await service.update_settings(current_user.id, data)
 
-    # Check if selected provider is available
+    # Check if selected providers are available
     is_available, message = await service.is_provider_available(
         current_user.id, DataProviderType(settings.data_provider)
+    )
+    research_available, research_message = await service.is_provider_available(
+        current_user.id, DataProviderType(settings.research_data_provider)
     )
 
     return UserSettingsResponse(
         id=settings.id,
         user_id=settings.user_id,
         data_provider=DataProviderType(settings.data_provider),
+        research_data_provider=DataProviderType(settings.research_data_provider),
         default_market=MarketType(settings.default_market),
         currency=CurrencyType(settings.currency),
         theme=ThemeType(settings.theme),
@@ -76,6 +86,8 @@ async def update_user_settings(
         updated_at=settings.updated_at,
         data_provider_available=is_available,
         data_provider_message=message,
+        research_data_provider_available=research_available,
+        research_data_provider_message=research_message,
     )
 
 

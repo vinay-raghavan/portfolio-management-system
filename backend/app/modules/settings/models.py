@@ -31,9 +31,13 @@ class UserSettings(Base):
         index=True,
     )
 
-    # Data provider preference
+    # Data provider preference for real-time quotes
     # Options: "yahoo" (default), "fyers", "nse", etc.
     data_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="yahoo")
+
+    # Data provider for research/fundamental data
+    # Options: "yahoo" (default - best for fundamentals), "fyers", "nse"
+    research_data_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="yahoo")
 
     # Default market (IN, US, etc.)
     default_market: Mapped[str] = mapped_column(String(10), nullable=False, default="IN")

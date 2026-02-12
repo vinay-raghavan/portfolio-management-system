@@ -7,7 +7,18 @@ from zoneinfo import ZoneInfo
 
 import yfinance as yf
 
-from ..schemas import OHLCV, InstrumentInfo, MarketSession, Quote, SearchResult
+from ..schemas import (
+    OHLCV,
+    DividendData,
+    DividendRecord,
+    FinancialData,
+    FinancialStatement,
+    FundamentalData,
+    InstrumentInfo,
+    MarketSession,
+    Quote,
+    SearchResult,
+)
 from ..symbols import Exchange, SymbolMapper
 from .base import DataProvider
 
@@ -263,3 +274,218 @@ class YahooDataProvider(DataProvider):
             current_time = now.time()
             return NSE_MARKET_OPEN <= current_time <= NSE_MARKET_CLOSE
         return True
+
+    # =========================================================================
+    # Research / Fundamental Data Methods
+    # =========================================================================
+
+    async def get_fundamentals(self, symbol: str) -> FundamentalData | None:
+        """Get fundamental analysis data for a stock.
+
+        Fetches valuation ratios, earnings, profitability, and other metrics
+        from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+            info = ticker.info
+
+            if not info.get("symbol"):
+                return None
+
+            return FundamentalData(
+                symbol=SymbolMapper.normalize(symbol),
+                # Valuation ratios
+                pe_ratio=info.get("trailingPE"),
+                forward_pe=info.get("forwardPE"),
+                pb_ratio=info.get("priceToBook"),
+                ps_ratio=info.get("priceToSalesTrailing12Months"),
+                peg_ratio=info.get("pegRatio"),
+                # Earnings
+                eps=info.get("trailingEps"),
+                eps_forward=info.get("forwardEps"),
+                eps_growth_yoy=info.get("earningsQuarterlyGrowth"),
+                # Revenue
+                revenue=info.get("totalRevenue"),
+                revenue_per_share=info.get("revenuePerShare"),
+                revenue_growth_yoy=info.get("revenueGrowth"),
+                # Profitability
+                profit_margin=info.get("profitMargins"),
+                operating_margin=info.get("operatingMargins"),
+                gross_margin=info.get("grossMargins"),
+                # Returns
+                roe=info.get("returnOnEquity"),
+                roa=info.get("returnOnAssets"),
+                # Dividends
+                dividend_yield=info.get("dividendYield"),
+                dividend_rate=info.get("dividendRate"),
+                payout_ratio=info.get("payoutRatio"),
+                # Balance sheet
+                market_cap=info.get("marketCap"),
+                enterprise_value=info.get("enterpriseValue"),
+                book_value=info.get("bookValue"),
+                debt_to_equity=info.get("debtToEquity"),
+                current_ratio=info.get("currentRatio"),
+                quick_ratio=info.get("quickRatio"),
+                # Other
+                beta=info.get("beta"),
+                shares_outstanding=info.get("sharesOutstanding"),
+                float_shares=info.get("floatShares"),
+                # Classification
+                sector=info.get("sector"),
+                industry=info.get("industry"),
+                # Metadata
+                currency=info.get("currency"),
+                fiscal_year_end=info.get("fiscalYearEnd"),
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching fundamentals for {symbol}: {e}")
+            return None
+
+    async def get_financials(self, symbol: str) -> FinancialData | None:
+        """Get financial statements data (income statement, balance sheet, cash flow).
+
+        Fetches quarterly and annual financial statements from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+
+            # Get financial statements (returns DataFrames)
+            income_stmt = ticker.quarterly_income_stmt
+            balance_sheet = ticker.quarterly_balance_sheet
+            cash_flow = ticker.quarterly_cashflow
+
+            if income_stmt.empty and balance_sheet.empty and cash_flow.empty:
+                return None
+
+            statements = []
+            # Process each period (columns are dates)
+            all_periods = set()
+            if not income_stmt.empty:
+                all_periods.update(income_stmt.columns)
+            if not balance_sheet.empty:
+                all_periods.update(balance_sheet.columns)
+            if not cash_flow.empty:
+                all_periods.update(cash_flow.columns)
+
+            for period_date in sorted(all_periods, reverse=True)[:8]:  # Last 8 quarters
+                stmt = FinancialStatement(
+                    period=period_date.strftime("%Y-Q%q")
+                    if hasattr(period_date, "strftime")
+                    else str(period_date),
+                    period_end_date=period_date.to_pydatetime()
+                    if hasattr(period_date, "to_pydatetime")
+                    else None,
+                )
+
+                # Income statement items
+                if not income_stmt.empty and period_date in income_stmt.columns:
+                    col = income_stmt[period_date]
+                    stmt.total_revenue = self._safe_float(col, "Total Revenue")
+                    stmt.cost_of_revenue = self._safe_float(col, "Cost Of Revenue")
+                    stmt.gross_profit = self._safe_float(col, "Gross Profit")
+                    stmt.operating_income = self._safe_float(col, "Operating Income")
+                    stmt.net_income = self._safe_float(col, "Net Income")
+                    stmt.ebitda = self._safe_float(col, "EBITDA")
+
+                # Balance sheet items
+                if not balance_sheet.empty and period_date in balance_sheet.columns:
+                    col = balance_sheet[period_date]
+                    stmt.total_assets = self._safe_float(col, "Total Assets")
+                    stmt.total_liabilities = self._safe_float(
+                        col, "Total Liabilities Net Minority Interest"
+                    )
+                    stmt.total_equity = self._safe_float(col, "Stockholders Equity")
+                    stmt.total_debt = self._safe_float(col, "Total Debt")
+                    stmt.cash_and_equivalents = self._safe_float(col, "Cash And Cash Equivalents")
+
+                # Cash flow items
+                if not cash_flow.empty and period_date in cash_flow.columns:
+                    col = cash_flow[period_date]
+                    stmt.operating_cash_flow = self._safe_float(col, "Operating Cash Flow")
+                    stmt.capital_expenditure = self._safe_float(col, "Capital Expenditure")
+                    stmt.free_cash_flow = self._safe_float(col, "Free Cash Flow")
+
+                statements.append(stmt)
+
+            info = ticker.info
+            return FinancialData(
+                symbol=SymbolMapper.normalize(symbol),
+                statements=statements,
+                currency=info.get("currency"),
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching financials for {symbol}: {e}")
+            return None
+
+    def _safe_float(self, series, key: str) -> float | None:
+        """Safely extract a float value from a pandas Series."""
+        try:
+            if key in series.index:
+                val = series[key]
+                if val is not None and not (hasattr(val, "isna") and val.isna()):
+                    return float(val)
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
+
+    async def get_dividends(self, symbol: str) -> DividendData | None:
+        """Get dividend history and metrics for a stock.
+
+        Fetches dividend history and current dividend metrics from Yahoo Finance.
+        """
+        try:
+            yahoo_symbol = self.normalize_symbol(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
+            info = ticker.info
+
+            # Get dividend history (returns a pandas Series)
+            div_history = ticker.dividends
+
+            # Build dividend records from history
+            history = []
+            if not div_history.empty:
+                for date, amount in div_history.items():
+                    history.append(
+                        DividendRecord(
+                            ex_date=date.to_pydatetime(),
+                            amount=float(amount),
+                            currency=info.get("currency"),
+                        )
+                    )
+                # Sort by date descending (most recent first)
+                history.sort(key=lambda x: x.ex_date, reverse=True)
+
+            # Calculate dividend growth rate (5-year CAGR) if enough history
+            dividend_growth_rate = None
+            if len(history) >= 20:  # At least 5 years of quarterly dividends
+                recent_year = sum(d.amount for d in history[:4])  # Last 4 dividends
+                five_years_ago = sum(
+                    d.amount for d in history[16:20]
+                )  # 4 dividends from 5 years ago
+                if five_years_ago > 0 and recent_year > 0:
+                    dividend_growth_rate = ((recent_year / five_years_ago) ** 0.2 - 1) * 100
+
+            # Get ex-dividend date
+            ex_div_timestamp = info.get("exDividendDate")
+            ex_dividend_date = None
+            if ex_div_timestamp:
+                ex_dividend_date = datetime.fromtimestamp(ex_div_timestamp, tz=UTC)
+
+            return DividendData(
+                symbol=SymbolMapper.normalize(symbol),
+                dividend_yield=info.get("dividendYield"),
+                dividend_rate=info.get("dividendRate"),
+                payout_ratio=info.get("payoutRatio"),
+                ex_dividend_date=ex_dividend_date,
+                history=history[:40],  # Last 40 dividends (~10 years quarterly)
+                five_year_avg_yield=info.get("fiveYearAvgDividendYield"),
+                dividend_growth_rate=dividend_growth_rate,
+                last_updated=datetime.now(UTC),
+            )
+        except Exception as e:
+            logger.error(f"Error fetching dividends for {symbol}: {e}")
+            return None

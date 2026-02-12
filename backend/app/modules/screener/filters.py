@@ -1,13 +1,47 @@
 """Concrete filter implementations for stock screener."""
 
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from shared.providers.schemas import FundamentalData
 
 from app.modules.screener.base import BaseFilter, FilterResult, FilterType, sanitize_for_json
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FundamentalCriteria:
+    """Criteria for fundamental filter."""
+
+    # Valuation
+    max_pe: float | None = None
+    min_pe: float | None = None
+    max_pb: float | None = None
+    min_pb: float | None = None
+    max_ps: float | None = None
+    max_peg: float | None = None
+    # Growth
+    min_eps_growth: float | None = None
+    min_revenue_growth: float | None = None
+    # Profitability
+    min_profit_margin: float | None = None
+    min_operating_margin: float | None = None
+    min_roe: float | None = None
+    min_roa: float | None = None
+    # Dividends
+    min_dividend_yield: float | None = None
+    max_payout_ratio: float | None = None
+    # Balance sheet
+    max_debt_to_equity: float | None = None
+    min_current_ratio: float | None = None
+    # Other
+    min_market_cap: float | None = None
+    max_market_cap: float | None = None
+    sectors: list[str] | None = None
+    industries: list[str] | None = None
 
 
 class VolumeFilter(BaseFilter):
@@ -639,4 +673,262 @@ class SectorPerformanceFilter(BaseFilter):
             )
         except Exception as e:
             logger.error(f"Sector performance filter error for {symbol}: {e}")
+            return FilterResult(passed=False, reason=str(e))
+
+
+class FundamentalFilter(BaseFilter):
+    """Filter stocks by fundamental criteria.
+
+    Evaluates stocks based on valuation, growth, profitability, dividends,
+    and balance sheet metrics. This filter requires fundamental data to be
+    passed via the metadata field of the DataFrame or as a separate parameter.
+    """
+
+    filter_type = FilterType.FUNDAMENTAL
+    name = "fundamental_filter"
+
+    def configure(
+        self,
+        criteria: FundamentalCriteria | None = None,
+        # Valuation thresholds
+        max_pe: float | None = None,
+        min_pe: float | None = None,
+        max_pb: float | None = None,
+        min_pb: float | None = None,
+        max_ps: float | None = None,
+        max_peg: float | None = None,
+        # Growth thresholds
+        min_eps_growth: float | None = None,
+        min_revenue_growth: float | None = None,
+        # Profitability thresholds
+        min_profit_margin: float | None = None,
+        min_operating_margin: float | None = None,
+        min_roe: float | None = None,
+        min_roa: float | None = None,
+        # Dividend thresholds
+        min_dividend_yield: float | None = None,
+        max_payout_ratio: float | None = None,
+        # Balance sheet thresholds
+        max_debt_to_equity: float | None = None,
+        min_current_ratio: float | None = None,
+        # Market cap filters
+        min_market_cap: float | None = None,
+        max_market_cap: float | None = None,
+        # Sector/industry filters
+        sectors: list[str] | None = None,
+        industries: list[str] | None = None,
+        **kwargs,
+    ) -> None:
+        """Configure fundamental filter.
+
+        Can be configured with a FundamentalCriteria object or individual parameters.
+        """
+        if criteria:
+            self.criteria = criteria
+        else:
+            self.criteria = FundamentalCriteria(
+                max_pe=max_pe,
+                min_pe=min_pe,
+                max_pb=max_pb,
+                min_pb=min_pb,
+                max_ps=max_ps,
+                max_peg=max_peg,
+                min_eps_growth=min_eps_growth,
+                min_revenue_growth=min_revenue_growth,
+                min_profit_margin=min_profit_margin,
+                min_operating_margin=min_operating_margin,
+                min_roe=min_roe,
+                min_roa=min_roa,
+                min_dividend_yield=min_dividend_yield,
+                max_payout_ratio=max_payout_ratio,
+                max_debt_to_equity=max_debt_to_equity,
+                min_current_ratio=min_current_ratio,
+                min_market_cap=min_market_cap,
+                max_market_cap=max_market_cap,
+                sectors=sectors,
+                industries=industries,
+            )
+
+    def apply(self, symbol: str, data: pd.DataFrame) -> FilterResult:
+        """Apply fundamental filter.
+
+        Note: This filter requires fundamental data to be passed via apply_with_fundamentals().
+        When called with just OHLCV data, it will return a neutral result.
+        """
+        return FilterResult(
+            passed=True,
+            score=50,
+            reason="Use apply_with_fundamentals() for fundamental screening",
+        )
+
+    def apply_with_fundamentals(self, symbol: str, fundamentals: FundamentalData) -> FilterResult:
+        """Apply fundamental filter with fundamental data.
+
+        Args:
+            symbol: Stock symbol
+            fundamentals: FundamentalData with valuation ratios and metrics
+
+        Returns:
+            FilterResult with pass/fail and score
+        """
+        try:
+            checks_passed = 0
+            total_checks = 0
+            reasons = []
+            score = 50.0
+            metadata = {}
+
+            # Valuation checks
+            if self.criteria.max_pe is not None and fundamentals.pe_ratio is not None:
+                total_checks += 1
+                if fundamentals.pe_ratio <= self.criteria.max_pe:
+                    checks_passed += 1
+                    score += 5
+                    reasons.append(f"P/E {fundamentals.pe_ratio:.1f} ≤ {self.criteria.max_pe}")
+                else:
+                    reasons.append(f"P/E {fundamentals.pe_ratio:.1f} > {self.criteria.max_pe}")
+                metadata["pe_ratio"] = fundamentals.pe_ratio
+
+            if self.criteria.min_pe is not None and fundamentals.pe_ratio is not None:
+                total_checks += 1
+                if fundamentals.pe_ratio >= self.criteria.min_pe:
+                    checks_passed += 1
+                else:
+                    reasons.append(f"P/E {fundamentals.pe_ratio:.1f} < {self.criteria.min_pe}")
+
+            if self.criteria.max_pb is not None and fundamentals.pb_ratio is not None:
+                total_checks += 1
+                if fundamentals.pb_ratio <= self.criteria.max_pb:
+                    checks_passed += 1
+                    score += 5
+                    reasons.append(f"P/B {fundamentals.pb_ratio:.1f} ≤ {self.criteria.max_pb}")
+                else:
+                    reasons.append(f"P/B {fundamentals.pb_ratio:.1f} > {self.criteria.max_pb}")
+                metadata["pb_ratio"] = fundamentals.pb_ratio
+
+            if self.criteria.max_peg is not None and fundamentals.peg_ratio is not None:
+                total_checks += 1
+                if fundamentals.peg_ratio <= self.criteria.max_peg:
+                    checks_passed += 1
+                    score += 5
+                metadata["peg_ratio"] = fundamentals.peg_ratio
+
+            # Growth checks
+            if self.criteria.min_eps_growth is not None and fundamentals.eps_growth_yoy is not None:
+                total_checks += 1
+                if fundamentals.eps_growth_yoy >= self.criteria.min_eps_growth:
+                    checks_passed += 1
+                    score += 10
+                    reasons.append(f"EPS growth {fundamentals.eps_growth_yoy:.1f}%")
+                metadata["eps_growth_yoy"] = fundamentals.eps_growth_yoy
+
+            if (
+                self.criteria.min_revenue_growth is not None
+                and fundamentals.revenue_growth_yoy is not None
+            ):
+                total_checks += 1
+                if fundamentals.revenue_growth_yoy >= self.criteria.min_revenue_growth:
+                    checks_passed += 1
+                    score += 10
+                    reasons.append(f"Revenue growth {fundamentals.revenue_growth_yoy:.1f}%")
+                metadata["revenue_growth_yoy"] = fundamentals.revenue_growth_yoy
+
+            # Profitability checks
+            if self.criteria.min_roe is not None and fundamentals.roe is not None:
+                total_checks += 1
+                if fundamentals.roe >= self.criteria.min_roe:
+                    checks_passed += 1
+                    score += 10
+                    reasons.append(f"ROE {fundamentals.roe:.1f}%")
+                metadata["roe"] = fundamentals.roe
+
+            if (
+                self.criteria.min_profit_margin is not None
+                and fundamentals.profit_margin is not None
+            ):
+                total_checks += 1
+                if fundamentals.profit_margin >= self.criteria.min_profit_margin:
+                    checks_passed += 1
+                    score += 5
+                metadata["profit_margin"] = fundamentals.profit_margin
+
+            # Dividend checks
+            if (
+                self.criteria.min_dividend_yield is not None
+                and fundamentals.dividend_yield is not None
+            ):
+                total_checks += 1
+                if fundamentals.dividend_yield >= self.criteria.min_dividend_yield:
+                    checks_passed += 1
+                    score += 10
+                    reasons.append(f"Yield {fundamentals.dividend_yield:.2f}%")
+                metadata["dividend_yield"] = fundamentals.dividend_yield
+
+            # Balance sheet checks
+            if (
+                self.criteria.max_debt_to_equity is not None
+                and fundamentals.debt_to_equity is not None
+            ):
+                total_checks += 1
+                if fundamentals.debt_to_equity <= self.criteria.max_debt_to_equity:
+                    checks_passed += 1
+                    score += 5
+                metadata["debt_to_equity"] = fundamentals.debt_to_equity
+
+            if (
+                self.criteria.min_current_ratio is not None
+                and fundamentals.current_ratio is not None
+            ):
+                total_checks += 1
+                if fundamentals.current_ratio >= self.criteria.min_current_ratio:
+                    checks_passed += 1
+                    score += 5
+                metadata["current_ratio"] = fundamentals.current_ratio
+
+            # Market cap checks
+            if self.criteria.min_market_cap is not None and fundamentals.market_cap is not None:
+                total_checks += 1
+                if fundamentals.market_cap >= self.criteria.min_market_cap:
+                    checks_passed += 1
+                metadata["market_cap"] = fundamentals.market_cap
+
+            if self.criteria.max_market_cap is not None and fundamentals.market_cap is not None:
+                total_checks += 1
+                if fundamentals.market_cap <= self.criteria.max_market_cap:
+                    checks_passed += 1
+
+            # Sector/industry checks
+            if self.criteria.sectors is not None and fundamentals.sector is not None:
+                total_checks += 1
+                if fundamentals.sector in self.criteria.sectors:
+                    checks_passed += 1
+                    reasons.append(f"Sector: {fundamentals.sector}")
+                metadata["sector"] = fundamentals.sector
+
+            if self.criteria.industries is not None and fundamentals.industry is not None:
+                total_checks += 1
+                if fundamentals.industry in self.criteria.industries:
+                    checks_passed += 1
+                metadata["industry"] = fundamentals.industry
+
+            # Determine pass/fail
+            if total_checks == 0:
+                return FilterResult(
+                    passed=True,
+                    score=50,
+                    reason="No fundamental criteria specified",
+                )
+
+            passed = checks_passed == total_checks
+
+            return FilterResult(
+                passed=passed,
+                score=min(100, score),
+                reason="; ".join(reasons[:5])
+                if reasons
+                else f"Passed {checks_passed}/{total_checks} checks",
+                metadata=sanitize_for_json(metadata),
+            )
+        except Exception as e:
+            logger.error(f"Fundamental filter error for {symbol}: {e}")
             return FilterResult(passed=False, reason=str(e))
