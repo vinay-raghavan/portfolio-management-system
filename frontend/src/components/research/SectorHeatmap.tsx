@@ -341,7 +341,7 @@ export function SectorHeatmap({ className, compact = false }: SectorHeatmapProps
                     <TableHead>Name</TableHead>
                     <TableHead className="text-right">Price</TableHead>
                     <TableHead className="text-right">Change %</TableHead>
-                    <TableHead className="text-right">Volume</TableHead>
+                    <TableHead className="text-right">P/E</TableHead>
                     <TableHead className="text-right">Market Cap</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -350,19 +350,19 @@ export function SectorHeatmap({ className, compact = false }: SectorHeatmapProps
                     <TableRow key={stock.symbol}>
                       <TableCell className="font-medium">{stock.symbol}</TableCell>
                       <TableCell className="max-w-[150px] truncate">
-                        {stock.name}
+                        {stock.name || stock.symbol}
                       </TableCell>
                       <TableCell className="text-right">
-                        ₹{stock.close.toFixed(2)}
+                        {stock.current_price != null ? `₹${stock.current_price.toFixed(2)}` : '-'}
                       </TableCell>
                       <TableCell className={cn(
                         'text-right font-medium',
-                        stock.change_pct >= 0 ? 'text-green-600' : 'text-red-600'
+                        (stock.price_change_pct ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
                       )}>
-                        {formatPercent(stock.change_pct)}
+                        {formatPercent(stock.price_change_pct)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {stock.volume?.toLocaleString() || '-'}
+                        {stock.pe_ratio != null ? stock.pe_ratio.toFixed(1) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatNumber(stock.market_cap)}

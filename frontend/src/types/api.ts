@@ -1068,11 +1068,15 @@ export interface SectorListResponse {
 
 export interface SectorStock {
   symbol: string;
-  name: string;
-  close: number;
-  change_pct: number;
-  volume: number;
+  name: string | null;
+  current_price: number | null;
+  price_change_pct: number | null;
   market_cap?: number | null;
+  pe_ratio?: number | null;
+  pb_ratio?: number | null;
+  dividend_yield?: number | null;
+  roe?: number | null;
+  revenue_growth?: number | null;
 }
 
 export interface SectorStocksResponse {
