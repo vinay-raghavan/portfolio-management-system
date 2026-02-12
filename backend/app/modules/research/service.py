@@ -142,9 +142,7 @@ class ResearchService:
             "industry": fundamentals.industry if fundamentals else None,
             "current_price": float(quote.price) if quote else None,
             "price_change": float(quote.change) if quote and quote.change else None,
-            "price_change_pct": float(quote.change_pct)
-            if quote and quote.change_pct
-            else None,
+            "price_change_pct": float(quote.change_pct) if quote and quote.change_pct else None,
             "fundamentals": fundamentals,
             "dividends": dividends,
             "news": news,
@@ -229,9 +227,7 @@ class ResearchService:
 
                 # Get daily changes (change_pct from NSE provider)
                 changes = [
-                    s.get("change_pct", 0)
-                    for s in stocks
-                    if s.get("change_pct") is not None
+                    s.get("change_pct", 0) for s in stocks if s.get("change_pct") is not None
                 ]
 
                 if not changes:
@@ -249,21 +245,21 @@ class ResearchService:
                 top_loser = sorted_stocks[-1].get("symbol") if sorted_stocks else None
 
                 # Calculate weekly change using top 3 stocks (by volume/liquidity)
-                weekly_change = await self._calculate_sector_weekly_change(
-                    yahoo, stocks[:3]
-                )
+                weekly_change = await self._calculate_sector_weekly_change(yahoo, stocks[:3])
 
-                sector_data.append({
-                    "sector": sector_name,
-                    "change_1d": round(avg_change, 2),
-                    "change_1w": weekly_change,
-                    "change_1m": None,
-                    "change_3m": None,
-                    "change_1y": None,
-                    "stock_count": len(stocks),
-                    "top_gainer": top_gainer,
-                    "top_loser": top_loser,
-                })
+                sector_data.append(
+                    {
+                        "sector": sector_name,
+                        "change_1d": round(avg_change, 2),
+                        "change_1w": weekly_change,
+                        "change_1m": None,
+                        "change_3m": None,
+                        "change_1y": None,
+                        "stock_count": len(stocks),
+                        "top_gainer": top_gainer,
+                        "top_loser": top_loser,
+                    }
+                )
 
             # Sort by daily change (best performing first)
             sector_data.sort(key=lambda x: x.get("change_1d") or 0, reverse=True)
@@ -375,7 +371,8 @@ class ResearchService:
             # Filter stocks by sector/industry (case-insensitive match)
             sector_lower = sector.lower()
             sector_stocks = [
-                s for s in constituents
+                s
+                for s in constituents
                 if (s.get("industry") or s.get("sector") or "").lower() == sector_lower
             ]
 
@@ -388,18 +385,20 @@ class ResearchService:
             # Map to expected format
             stocks = []
             for s in sector_stocks[:limit]:
-                stocks.append({
-                    "symbol": s.get("symbol", ""),
-                    "name": s.get("name") or s.get("symbol"),
-                    "current_price": s.get("last_price"),
-                    "price_change_pct": s.get("change_pct"),
-                    "market_cap": None,  # Not available from index constituents
-                    "pe_ratio": None,
-                    "pb_ratio": None,
-                    "dividend_yield": None,
-                    "roe": None,
-                    "revenue_growth": None,
-                })
+                stocks.append(
+                    {
+                        "symbol": s.get("symbol", ""),
+                        "name": s.get("name") or s.get("symbol"),
+                        "current_price": s.get("last_price"),
+                        "price_change_pct": s.get("change_pct"),
+                        "market_cap": None,  # Not available from index constituents
+                        "pe_ratio": None,
+                        "pb_ratio": None,
+                        "dividend_yield": None,
+                        "roe": None,
+                        "revenue_growth": None,
+                    }
+                )
 
             logger.info(f"Found {len(stocks)} stocks in sector {sector}")
             return {

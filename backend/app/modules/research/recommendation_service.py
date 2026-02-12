@@ -216,7 +216,9 @@ class RecommendationService:
             # Apply criteria filter if provided
             if criteria:
                 self.fundamental_filter.configure(criteria=criteria)
-                filter_result = self.fundamental_filter.apply_with_fundamentals(symbol, fundamentals)
+                filter_result = self.fundamental_filter.apply_with_fundamentals(
+                    symbol, fundamentals
+                )
                 if not filter_result.passed:
                     return None
 
@@ -229,7 +231,9 @@ class RecommendationService:
                 "sector": fundamentals.sector,
                 "industry": fundamentals.industry,
                 "current_price": float(quote.price) if quote else None,
-                "price_change_pct": float(quote.change_percent) if quote and quote.change_percent else None,
+                "price_change_pct": float(quote.change_percent)
+                if quote and quote.change_percent
+                else None,
                 "market_cap": fundamentals.market_cap,
                 "pe_ratio": fundamentals.pe_ratio,
                 "pb_ratio": fundamentals.pb_ratio,
@@ -350,4 +354,3 @@ class RecommendationService:
         if parts:
             return ". ".join(parts) + "."
         return "Meets quality criteria."
-

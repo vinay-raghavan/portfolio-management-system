@@ -452,8 +452,7 @@ class StrategyResponse(BaseModel):
 
             if orders_loaded and exec_obj.algo_orders:
                 orders = [
-                    AlgoOrderDetailResponse.model_validate(order)
-                    for order in exec_obj.algo_orders
+                    AlgoOrderDetailResponse.model_validate(order) for order in exec_obj.algo_orders
                 ]
             recent_executions.append(
                 RecentExecutionSummary(

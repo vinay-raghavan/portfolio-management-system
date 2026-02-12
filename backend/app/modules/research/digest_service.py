@@ -264,7 +264,9 @@ class DigestService:
             # NSE provider returns change_pct, not pChange
             sector_data = []
             for sector, stocks in sectors.items():
-                changes = [s.get("change_pct", 0) for s in stocks if s.get("change_pct") is not None]
+                changes = [
+                    s.get("change_pct", 0) for s in stocks if s.get("change_pct") is not None
+                ]
                 if changes:
                     avg_change = sum(changes) / len(changes)
                     top_stock = max(stocks, key=lambda s: s.get("change_pct", 0))
@@ -412,8 +414,7 @@ class DigestService:
         if market_summary and market_summary.get("indices"):
             indices = market_summary["indices"]
             index_changes = [
-                idx.get("change_pct", 0) for idx in indices
-                if idx.get("change_pct") is not None
+                idx.get("change_pct", 0) for idx in indices if idx.get("change_pct") is not None
             ]
             if index_changes:
                 avg_change = sum(index_changes) / len(index_changes)
@@ -428,14 +429,8 @@ class DigestService:
             losers = losers or []
 
             # Calculate average gain/loss magnitude
-            avg_gain = (
-                sum(g.change_pct for g in gainers) / len(gainers)
-                if gainers else 0
-            )
-            avg_loss = (
-                sum(abs(l.change_pct) for l in losers) / len(losers)
-                if losers else 0
-            )
+            avg_gain = sum(g.change_pct for g in gainers) / len(gainers) if gainers else 0
+            avg_loss = sum(abs(loser.change_pct) for loser in losers) / len(losers) if losers else 0
 
             # Breadth score: positive if gainers stronger, negative if losers stronger
             if avg_gain + avg_loss > 0:
@@ -506,6 +501,8 @@ class DigestService:
                 BreakoutCandidate(**b) for b in (digest.breakout_candidates or [])
             ],
             news_highlights=[NewsHighlight(**n) for n in (digest.news_highlights or [])],
-            market_sentiment=float(digest.market_sentiment) if digest.market_sentiment is not None else None,
+            market_sentiment=float(digest.market_sentiment)
+            if digest.market_sentiment is not None
+            else None,
             created_at=digest.created_at,
         )

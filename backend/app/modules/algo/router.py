@@ -69,8 +69,7 @@ async def list_strategies(
         current_user.id, status_filter, load_recent_executions=True
     )
     return [
-        StrategyResponse.from_model(s, executions=executions_map.get(s.id, []))
-        for s in strategies
+        StrategyResponse.from_model(s, executions=executions_map.get(s.id, [])) for s in strategies
     ]
 
 

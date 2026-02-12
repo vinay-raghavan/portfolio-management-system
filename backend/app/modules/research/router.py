@@ -760,7 +760,9 @@ async def generate_digest(
 async def get_recommendations(
     db: DbSession,
     current_user: OptionalUser,
-    category: str | None = Query(None, description="Filter by category: quality, value, growth, dividend"),
+    category: str | None = Query(
+        None, description="Filter by category: quality, value, growth, dividend"
+    ),
     limit: int = Query(20, ge=1, le=50, description="Maximum recommendations"),
 ) -> RecommendationsResponse:
     """Get daily stock recommendations combining fundamental + technical analysis.
@@ -826,7 +828,9 @@ async def get_recommendations(
         by_category[r.category] = by_category.get(r.category, 0) + 1
 
     # Calculate averages
-    avg_fund = sum(r.fundamental_score for r in rec_stocks) / len(rec_stocks) if rec_stocks else None
+    avg_fund = (
+        sum(r.fundamental_score for r in rec_stocks) / len(rec_stocks) if rec_stocks else None
+    )
     avg_tech = sum(r.technical_score for r in rec_stocks) / len(rec_stocks) if rec_stocks else None
 
     return RecommendationsResponse(
