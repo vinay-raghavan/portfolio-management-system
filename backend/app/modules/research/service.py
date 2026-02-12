@@ -193,14 +193,131 @@ class ResearchService:
     async def get_sectors(self) -> list[dict]:
         """Get all sectors with performance data.
 
-        Returns performance metrics for each sector. Currently returns a
-        predefined list of sectors - in production this would aggregate
-        from a stock universe database.
+        Fetches NIFTY 500 constituents from NSE and aggregates by sector/industry.
+        Calculates average daily and weekly change per sector.
 
         Returns:
             List of sector dicts with performance data
         """
-        # Standard sectors (GICS sectors)
+        try:
+            from shared.providers.data.nse import NSEDataProvider
+            from shared.providers.data.yahoo import YahooDataProvider
+
+            nse = NSEDataProvider()
+            constituents = await nse.get_index_constituents("NIFTY 500")
+
+            if not constituents:
+                logger.warning("No constituents returned from NSE, using fallback")
+                return self._get_fallback_sectors()
+
+            # Group stocks by industry/sector
+            sectors: dict[str, list[dict]] = {}
+            for stock in constituents:
+                sector = stock.get("industry") or stock.get("sector") or "Other"
+                if sector not in sectors:
+                    sectors[sector] = []
+                sectors[sector].append(stock)
+
+            # Calculate metrics per sector
+            sector_data = []
+            yahoo = YahooDataProvider()
+
+            for sector_name, stocks in sectors.items():
+                # Skip empty sector names (like the index itself)
+                if not sector_name or sector_name == "Other":
+                    continue
+
+                # Get daily changes (change_pct from NSE provider)
+                changes = [
+                    s.get("change_pct", 0)
+                    for s in stocks
+                    if s.get("change_pct") is not None
+                ]
+
+                if not changes:
+                    continue
+
+                avg_change = sum(changes) / len(changes)
+
+                # Find top gainer and loser
+                sorted_stocks = sorted(
+                    stocks,
+                    key=lambda s: s.get("change_pct", 0) or 0,
+                    reverse=True,
+                )
+                top_gainer = sorted_stocks[0].get("symbol") if sorted_stocks else None
+                top_loser = sorted_stocks[-1].get("symbol") if sorted_stocks else None
+
+                # Calculate weekly change using top 3 stocks (by volume/liquidity)
+                weekly_change = await self._calculate_sector_weekly_change(
+                    yahoo, stocks[:3]
+                )
+
+                sector_data.append({
+                    "sector": sector_name,
+                    "change_1d": round(avg_change, 2),
+                    "change_1w": weekly_change,
+                    "change_1m": None,
+                    "change_3m": None,
+                    "change_1y": None,
+                    "stock_count": len(stocks),
+                    "top_gainer": top_gainer,
+                    "top_loser": top_loser,
+                })
+
+            # Sort by daily change (best performing first)
+            sector_data.sort(key=lambda x: x.get("change_1d") or 0, reverse=True)
+
+            logger.info(f"Fetched {len(sector_data)} sectors from NSE NIFTY 500")
+            return sector_data
+
+        except Exception as e:
+            logger.error(f"Error fetching sector data from NSE: {e}")
+            return self._get_fallback_sectors()
+
+    async def _calculate_sector_weekly_change(
+        self,
+        yahoo: "YahooDataProvider",
+        stocks: list[dict],
+    ) -> float | None:
+        """Calculate average weekly change for a sector using sample stocks.
+
+        Args:
+            yahoo: Yahoo data provider instance
+            stocks: List of stock dicts with 'symbol' key
+
+        Returns:
+            Average weekly change percentage or None if unavailable
+        """
+        if not stocks:
+            return None
+
+        weekly_changes = []
+        for stock in stocks[:3]:  # Limit to 3 stocks per sector
+            symbol = stock.get("symbol")
+            if not symbol:
+                continue
+
+            try:
+                # Get 5-day historical data
+                history = await yahoo.get_historical(symbol, period="5d", interval="1d")
+                if history and len(history) >= 2:
+                    # Calculate change from first to last close
+                    first_close = float(history[0].close)
+                    last_close = float(history[-1].close)
+                    if first_close > 0:
+                        change = ((last_close - first_close) / first_close) * 100
+                        weekly_changes.append(change)
+            except Exception as e:
+                logger.debug(f"Error fetching weekly data for {symbol}: {e}")
+                continue
+
+        if weekly_changes:
+            return round(sum(weekly_changes) / len(weekly_changes), 2)
+        return None
+
+    def _get_fallback_sectors(self) -> list[dict]:
+        """Return fallback sector list when NSE data is unavailable."""
         sectors = [
             "Technology",
             "Healthcare",
@@ -214,11 +331,6 @@ class ResearchService:
             "Real Estate",
             "Materials",
         ]
-
-        # Return sectors with placeholder performance data
-        # In production, this would calculate from actual stock data
-        logger.info("get_sectors() - returning predefined sector list (no stock universe)")
-
         return [
             {
                 "sector": sector,
@@ -241,8 +353,7 @@ class ResearchService:
     ) -> dict:
         """Get stocks within a specific sector.
 
-        Returns stocks belonging to the specified sector with their metrics.
-        Currently a stub - requires a stock universe database to implement.
+        Fetches NIFTY 500 constituents and filters by sector/industry.
 
         Args:
             sector: Sector name
@@ -251,10 +362,52 @@ class ResearchService:
         Returns:
             Dict with sector stocks and count
         """
-        logger.info(f"get_sector_stocks({sector}) - requires stock universe database")
+        try:
+            from shared.providers.data.nse import NSEDataProvider
 
-        return {
-            "sector": sector,
-            "stocks": [],
-            "total_count": 0,
-        }
+            nse = NSEDataProvider()
+            constituents = await nse.get_index_constituents("NIFTY 500")
+
+            if not constituents:
+                logger.warning(f"No constituents for sector {sector}")
+                return {"sector": sector, "stocks": [], "total_count": 0}
+
+            # Filter stocks by sector/industry (case-insensitive match)
+            sector_lower = sector.lower()
+            sector_stocks = [
+                s for s in constituents
+                if (s.get("industry") or s.get("sector") or "").lower() == sector_lower
+            ]
+
+            # Sort by daily change (best performers first)
+            sector_stocks.sort(
+                key=lambda s: s.get("change_pct", 0) or 0,
+                reverse=True,
+            )
+
+            # Map to expected format
+            stocks = []
+            for s in sector_stocks[:limit]:
+                stocks.append({
+                    "symbol": s.get("symbol", ""),
+                    "name": s.get("name") or s.get("symbol"),
+                    "current_price": s.get("last_price"),
+                    "price_change_pct": s.get("change_pct"),
+                    "market_cap": None,  # Not available from index constituents
+                    "pe_ratio": None,
+                    "pb_ratio": None,
+                    "dividend_yield": None,
+                    "roe": None,
+                    "revenue_growth": None,
+                })
+
+            logger.info(f"Found {len(stocks)} stocks in sector {sector}")
+            return {
+                "sector": sector,
+                "stocks": stocks,
+                "total_count": len(sector_stocks),
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching sector stocks for {sector}: {e}")
+            return {"sector": sector, "stocks": [], "total_count": 0}

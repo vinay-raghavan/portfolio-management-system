@@ -98,3 +98,16 @@ class UserSettingsService:
         provider = DataProviderType(settings.data_provider)
         is_available, message = await self.is_provider_available(user_id, provider)
         return provider, is_available, message
+
+    async def get_user_research_data_provider(
+        self, user_id: str
+    ) -> tuple[DataProviderType, bool, str | None]:
+        """Get user's preferred research/fundamental data provider and its availability.
+
+        Returns:
+            Tuple of (provider, is_available, message)
+        """
+        settings = await self.get_settings(user_id)
+        provider = DataProviderType(settings.research_data_provider)
+        is_available, message = await self.is_provider_available(user_id, provider)
+        return provider, is_available, message

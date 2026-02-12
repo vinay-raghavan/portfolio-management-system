@@ -125,29 +125,6 @@ export function DigestWidget({ className }: DigestWidgetProps) {
           </Badge>
         </div>
 
-        {/* Market Summary */}
-        {digest.market_summary?.indices && digest.market_summary.indices.length > 0 && (
-          <div>
-            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Indices
-            </h4>
-            <div className="grid grid-cols-3 gap-2">
-              {digest.market_summary.indices.slice(0, 3).map((index) => (
-                <div key={index.symbol} className="p-2 rounded-lg bg-muted/50 text-center">
-                  <div className="text-xs text-muted-foreground truncate">{index.name || index.symbol}</div>
-                  <div className={cn(
-                    'text-sm font-bold',
-                    (index.change_pct ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                  )}>
-                    {formatPercent(index.change_pct)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Top Movers */}
         <div className="grid grid-cols-2 gap-3">
           {/* Top Gainers */}

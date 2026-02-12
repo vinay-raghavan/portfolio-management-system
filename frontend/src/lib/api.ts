@@ -602,6 +602,7 @@ export interface UserSettings {
   id: string;
   user_id: string;
   data_provider: DataProviderType;
+  research_data_provider: DataProviderType;
   default_market: 'IN' | 'US';
   currency: 'INR' | 'USD' | 'EUR' | 'GBP';
   theme: 'light' | 'dark' | 'system';
@@ -609,10 +610,13 @@ export interface UserSettings {
   updated_at: string;
   data_provider_available: boolean;
   data_provider_message: string | null;
+  research_data_provider_available: boolean;
+  research_data_provider_message: string | null;
 }
 
 export interface UserSettingsUpdate {
   data_provider?: DataProviderType;
+  research_data_provider?: DataProviderType;
   default_market?: 'IN' | 'US';
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
   theme?: 'light' | 'dark' | 'system';
@@ -934,6 +938,9 @@ import type {
   ResearchNoteUpdate,
   ResearchNoteListResponse,
   StockResearchResponse,
+  RecommendationsResponse,
+  UniverseResearchResponse,
+  UniverseFilterParams,
 } from '@/types';
 
 export const researchApi = {
@@ -989,4 +996,19 @@ export const researchApi = {
 
   deleteNote: (noteId: string) =>
     api.delete(`/research/notes/${noteId}`),
+
+  // Recommendations
+  getRecommendations: (category?: string, limit = 20) => {
+    const params: { limit: number; category?: string } = { limit };
+    if (category) {
+      params.category = category;
+    }
+    return api.get<RecommendationsResponse>('/research/recommendations', { params });
+  },
+
+  // Universe research
+  getUniverseResearch: (universe: string, filters?: UniverseFilterParams) =>
+    api.get<UniverseResearchResponse>(`/research/universe/${encodeURIComponent(universe)}`, {
+      params: filters,
+    }),
 };

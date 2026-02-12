@@ -132,8 +132,13 @@ class DigestService:
         breakouts = results[4] if not isinstance(results[4], Exception) else []
         news = results[5] if not isinstance(results[5], Exception) else []
 
-        # Calculate overall sentiment from news
-        sentiment = self._calculate_market_sentiment(news)
+        # Calculate overall sentiment from multiple factors
+        sentiment = self._calculate_market_sentiment(
+            news=news,
+            market_summary=market_summary,
+            gainers=gainers,
+            losers=losers,
+        )
 
         # Create digest record
         # Use mode="json" to ensure datetime fields are serialized to ISO strings
@@ -167,9 +172,9 @@ class DigestService:
                     return IndexPerformance(
                         symbol=symbol,
                         name=name,
-                        close=float(quote.last_price) if quote.last_price else None,
+                        close=float(quote.price) if quote.price else None,
                         change=float(quote.change) if quote.change else None,
-                        change_pct=float(quote.change_pct) if quote.change_pct else None,
+                        change_pct=float(quote.change_percent) if quote.change_percent else None,
                     )
             except Exception as e:
                 logger.warning(f"Failed to fetch index {symbol}: {e}")
@@ -214,16 +219,17 @@ class DigestService:
                 return [], []
 
             # Sort by change percentage
+            # NSE provider returns change_pct, not pChange
             stocks = [
                 TopMover(
                     symbol=c.get("symbol", ""),
                     name=c.get("name") or c.get("companyName"),
-                    close=c.get("lastPrice"),
-                    change_pct=c.get("pChange", 0),
-                    volume=c.get("totalTradedVolume"),
+                    close=c.get("last_price"),
+                    change_pct=c.get("change_pct", 0),
+                    volume=c.get("volume"),
                 )
                 for c in constituents
-                if c.get("symbol") and c.get("pChange") is not None
+                if c.get("symbol") and c.get("change_pct") is not None
             ]
 
             # Sort for gainers (highest change) and losers (lowest change)
@@ -255,12 +261,13 @@ class DigestService:
                 sectors[sector].append(c)
 
             # Calculate average change per sector
+            # NSE provider returns change_pct, not pChange
             sector_data = []
             for sector, stocks in sectors.items():
-                changes = [s.get("pChange", 0) for s in stocks if s.get("pChange") is not None]
+                changes = [s.get("change_pct", 0) for s in stocks if s.get("change_pct") is not None]
                 if changes:
                     avg_change = sum(changes) / len(changes)
-                    top_stock = max(stocks, key=lambda s: s.get("pChange", 0))
+                    top_stock = max(stocks, key=lambda s: s.get("change_pct", 0))
                     sector_data.append(
                         SectorDigest(
                             sector=sector,
@@ -290,9 +297,10 @@ class DigestService:
                 return []
 
             # Calculate volume ratio (current volume / average volume)
+            # NSE provider returns 'volume' and 'change_pct'
             leaders = []
             for c in constituents:
-                volume = c.get("totalTradedVolume")
+                volume = c.get("volume")
                 avg_volume = c.get("averageVolume")  # May not be available
 
                 if volume and volume > 0:
@@ -308,7 +316,7 @@ class DigestService:
                             volume=int(volume),
                             avg_volume=int(avg_volume) if avg_volume else None,
                             volume_ratio=volume_ratio,
-                            price_change_pct=c.get("pChange"),
+                            price_change_pct=c.get("change_pct"),
                         )
                     )
 
@@ -380,30 +388,98 @@ class DigestService:
             logger.error(f"Error fetching news highlights: {e}")
             return []
 
-    def _calculate_market_sentiment(self, news: list[NewsHighlight]) -> float | None:
-        """Calculate overall market sentiment from news.
+    def _calculate_market_sentiment(
+        self,
+        news: list[NewsHighlight],
+        market_summary: dict[str, Any] | None = None,
+        gainers: list[TopMover] | None = None,
+        losers: list[TopMover] | None = None,
+    ) -> float | None:
+        """Calculate overall market sentiment from multiple factors.
+
+        Factors considered (weighted):
+        - Index performance (40%): Are major indices up or down?
+        - Market breadth (30%): Strength of gainers vs losers
+        - News sentiment (30%): What's the news saying?
 
         Returns:
             Sentiment score from -1.0 (bearish) to 1.0 (bullish)
         """
-        if not news:
+        components: list[tuple[float, float]] = []  # (score, weight)
+
+        # 1. Index Performance (40% weight)
+        # Average change of major indices, normalized to -1 to 1 range
+        if market_summary and market_summary.get("indices"):
+            indices = market_summary["indices"]
+            index_changes = [
+                idx.get("change_pct", 0) for idx in indices
+                if idx.get("change_pct") is not None
+            ]
+            if index_changes:
+                avg_change = sum(index_changes) / len(index_changes)
+                # Normalize: +/-3% maps to +/-1.0 (capped)
+                index_score = max(-1.0, min(1.0, avg_change / 3.0))
+                components.append((index_score, 0.4))
+
+        # 2. Market Breadth (30% weight)
+        # Compare strength of gainers vs losers
+        if gainers or losers:
+            gainers = gainers or []
+            losers = losers or []
+
+            # Calculate average gain/loss magnitude
+            avg_gain = (
+                sum(g.change_pct for g in gainers) / len(gainers)
+                if gainers else 0
+            )
+            avg_loss = (
+                sum(abs(l.change_pct) for l in losers) / len(losers)
+                if losers else 0
+            )
+
+            # Breadth score: positive if gainers stronger, negative if losers stronger
+            if avg_gain + avg_loss > 0:
+                breadth_score = (avg_gain - avg_loss) / (avg_gain + avg_loss)
+            else:
+                breadth_score = 0.0
+
+            # Also consider count ratio
+            total_movers = len(gainers) + len(losers)
+            if total_movers > 0:
+                count_ratio = (len(gainers) - len(losers)) / total_movers
+                # Blend magnitude and count (70% magnitude, 30% count)
+                breadth_score = 0.7 * breadth_score + 0.3 * count_ratio
+
+            components.append((breadth_score, 0.3))
+
+        # 3. News Sentiment (30% weight)
+        if news:
+            sentiment_values = {
+                "positive": 1.0,
+                "negative": -1.0,
+                "neutral": 0.0,
+            }
+            news_scores = [
+                sentiment_values[n.sentiment]
+                for n in news
+                if n.sentiment and n.sentiment in sentiment_values
+            ]
+            if news_scores:
+                news_score = sum(news_scores) / len(news_scores)
+                components.append((news_score, 0.3))
+
+        # Calculate weighted average
+        if not components:
             return None
 
-        sentiment_values = {
-            "positive": 1.0,
-            "negative": -1.0,
-            "neutral": 0.0,
-        }
-
-        scores = []
-        for n in news:
-            if n.sentiment and n.sentiment in sentiment_values:
-                scores.append(sentiment_values[n.sentiment])
-
-        if not scores:
+        total_weight = sum(w for _, w in components)
+        if total_weight == 0:
             return None
 
-        return round(sum(scores) / len(scores), 3)
+        weighted_sum = sum(score * weight for score, weight in components)
+        final_sentiment = weighted_sum / total_weight
+
+        return round(final_sentiment, 3)
 
     def digest_to_response(self, digest: DailyDigest) -> DailyDigestResponse:
         """Convert DailyDigest model to response schema."""
@@ -430,6 +506,6 @@ class DigestService:
                 BreakoutCandidate(**b) for b in (digest.breakout_candidates or [])
             ],
             news_highlights=[NewsHighlight(**n) for n in (digest.news_highlights or [])],
-            market_sentiment=float(digest.market_sentiment) if digest.market_sentiment else None,
+            market_sentiment=float(digest.market_sentiment) if digest.market_sentiment is not None else None,
             created_at=digest.created_at,
         )

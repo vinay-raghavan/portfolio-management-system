@@ -94,14 +94,17 @@ class AlgoService:
         strategy_id: str,
         load_universe: bool = False,
         load_recent_executions: bool = False,
-    ) -> UserStrategy | None:
+    ) -> tuple[UserStrategy | None, list[StrategyExecution]]:
         """Get a strategy by ID for a user.
 
         Args:
             user_id: User ID
             strategy_id: Strategy ID
             load_universe: Whether to eager-load universe
-            load_recent_executions: Whether to eager-load recent executions with orders
+            load_recent_executions: Whether to load recent executions with orders
+
+        Returns:
+            Tuple of (strategy, recent_executions)
         """
         from sqlalchemy.orm import selectinload
 
@@ -111,43 +114,115 @@ class AlgoService:
         )
         if load_universe:
             query = query.options(selectinload(UserStrategy.universe))
-        if load_recent_executions:
-            query = query.options(
-                selectinload(UserStrategy.executions).selectinload(StrategyExecution.algo_orders)
-            )
+        # Note: We don't eager-load executions here anymore - use optimized loading instead
         result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        strategy = result.scalar_one_or_none()
+
+        recent_executions: list[StrategyExecution] = []
+        if strategy and load_recent_executions:
+            # Load only 5 most recent executions (much faster than loading all)
+            executions_map = await self._load_recent_executions_optimized([strategy], limit=5)
+            recent_executions = executions_map.get(strategy.id, [])
+
+        return strategy, recent_executions
 
     async def get_user_strategies(
         self,
         user_id: str,
         status_filter: StrategyStatus | None = None,
         load_recent_executions: bool = False,
-    ) -> list[UserStrategy]:
+    ) -> tuple[list[UserStrategy], dict[str, list[StrategyExecution]]]:
         """Get all strategies for a user.
 
         Args:
             user_id: User ID
             status_filter: Optional filter by strategy status
-            load_recent_executions: Whether to eager-load recent executions with orders
-        """
-        from sqlalchemy.orm import selectinload
+            load_recent_executions: Whether to load recent executions with orders
 
+        Returns:
+            Tuple of (strategies, executions_map) where executions_map maps strategy_id -> executions
+        """
         query = select(UserStrategy).where(UserStrategy.user_id == user_id)
         if status_filter:
             query = query.where(UserStrategy.status == status_filter)
-        if load_recent_executions:
-            query = query.options(
-                selectinload(UserStrategy.executions).selectinload(StrategyExecution.algo_orders)
-            )
+        # Note: We don't eager-load executions here anymore - too slow for large datasets
+        # Instead, we load them separately with LIMIT per strategy
         result = await self.db.execute(query.order_by(UserStrategy.created_at.desc()))
-        return list(result.scalars().all())
+        strategies = list(result.scalars().all())
+
+        executions_map: dict[str, list[StrategyExecution]] = {}
+        if load_recent_executions and strategies:
+            # Load only 5 most recent executions per strategy (much faster than loading all)
+            executions_map = await self._load_recent_executions_optimized(strategies, limit=5)
+
+        return strategies, executions_map
+
+    async def _load_recent_executions_optimized(
+        self, strategies: list[UserStrategy], limit: int = 5
+    ) -> dict[str, list[StrategyExecution]]:
+        """Load recent executions for strategies efficiently with LIMIT.
+
+        Uses a single query with ROW_NUMBER() to get top N executions per strategy,
+        instead of loading ALL executions and slicing in Python.
+
+        Returns:
+            Dictionary mapping strategy_id -> list of recent executions
+        """
+        from sqlalchemy import func as sqla_func
+        from sqlalchemy.orm import selectinload
+
+        strategy_ids = [s.id for s in strategies]
+        if not strategy_ids:
+            return {}
+
+        # Use a subquery with row_number to get only the N most recent executions per strategy
+        # This is much faster than loading all executions
+        row_num = (
+            sqla_func.row_number()
+            .over(
+                partition_by=StrategyExecution.strategy_id,
+                order_by=StrategyExecution.started_at.desc(),
+            )
+            .label("row_num")
+        )
+        subq = (
+            select(StrategyExecution.id, row_num)
+            .where(StrategyExecution.strategy_id.in_(strategy_ids))
+            .subquery()
+        )
+        # Get execution IDs that are in the top N per strategy
+        top_exec_ids_query = select(subq.c.id).where(subq.c.row_num <= limit)
+        top_exec_ids_result = await self.db.execute(top_exec_ids_query)
+        top_exec_ids = [r[0] for r in top_exec_ids_result.fetchall()]
+
+        if not top_exec_ids:
+            return {}
+
+        # Load only those executions with their orders
+        exec_result = await self.db.execute(
+            select(StrategyExecution)
+            .options(selectinload(StrategyExecution.algo_orders))
+            .where(StrategyExecution.id.in_(top_exec_ids))
+            .order_by(StrategyExecution.started_at.desc())
+        )
+        all_executions = list(exec_result.scalars().all())
+
+        # Group executions by strategy_id
+        exec_by_strategy: dict[str, list[StrategyExecution]] = {}
+        for ex in all_executions:
+            exec_by_strategy.setdefault(ex.strategy_id, []).append(ex)
+
+        # Sort each group by started_at descending
+        for execs in exec_by_strategy.values():
+            execs.sort(key=lambda e: e.started_at, reverse=True)
+
+        return exec_by_strategy
 
     async def update_strategy(
         self, user_id: str, strategy_id: str, data: StrategyUpdate
     ) -> UserStrategy | None:
         """Update a strategy."""
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
 
@@ -179,7 +254,7 @@ class AlgoService:
 
     async def delete_strategy(self, user_id: str, strategy_id: str) -> bool:
         """Delete a strategy."""
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return False
 
@@ -189,7 +264,7 @@ class AlgoService:
 
     async def enable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
         """Enable a strategy for execution."""
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
 
@@ -200,7 +275,7 @@ class AlgoService:
 
     async def disable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
         """Disable a strategy."""
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
 
@@ -235,7 +310,7 @@ class AlgoService:
         from sqlalchemy.orm import selectinload
 
         # Verify ownership
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return []
 
@@ -952,7 +1027,7 @@ class AlgoService:
         """
         if exit_prices is None:
             exit_prices = {}
-        strategy = await self.get_strategy(user_id, strategy_id)
+        strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
 

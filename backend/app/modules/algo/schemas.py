@@ -428,93 +428,98 @@ class StrategyResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def model_validate(cls, obj, **kwargs):
-        """Custom validation to map model fields to response fields."""
+    def from_model(cls, obj, executions: list | None = None) -> "StrategyResponse":
+        """Create response from UserStrategy model with optional pre-loaded executions.
+
+        Args:
+            obj: UserStrategy ORM model
+            executions: Optional list of pre-loaded StrategyExecution objects
+        """
         from sqlalchemy import inspect as sa_inspect
 
-        if hasattr(obj, "strategy_name"):
-            # It's a UserStrategy model, map fields
-            # Build recent executions with order details
-            recent_executions = []
-            # Check if executions relationship was eagerly loaded (avoid lazy loading)
+        # Build recent executions with order details
+        recent_executions = []
+        execution_list = executions if executions is not None else []
+
+        for exec_obj in execution_list[:5]:  # Limit to 5 most recent
+            orders = []
+            # Check if algo_orders was loaded
             try:
-                insp = sa_inspect(obj)
-                executions_loaded = "executions" in insp.dict
+                exec_insp = sa_inspect(exec_obj)
+                orders_loaded = "algo_orders" in exec_insp.dict
             except Exception:
-                executions_loaded = False
+                orders_loaded = False
 
-            if executions_loaded and obj.executions:
-                for exec_obj in obj.executions[:5]:  # Limit to 5 most recent
-                    orders = []
-                    # Check if algo_orders was loaded
-                    try:
-                        exec_insp = sa_inspect(exec_obj)
-                        orders_loaded = "algo_orders" in exec_insp.dict
-                    except Exception:
-                        orders_loaded = False
+            if orders_loaded and exec_obj.algo_orders:
+                orders = [
+                    AlgoOrderDetailResponse.model_validate(order)
+                    for order in exec_obj.algo_orders
+                ]
+            recent_executions.append(
+                RecentExecutionSummary(
+                    id=exec_obj.id,
+                    status=exec_obj.status,
+                    started_at=exec_obj.started_at,
+                    completed_at=exec_obj.completed_at,
+                    duration_ms=exec_obj.duration_ms,
+                    signals_generated=exec_obj.signals_generated,
+                    orders_placed=exec_obj.orders_placed,
+                    orders_filled=exec_obj.orders_filled,
+                    error_message=exec_obj.error_message,
+                    realized_pnl=exec_obj.realized_pnl,
+                    total_order_value=exec_obj.total_order_value,
+                    orders=orders,
+                )
+            )
 
-                    if orders_loaded and exec_obj.algo_orders:
-                        orders = [
-                            AlgoOrderDetailResponse.model_validate(order)
-                            for order in exec_obj.algo_orders
-                        ]
-                    recent_executions.append(
-                        RecentExecutionSummary(
-                            id=exec_obj.id,
-                            status=exec_obj.status,
-                            started_at=exec_obj.started_at,
-                            completed_at=exec_obj.completed_at,
-                            duration_ms=exec_obj.duration_ms,
-                            signals_generated=exec_obj.signals_generated,
-                            orders_placed=exec_obj.orders_placed,
-                            orders_filled=exec_obj.orders_filled,
-                            error_message=exec_obj.error_message,
-                            realized_pnl=exec_obj.realized_pnl,
-                            total_order_value=exec_obj.total_order_value,
-                            orders=orders,
-                        )
-                    )
+        data = {
+            "id": obj.id,
+            "user_id": obj.user_id,
+            "name": obj.name,
+            "description": obj.description,
+            "strategy_type": obj.strategy_name,
+            "strategy_config": obj.strategy_params,
+            "status": obj.status,
+            "universe_id": obj.universe_id,
+            "symbols": obj.custom_symbols,
+            "schedule_type": obj.schedule_type,
+            "interval_seconds": obj.interval_seconds,
+            "cron_expression": obj.cron_expression,
+            "position_sizing_method": obj.position_sizing_method,
+            "position_size_value": obj.portfolio_percent,
+            "max_position_value": obj.max_position_value,
+            "max_daily_loss": obj.max_daily_loss,
+            "max_consecutive_losses": obj.max_consecutive_losses,
+            "max_daily_profit": obj.max_daily_profit,
+            "overall_profit_target": obj.overall_profit_target,
+            "profit_cutoff_action": obj.profit_cutoff_action,
+            "is_paper_trading": obj.is_paper_trading,
+            "product_type": obj.product_type,
+            "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
+            "default_trailing_stop_pct": obj.default_trailing_stop_pct,
+            "default_profit_booking_rules": (
+                ProfitBookingRules.model_validate(obj.default_profit_booking_rules)
+                if obj.default_profit_booking_rules
+                else None
+            ),
+            "last_run_at": obj.last_run_at,
+            "next_run_at": obj.next_run_at,
+            "total_trades": obj.total_trades,
+            "winning_trades": obj.winning_trades,
+            "total_pnl": obj.total_pnl,
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at,
+            "recent_executions": recent_executions,
+        }
+        return cls(**data)
 
-            data = {
-                "id": obj.id,
-                "user_id": obj.user_id,
-                "name": obj.name,
-                "description": obj.description,
-                "strategy_type": obj.strategy_name,
-                "strategy_config": obj.strategy_params,
-                "status": obj.status,
-                "universe_id": obj.universe_id,
-                "symbols": obj.custom_symbols,
-                "schedule_type": obj.schedule_type,
-                "interval_seconds": obj.interval_seconds,
-                "cron_expression": obj.cron_expression,
-                "position_sizing_method": obj.position_sizing_method,
-                "position_size_value": obj.portfolio_percent,
-                "max_position_value": obj.max_position_value,
-                "max_daily_loss": obj.max_daily_loss,
-                "max_consecutive_losses": obj.max_consecutive_losses,
-                "max_daily_profit": obj.max_daily_profit,
-                "overall_profit_target": obj.overall_profit_target,
-                "profit_cutoff_action": obj.profit_cutoff_action,
-                "is_paper_trading": obj.is_paper_trading,
-                "product_type": obj.product_type,
-                "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
-                "default_trailing_stop_pct": obj.default_trailing_stop_pct,
-                "default_profit_booking_rules": (
-                    ProfitBookingRules.model_validate(obj.default_profit_booking_rules)
-                    if obj.default_profit_booking_rules
-                    else None
-                ),
-                "last_run_at": obj.last_run_at,
-                "next_run_at": obj.next_run_at,
-                "total_trades": obj.total_trades,
-                "winning_trades": obj.winning_trades,
-                "total_pnl": obj.total_pnl,
-                "created_at": obj.created_at,
-                "updated_at": obj.updated_at,
-                "recent_executions": recent_executions,
-            }
-            return cls(**data)
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """Custom validation - use from_model() instead for optimized loading."""
+        if hasattr(obj, "strategy_name"):
+            # For backwards compatibility, create with empty executions
+            # Use from_model() with pre-loaded executions for better performance
+            return cls.from_model(obj, executions=[])
         return super().model_validate(obj, **kwargs)
 
 

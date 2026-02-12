@@ -6,9 +6,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession, OptionalUser
-from app.modules.data.service import get_user_data_provider
+from app.modules.data.service import get_user_research_data_provider
 from app.modules.research.digest_service import DigestService
 from app.modules.research.notes_service import ResearchNoteService
+from app.modules.research.recommendation_service import RecommendationService
 from app.modules.research.schemas import (
     DailyDigestResponse,
     DigestListResponse,
@@ -19,6 +20,8 @@ from app.modules.research.schemas import (
     NewsResponse,
     PeerComparisonResponse,
     PeerStock,
+    RecommendationsResponse,
+    RecommendationStock,
     ResearchNoteCreate,
     ResearchNoteListResponse,
     ResearchNoteResponse,
@@ -27,6 +30,8 @@ from app.modules.research.schemas import (
     SectorPerformance,
     SectorStocksResponse,
     StockResearchResponse,
+    UniverseResearchResponse,
+    UniverseStock,
 )
 from app.modules.research.service import ResearchService
 
@@ -108,12 +113,12 @@ async def get_fundamentals(
     Includes valuation ratios (P/E, P/B, P/S, PEG), earnings metrics,
     revenue, profitability margins, returns (ROE, ROA), and balance sheet metrics.
 
-    Uses the user's preferred data provider if authenticated.
+    Uses the user's preferred research data provider if authenticated.
     Falls back to Yahoo Finance for unauthenticated requests.
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     fundamentals = await service.get_fundamentals(symbol)
@@ -167,12 +172,12 @@ async def get_dividends(
     Includes current yield, dividend rate, payout ratio, ex-dividend date,
     5-year average yield, dividend growth rate, and historical dividend records.
 
-    Uses the user's preferred data provider if authenticated.
+    Uses the user's preferred research data provider if authenticated.
     Falls back to Yahoo Finance for unauthenticated requests.
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     dividends = await service.get_dividends(symbol)
@@ -204,6 +209,66 @@ async def get_dividends(
     )
 
 
+# =============================================================================
+# Market News Endpoint (must be before /{symbol}/news to avoid route collision)
+# =============================================================================
+
+
+@router.get("/market/news", response_model=NewsResponse)
+async def get_market_news(
+    db: DbSession,
+    current_user: OptionalUser,
+    category: str | None = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> NewsResponse:
+    """Get general market news with sentiment analysis.
+
+    Fetches recent market-wide news articles and analyzes their sentiment.
+
+    Args:
+        category: Optional category filter (e.g., "technology", "finance")
+        limit: Maximum number of articles to return (1-50, default 10)
+
+    Returns:
+        Market news articles with sentiment scores and aggregate statistics.
+    """
+    provider = None
+    if current_user:
+        provider = await get_user_research_data_provider(db, current_user.id)
+
+    service = ResearchService(provider=provider)
+    news = await service.get_market_news(category=category, limit=limit)
+
+    return NewsResponse(
+        symbol=None,
+        articles=[
+            NewsArticleResponse(
+                title=a.title,
+                url=a.url,
+                source=a.source,
+                published_at=a.published_at,
+                summary=a.summary,
+                thumbnail_url=a.thumbnail_url,
+                related_symbols=a.related_symbols,
+                sentiment=a.sentiment.value,
+                sentiment_score=a.sentiment_score,
+            )
+            for a in news.articles
+        ],
+        total_count=news.total_count,
+        average_sentiment=news.average_sentiment,
+        positive_count=news.positive_count,
+        negative_count=news.negative_count,
+        neutral_count=news.neutral_count,
+        last_updated=news.last_updated,
+    )
+
+
+# =============================================================================
+# Stock News Endpoint
+# =============================================================================
+
+
 @router.get("/{symbol}/news", response_model=NewsResponse)
 async def get_news(
     symbol: str,
@@ -225,7 +290,7 @@ async def get_news(
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     news = await service.get_news(symbol, limit=limit)
@@ -275,7 +340,7 @@ async def get_peers(
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     data = await service.get_peers(symbol, limit=limit)
@@ -306,56 +371,6 @@ async def get_peers(
     )
 
 
-@router.get("/market/news", response_model=NewsResponse)
-async def get_market_news(
-    db: DbSession,
-    current_user: OptionalUser,
-    category: str | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
-) -> NewsResponse:
-    """Get general market news with sentiment analysis.
-
-    Fetches recent market-wide news articles and analyzes their sentiment.
-
-    Args:
-        category: Optional category filter (e.g., "technology", "finance")
-        limit: Maximum number of articles to return (1-50, default 10)
-
-    Returns:
-        Market news articles with sentiment scores and aggregate statistics.
-    """
-    provider = None
-    if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
-
-    service = ResearchService(provider=provider)
-    news = await service.get_market_news(category=category, limit=limit)
-
-    return NewsResponse(
-        symbol=None,
-        articles=[
-            NewsArticleResponse(
-                title=a.title,
-                url=a.url,
-                source=a.source,
-                published_at=a.published_at,
-                summary=a.summary,
-                thumbnail_url=a.thumbnail_url,
-                related_symbols=a.related_symbols,
-                sentiment=a.sentiment.value,
-                sentiment_score=a.sentiment_score,
-            )
-            for a in news.articles
-        ],
-        total_count=news.total_count,
-        average_sentiment=news.average_sentiment,
-        positive_count=news.positive_count,
-        negative_count=news.negative_count,
-        neutral_count=news.neutral_count,
-        last_updated=news.last_updated,
-    )
-
-
 # =============================================================================
 # Sector Endpoints
 # =============================================================================
@@ -376,7 +391,7 @@ async def get_sectors(
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     sectors_data = await service.get_sectors()
@@ -420,7 +435,7 @@ async def get_sector_stocks(
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     data = await service.get_sector_stocks(sector, limit=limit)
@@ -737,6 +752,207 @@ async def generate_digest(
 
 
 # =============================================================================
+# Recommendations Endpoints
+# =============================================================================
+
+
+@router.get("/recommendations", response_model=RecommendationsResponse)
+async def get_recommendations(
+    db: DbSession,
+    current_user: OptionalUser,
+    category: str | None = Query(None, description="Filter by category: quality, value, growth, dividend"),
+    limit: int = Query(20, ge=1, le=50, description="Maximum recommendations"),
+) -> RecommendationsResponse:
+    """Get daily stock recommendations combining fundamental + technical analysis.
+
+    Returns stocks ranked by combined score (60% fundamental, 40% technical).
+    Categories include: quality, value, growth, dividend, momentum, breakout.
+
+    Uses the user's selected research data provider setting (default: Yahoo).
+    """
+    from app.modules.algo.universe_service import PREDEFINED_UNIVERSES
+
+    # Use user's research data provider setting if authenticated
+    provider = None
+    if current_user:
+        provider = await get_user_research_data_provider(db, current_user.id)
+
+    service = RecommendationService(db, provider=provider)
+
+    # Get NIFTY50 stocks for recommendations (can be expanded)
+    symbols = PREDEFINED_UNIVERSES.get("NIFTY50", {}).get("symbols", [])[:20]
+
+    recommendations = await service.generate_recommendations(
+        symbols=symbols,
+        limit=limit,
+    )
+
+    # Filter by category if specified
+    if category:
+        recommendations = [r for r in recommendations if r.get("category") == category]
+
+    # Convert to response format
+    rec_stocks = [
+        RecommendationStock(
+            symbol=r["symbol"],
+            name=r.get("name"),
+            sector=r.get("sector"),
+            industry=r.get("industry"),
+            current_price=r.get("current_price"),
+            price_change_pct=r.get("price_change_pct"),
+            fundamental_score=r.get("fundamental_score", 0),
+            technical_score=r.get("technical_score", 0),
+            combined_score=r.get("combined_score", 0),
+            category=r.get("category", "quality"),
+            pe_ratio=r.get("pe_ratio"),
+            pb_ratio=r.get("pb_ratio"),
+            roe=r.get("roe"),
+            debt_to_equity=r.get("debt_to_equity"),
+            dividend_yield=r.get("dividend_yield"),
+            eps_growth=r.get("eps_growth"),
+            rsi=r.get("rsi"),
+            above_200ma=r.get("above_200ma"),
+            volume_ratio=r.get("volume_ratio"),
+            pct_from_52w_high=r.get("pct_from_52w_high"),
+            thesis=r.get("thesis"),
+            reasons=r.get("reasons", []),
+        )
+        for r in recommendations
+    ]
+
+    # Calculate category breakdown
+    by_category: dict[str, int] = {}
+    for r in rec_stocks:
+        by_category[r.category] = by_category.get(r.category, 0) + 1
+
+    # Calculate averages
+    avg_fund = sum(r.fundamental_score for r in rec_stocks) / len(rec_stocks) if rec_stocks else None
+    avg_tech = sum(r.technical_score for r in rec_stocks) / len(rec_stocks) if rec_stocks else None
+
+    return RecommendationsResponse(
+        date=datetime.now(UTC),
+        recommendations=rec_stocks,
+        total_count=len(rec_stocks),
+        by_category=by_category,
+        avg_fundamental_score=avg_fund,
+        avg_technical_score=avg_tech,
+    )
+
+
+# =============================================================================
+# Universe Research Endpoints
+# =============================================================================
+
+
+@router.get("/universe/{universe_name}", response_model=UniverseResearchResponse)
+async def get_universe_research(
+    universe_name: str,
+    db: DbSession,
+    current_user: OptionalUser,
+    max_pe: float | None = Query(None, description="Maximum P/E ratio"),
+    min_roe: float | None = Query(None, description="Minimum ROE %"),
+    max_debt: float | None = Query(None, description="Maximum Debt/Equity"),
+    min_dividend: float | None = Query(None, description="Minimum dividend yield %"),
+    sector: str | None = Query(None, description="Filter by sector"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum stocks"),
+) -> UniverseResearchResponse:
+    """Get fundamental research data for a stock universe.
+
+    Supported universes: NIFTY50, NIFTY100, NIFTY500, FO_STOCKS, etc.
+    Returns stocks with fundamental metrics, sorted by quality score.
+    """
+    from app.modules.algo.universe_service import PREDEFINED_UNIVERSES
+    from app.modules.screener.filters import FundamentalCriteria
+
+    # Use research data provider for fundamental research
+    provider = None
+    if current_user:
+        provider = await get_user_research_data_provider(db, current_user.id)
+
+    service = RecommendationService(db, provider=provider)
+
+    # Resolve universe
+    universe_upper = universe_name.upper().replace(" ", "")
+    if universe_upper in PREDEFINED_UNIVERSES:
+        symbols = PREDEFINED_UNIVERSES[universe_upper]["symbols"]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Universe not found: {universe_name}. Available: NIFTY50, NIFTY100, etc.",
+        )
+
+    # Build criteria if filters provided
+    criteria = None
+    if any([max_pe, min_roe, max_debt, min_dividend, sector]):
+        criteria = FundamentalCriteria(
+            max_pe=max_pe,
+            min_roe=min_roe,
+            max_debt_to_equity=max_debt,
+            min_dividend_yield=min_dividend,
+            sectors=[sector] if sector else None,
+        )
+
+    # Get fundamental data
+    stocks_data = await service.get_universe_fundamentals(
+        symbols=symbols[:limit],
+        criteria=criteria,
+    )
+
+    # Convert to response format
+    stocks = [
+        UniverseStock(
+            symbol=s["symbol"],
+            name=s.get("name"),
+            sector=s.get("sector"),
+            industry=s.get("industry"),
+            current_price=s.get("current_price"),
+            price_change_pct=s.get("price_change_pct"),
+            market_cap=s.get("market_cap"),
+            pe_ratio=s.get("pe_ratio"),
+            pb_ratio=s.get("pb_ratio"),
+            ps_ratio=s.get("ps_ratio"),
+            roe=s.get("roe"),
+            roa=s.get("roa"),
+            profit_margin=s.get("profit_margin"),
+            debt_to_equity=s.get("debt_to_equity"),
+            current_ratio=s.get("current_ratio"),
+            dividend_yield=s.get("dividend_yield"),
+            eps_growth=s.get("eps_growth"),
+            revenue_growth=s.get("revenue_growth"),
+            fundamental_score=s.get("fundamental_score"),
+        )
+        for s in stocks_data
+    ]
+
+    # Calculate sector breakdown
+    by_sector: dict[str, int] = {}
+    for s in stocks:
+        if s.sector:
+            by_sector[s.sector] = by_sector.get(s.sector, 0) + 1
+
+    filters_applied = {}
+    if max_pe:
+        filters_applied["max_pe"] = max_pe
+    if min_roe:
+        filters_applied["min_roe"] = min_roe
+    if max_debt:
+        filters_applied["max_debt_to_equity"] = max_debt
+    if min_dividend:
+        filters_applied["min_dividend_yield"] = min_dividend
+    if sector:
+        filters_applied["sector"] = sector
+
+    return UniverseResearchResponse(
+        universe=universe_name,
+        stocks=stocks,
+        total_count=len(stocks),
+        by_sector=by_sector,
+        filters_applied=filters_applied if filters_applied else None,
+        last_updated=datetime.now(UTC),
+    )
+
+
+# =============================================================================
 # Full Research Endpoint (Catch-All - Must Be Last)
 # =============================================================================
 
@@ -761,7 +977,7 @@ async def get_stock_research(
     """
     provider = None
     if current_user:
-        provider = await get_user_data_provider(db, current_user.id)
+        provider = await get_user_research_data_provider(db, current_user.id)
 
     service = ResearchService(provider=provider)
     data = await service.get_full_research(symbol, news_limit=news_limit)

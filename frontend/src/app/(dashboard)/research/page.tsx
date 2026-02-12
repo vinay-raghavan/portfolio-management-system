@@ -17,10 +17,12 @@ import {
   BarChart3,
   Zap,
   ArrowRight,
+  Star,
+  Filter,
 } from 'lucide-react';
 import { researchApi } from '@/lib/api';
 import { cn, formatPercent } from '@/lib/utils';
-import { SectorHeatmap, DigestWidget } from '@/components/research';
+import { SectorHeatmap, DigestWidget, FundamentalScreener, RecommendationsPanel } from '@/components/research';
 import type { NewsArticle } from '@/types';
 
 export default function ResearchPage() {
@@ -85,8 +87,16 @@ export default function ResearchPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="recommendations" className="flex items-center gap-1">
+            <Star className="h-3 w-3" />
+            Recommendations
+          </TabsTrigger>
+          <TabsTrigger value="screener" className="flex items-center gap-1">
+            <Filter className="h-3 w-3" />
+            Screener
+          </TabsTrigger>
           <TabsTrigger value="sectors">Sectors</TabsTrigger>
-          <TabsTrigger value="news">Market News</TabsTrigger>
+          <TabsTrigger value="news">News</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -153,6 +163,16 @@ export default function ResearchPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Recommendations Tab */}
+        <TabsContent value="recommendations" className="space-y-6">
+          <RecommendationsPanel />
+        </TabsContent>
+
+        {/* Fundamental Screener Tab */}
+        <TabsContent value="screener" className="space-y-6">
+          <FundamentalScreener />
         </TabsContent>
 
         {/* Sectors Tab */}

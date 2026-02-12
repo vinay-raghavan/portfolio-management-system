@@ -1051,11 +1051,14 @@ export interface DigestListResponse {
 
 export interface SectorPerformance {
   sector: string;
-  change_pct: number;
+  change_1d?: number | null;  // 1-day change %
+  change_1w?: number | null;  // 1-week change %
+  change_1m?: number | null;  // 1-month change %
+  change_3m?: number | null;  // 3-month change %
+  change_1y?: number | null;  // 1-year change %
   stock_count: number;
   top_gainer?: string | null;
   top_loser?: string | null;
-  avg_volume_ratio?: number | null;
 }
 
 export interface SectorListResponse {
@@ -1189,4 +1192,97 @@ export interface StockResearchResponse {
   news?: NewsResponse | null;
   peers?: PeerComparisonResponse | null;
   last_updated?: string | null;
+}
+
+// ============== Recommendations Types ==============
+
+export interface RecommendationStock {
+  symbol: string;
+  name?: string | null;
+  sector?: string | null;
+  industry?: string | null;
+  current_price?: number | null;
+  price_change_pct?: number | null;
+
+  // Scores (0-100)
+  fundamental_score: number;
+  technical_score: number;
+  combined_score: number;
+
+  // Category
+  category: string; // quality, momentum, value, dividend, breakout
+
+  // Fundamental metrics
+  pe_ratio?: number | null;
+  pb_ratio?: number | null;
+  roe?: number | null;
+  debt_to_equity?: number | null;
+  dividend_yield?: number | null;
+  eps_growth?: number | null;
+
+  // Technical metrics
+  rsi?: number | null;
+  above_200ma?: boolean | null;
+  volume_ratio?: number | null;
+  pct_from_52w_high?: number | null;
+
+  // Thesis
+  thesis?: string | null;
+  reasons: string[];
+}
+
+export interface RecommendationsResponse {
+  date: string;
+  recommendations: RecommendationStock[];
+  total_count: number;
+  by_category: Record<string, number>;
+  avg_fundamental_score?: number | null;
+  avg_technical_score?: number | null;
+}
+
+// ============== Universe Research Types ==============
+
+export interface UniverseStock {
+  symbol: string;
+  name?: string | null;
+  sector?: string | null;
+  industry?: string | null;
+  current_price?: number | null;
+  price_change_pct?: number | null;
+  volume?: number | null;
+
+  // Fundamental metrics
+  market_cap?: number | null;
+  pe_ratio?: number | null;
+  pb_ratio?: number | null;
+  ps_ratio?: number | null;
+  roe?: number | null;
+  roa?: number | null;
+  profit_margin?: number | null;
+  debt_to_equity?: number | null;
+  current_ratio?: number | null;
+  dividend_yield?: number | null;
+  eps_growth?: number | null;
+  revenue_growth?: number | null;
+
+  // Score
+  fundamental_score?: number | null;
+}
+
+export interface UniverseResearchResponse {
+  universe: string;
+  stocks: UniverseStock[];
+  total_count: number;
+  by_sector: Record<string, number>;
+  filters_applied?: Record<string, string | number> | null;
+  last_updated?: string | null;
+}
+
+export interface UniverseFilterParams {
+  max_pe?: number;
+  min_roe?: number;
+  max_debt?: number;
+  min_dividend?: number;
+  sector?: string;
+  limit?: number;
 }

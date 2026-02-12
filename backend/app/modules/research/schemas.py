@@ -369,3 +369,130 @@ class DigestListResponse(BaseModel):
 
     digests: list[DailyDigestResponse] = []
     total_count: int = 0
+
+
+# =============================================================================
+# Recommendation Schemas
+# =============================================================================
+
+
+class RecommendationStock(BaseModel):
+    """A stock recommendation with combined fundamental + technical analysis."""
+
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+
+    # Current price info
+    current_price: float | None = None
+    price_change_pct: float | None = None
+
+    # Scores (0-100)
+    fundamental_score: float = 0
+    technical_score: float = 0
+    combined_score: float = 0
+
+    # Strategy/category
+    category: str = "quality"  # quality, momentum, value, dividend, breakout
+
+    # Fundamental metrics
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    roe: float | None = None
+    debt_to_equity: float | None = None
+    dividend_yield: float | None = None
+    eps_growth: float | None = None
+
+    # Technical metrics
+    rsi: float | None = None
+    above_200ma: bool | None = None
+    volume_ratio: float | None = None
+    pct_from_52w_high: float | None = None
+
+    # Thesis/rationale
+    thesis: str | None = None
+    reasons: list[str] = []
+
+
+class RecommendationsResponse(BaseModel):
+    """Response schema for daily recommendations."""
+
+    date: datetime
+    recommendations: list[RecommendationStock] = []
+    total_count: int = 0
+
+    # Category breakdown
+    by_category: dict[str, int] = {}
+
+    # Overall stats
+    avg_fundamental_score: float | None = None
+    avg_technical_score: float | None = None
+
+
+# =============================================================================
+# Universe Research Schemas
+# =============================================================================
+
+
+class UniverseStock(BaseModel):
+    """A stock within a universe with fundamental metrics."""
+
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+
+    # Price data
+    current_price: float | None = None
+    price_change_pct: float | None = None
+    volume: int | None = None
+
+    # Fundamental metrics
+    market_cap: float | None = None
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    ps_ratio: float | None = None
+    roe: float | None = None
+    roa: float | None = None
+    profit_margin: float | None = None
+    debt_to_equity: float | None = None
+    current_ratio: float | None = None
+    dividend_yield: float | None = None
+    eps_growth: float | None = None
+    revenue_growth: float | None = None
+
+    # Quality score (based on fundamentals)
+    fundamental_score: float | None = None
+
+
+class UniverseResearchResponse(BaseModel):
+    """Response schema for universe research."""
+
+    universe: str
+    stocks: list[UniverseStock] = []
+    total_count: int = 0
+
+    # Sector breakdown
+    by_sector: dict[str, int] = {}
+
+    # Filter applied
+    filters_applied: dict | None = None
+
+    last_updated: datetime | None = None
+
+
+class FundamentalFilterParams(BaseModel):
+    """Parameters for fundamental screening."""
+
+    max_pe: float | None = None
+    min_pe: float | None = None
+    max_pb: float | None = None
+    min_roe: float | None = None
+    min_dividend_yield: float | None = None
+    max_debt_to_equity: float | None = None
+    min_current_ratio: float | None = None
+    min_market_cap: float | None = None
+    max_market_cap: float | None = None
+    sectors: list[str] | None = None
+    industries: list[str] | None = None
