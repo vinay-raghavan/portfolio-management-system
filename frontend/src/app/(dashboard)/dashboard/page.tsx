@@ -47,14 +47,12 @@ export default function DashboardPage() {
         <MarketOverview />
       </div>
 
-      {/* Unified Recommendations Carousel & Sector Heatmap */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Recommendations, Sector Heatmap & Recent Trades */}
+      <div className="grid gap-4 md:grid-cols-3">
         <RecommendationsCarousel />
         <SectorHeatmap compact />
+        <RecentTrades limit={4} />
       </div>
-
-      {/* Recent Trades */}
-      <RecentTrades limit={5} />
     </div>
   );
 }

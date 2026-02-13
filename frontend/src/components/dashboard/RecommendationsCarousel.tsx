@@ -60,10 +60,10 @@ export function RecommendationsCarousel() {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  // Fetch research recommendations
+  // Fetch research recommendations (4 items for compact view)
   const { data: researchData, isLoading: researchLoading, refetch: refetchResearch } = useQuery({
     queryKey: ['recommendations-carousel-research'],
-    queryFn: () => researchApi.getRecommendations(undefined, 5),
+    queryFn: () => researchApi.getRecommendations(undefined, 4),
     staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
@@ -99,14 +99,14 @@ export function RecommendationsCarousel() {
   const screenerCategories = screenerData?.categories ?? [];
   const researchRecs = researchData?.data?.recommendations ?? [];
 
-  // Get data for current slide
+  // Get data for current slide (4 items max for compact view)
   const getCurrentSlideData = (): { items: Array<RecommendationItem | RecommendationStock>; isScreener: boolean } => {
     const config = SLIDE_CONFIGS[currentSlide];
     if (config.type === 'research') {
-      return { items: researchRecs.slice(0, 5), isScreener: false };
+      return { items: researchRecs.slice(0, 4), isScreener: false };
     }
     const category = screenerCategories.find((c) => c.category === config.type);
-    return { items: category?.recommendations.slice(0, 5) ?? [], isScreener: true };
+    return { items: category?.recommendations.slice(0, 4) ?? [], isScreener: true };
   };
 
   const { items, isScreener } = getCurrentSlideData();
@@ -114,78 +114,68 @@ export function RecommendationsCarousel() {
 
   return (
     <Card
-      className="col-span-full overflow-hidden"
+      className="overflow-hidden"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 px-4 pt-4">
+        <CardTitle className="text-sm flex items-center gap-2">
           <span className={currentConfig.color}>{currentConfig.icon}</span>
           {currentConfig.title}
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {/* Dot indicators */}
-          <div className="flex gap-1">
+          <div className="flex gap-1 mr-1">
             {SLIDE_CONFIGS.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => goToSlide(idx)}
                 className={cn(
-                  'w-2 h-2 rounded-full transition-colors',
+                  'w-1.5 h-1.5 rounded-full transition-colors',
                   idx === currentSlide ? 'bg-primary' : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
                 )}
               />
             ))}
           </div>
-          <Button variant="ghost" size="icon" onClick={goPrev} className="h-7 w-7">
-            <ChevronLeft className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={goPrev} className="h-6 w-6">
+            <ChevronLeft className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={goNext} className="h-7 w-7">
-            <ChevronRight className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={goNext} className="h-6 w-6">
+            <ChevronRight className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isLoading} className="h-7 w-7">
-            <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleViewAll} className="h-7 w-7">
-            <ExternalLink className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={handleViewAll} className="h-6 w-6">
+            <ExternalLink className="h-3 w-3" />
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground mb-3">{currentConfig.description}</p>
-
+      <CardContent className="px-4 pb-4 pt-0">
         {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 bg-muted rounded animate-pulse" />
+          <div className="space-y-1">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-8 bg-muted rounded animate-pulse" />
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            No recommendations available for this category
+          <div className="text-center text-muted-foreground py-4 text-sm">
+            No picks available
           </div>
         ) : (
-          <div className="space-y-1">
-            {items.map((item, idx) => {
+          <div className="space-y-0.5">
+            {items.slice(0, 4).map((item, idx) => {
               if (isScreener) {
                 const rec = item as RecommendationItem;
                 return (
                   <button
                     key={rec.symbol}
                     onClick={() => handleNavigateSymbol(rec.symbol)}
-                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded-md px-2 py-2 -mx-2 transition-colors text-left"
+                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1.5 transition-colors text-left"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge variant="outline" className="w-6 h-6 p-0 flex items-center justify-center text-xs shrink-0">
-                        {rec.rank}
-                      </Badge>
-                      <div className="min-w-0">
-                        <span className="font-medium hover:underline">{rec.symbol}</span>
-                        <p className="text-xs text-muted-foreground truncate max-w-[200px]">{rec.reasons[0]}</p>
-                      </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs text-muted-foreground w-4">{rec.rank}</span>
+                      <span className="font-medium text-sm truncate">{rec.symbol}</span>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-medium">{formatCurrency(rec.price_at_rec)}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{formatCurrency(rec.price_at_rec)}</span>
                       {rec.return_1d !== null && rec.return_1d !== undefined && (
                         <span className={cn('text-xs', rec.return_1d >= 0 ? 'text-profit' : 'text-loss')}>
                           {formatPercent(rec.return_1d)}
@@ -200,43 +190,23 @@ export function RecommendationsCarousel() {
                   <button
                     key={rec.symbol}
                     onClick={() => handleNavigateSymbol(rec.symbol)}
-                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded-md px-2 py-2 -mx-2 transition-colors text-left"
+                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1.5 transition-colors text-left"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge variant="outline" className="w-6 h-6 p-0 flex items-center justify-center text-xs shrink-0">
-                        {idx + 1}
-                      </Badge>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium hover:underline">{rec.symbol}</span>
-                          <Badge variant="secondary" className="text-[10px] px-1 py-0">{rec.category}</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate max-w-[200px]">{rec.thesis || rec.reasons[0]}</p>
-                      </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
+                      <span className="font-medium text-sm truncate">{rec.symbol}</span>
+                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{rec.category}</Badge>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-medium">{rec.current_price ? formatCurrency(rec.current_price) : '-'}</div>
-                      <div className="flex items-center gap-2 justify-end">
-                        <Badge variant="outline" className="text-[10px] px-1 py-0">
-                          <Zap className="h-2.5 w-2.5 mr-0.5" />
-                          {rec.combined_score.toFixed(0)}
-                        </Badge>
-                      </div>
-                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                      <Zap className="h-2.5 w-2.5 mr-0.5" />
+                      {rec.combined_score.toFixed(0)}
+                    </Badge>
                   </button>
                 );
               }
             })}
           </div>
         )}
-
-        {/* View All button */}
-        <div className="mt-4 pt-3 border-t">
-          <Button variant="outline" size="sm" className="w-full" onClick={handleViewAll}>
-            View All {currentConfig.title}
-            <ExternalLink className="h-3 w-3 ml-2" />
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
