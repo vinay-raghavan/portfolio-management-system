@@ -14,6 +14,11 @@ import {
   ChevronDown,
   RefreshCw,
   ExternalLink,
+  Activity,
+  Target,
+  CheckCircle2,
+  AlertCircle,
+  Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -208,16 +213,102 @@ export function RecommendationsCarousel() {
                       </button>
                     </div>
                     <CollapsibleContent>
-                      <div className="ml-6 mr-1 mb-1 px-2 py-1.5 bg-muted/30 rounded text-xs">
-                        <p className="text-muted-foreground">{rec.reasons[0]}</p>
-                        {rec.reasons[1] && <p className="text-muted-foreground mt-0.5">{rec.reasons[1]}</p>}
-                        <div className="flex gap-2 mt-1">
-                          {rec.return_1w !== null && rec.return_1w !== undefined && (
-                            <span className={cn(rec.return_1w >= 0 ? 'text-profit' : 'text-loss')}>1W: {formatPercent(rec.return_1w)}</span>
-                          )}
-                          {rec.return_1m !== null && rec.return_1m !== undefined && (
-                            <span className={cn(rec.return_1m >= 0 ? 'text-profit' : 'text-loss')}>1M: {formatPercent(rec.return_1m)}</span>
-                          )}
+                      <div className="ml-2 mr-2 mb-2 mt-1 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 rounded-lg p-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          {/* Filter Scores */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <BarChart3 className="h-3 w-3 text-blue-500" />
+                              <h4 className="font-semibold text-[10px]">Filter Scores</h4>
+                            </div>
+                            <div className="space-y-1">
+                              {Object.keys(rec.filter_scores).length > 0 ? (
+                                Object.entries(rec.filter_scores).slice(0, 4).map(([key, value]) => {
+                                  const score = typeof value === 'number' ? value : 0;
+                                  const colorClass = score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-emerald-500' : score >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+                                  return (
+                                    <div key={key} className="flex items-center justify-between gap-1">
+                                      <span className="text-[10px] text-muted-foreground capitalize truncate">{key.replace(/_/g, ' ')}</span>
+                                      <div className="flex items-center gap-1">
+                                        <div className="w-8 h-1 bg-muted rounded-full overflow-hidden">
+                                          <div className={cn('h-full rounded-full', colorClass)} style={{ width: `${Math.min(score, 100)}%` }} />
+                                        </div>
+                                        <span className="text-[10px] font-medium w-4 text-right">{score.toFixed(0)}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-[10px] text-muted-foreground italic">No scores</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Technical Signals */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Activity className="h-3 w-3 text-purple-500" />
+                              <h4 className="font-semibold text-[10px]">Signals</h4>
+                            </div>
+                            <div className="space-y-0.5">
+                              {rec.reasons.length > 0 ? (
+                                rec.reasons.slice(0, 3).map((reason, ridx) => (
+                                  <div key={ridx} className="flex items-start gap-1">
+                                    <CheckCircle2 className="h-2.5 w-2.5 text-green-500 mt-0.5 shrink-0" />
+                                    <span className="text-[10px] text-muted-foreground leading-tight line-clamp-1">{reason}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-[10px] text-muted-foreground italic">No signals</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Detailed Analysis */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Target className="h-3 w-3 text-orange-500" />
+                              <h4 className="font-semibold text-[10px]">Analysis</h4>
+                              <div className="flex gap-1 ml-auto text-[9px]">
+                                {rec.return_1d !== null && rec.return_1d !== undefined && (
+                                  <span className={cn(rec.return_1d >= 0 ? 'text-profit' : 'text-loss')}>1D:{formatPercent(rec.return_1d)}</span>
+                                )}
+                                {rec.return_1w !== null && rec.return_1w !== undefined && (
+                                  <span className={cn(rec.return_1w >= 0 ? 'text-profit' : 'text-loss')}>1W:{formatPercent(rec.return_1w)}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              {(() => {
+                                const details: { label: string; value: string; isPositive: boolean; isWarning: boolean }[] = [];
+                                const meta = rec.metadata || {};
+                                const momentum = meta.momentum_filter as Record<string, number> | undefined;
+                                if (momentum) {
+                                  if (momentum.roc !== undefined) details.push({ label: 'ROC', value: `${momentum.roc.toFixed(1)}%`, isPositive: momentum.roc > 0, isWarning: false });
+                                  if (momentum.rsi !== undefined) details.push({ label: 'RSI', value: momentum.rsi.toFixed(0), isPositive: momentum.rsi >= 50 && momentum.rsi <= 70, isWarning: momentum.rsi > 70 || momentum.rsi < 30 });
+                                }
+                                const ma = meta.moving_average_filter as Record<string, unknown> | undefined;
+                                if (ma?.trend_up !== undefined) details.push({ label: 'Trend', value: ma.trend_up ? 'Up' : 'Down', isPositive: !!ma.trend_up, isWarning: !ma.trend_up });
+                                return details.length > 0 ? (
+                                  details.slice(0, 3).map((d, didx) => {
+                                    const IconComp = d.isPositive ? TrendingUp : d.isWarning ? AlertCircle : Info;
+                                    const iconColor = d.isPositive ? 'text-green-500' : d.isWarning ? 'text-yellow-500' : 'text-blue-500';
+                                    return (
+                                      <div key={didx} className="flex items-center justify-between gap-1">
+                                        <div className="flex items-center gap-1">
+                                          <IconComp className={cn('h-2.5 w-2.5 shrink-0', iconColor)} />
+                                          <span className="text-[10px] text-muted-foreground">{d.label}</span>
+                                        </div>
+                                        <span className={cn('text-[10px] font-medium', d.isPositive ? 'text-green-600 dark:text-green-400' : d.isWarning ? 'text-yellow-600 dark:text-yellow-400' : '')}>{d.value}</span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <p className="text-[10px] text-muted-foreground italic">No analysis</p>
+                                );
+                              })()}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </CollapsibleContent>
@@ -249,12 +340,88 @@ export function RecommendationsCarousel() {
                       </button>
                     </div>
                     <CollapsibleContent>
-                      <div className="ml-6 mr-1 mb-1 px-2 py-1.5 bg-muted/30 rounded text-xs">
-                        <p className="text-muted-foreground">{rec.thesis || rec.reasons[0]}</p>
-                        <div className="flex gap-3 mt-1">
-                          <span>Fund: <strong>{rec.fundamental_score.toFixed(0)}</strong></span>
-                          <span>Tech: <strong>{rec.technical_score.toFixed(0)}</strong></span>
-                          {rec.current_price && <span className="text-muted-foreground">{formatCurrency(rec.current_price)}</span>}
+                      <div className="ml-2 mr-2 mb-2 mt-1 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 rounded-lg p-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          {/* Scores */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <BarChart3 className="h-3 w-3 text-blue-500" />
+                              <h4 className="font-semibold text-[10px]">Scores</h4>
+                            </div>
+                            <div className="space-y-1">
+                              {[
+                                { label: 'Fundamental', value: rec.fundamental_score, color: rec.fundamental_score >= 70 ? 'bg-green-500' : rec.fundamental_score >= 50 ? 'bg-yellow-500' : 'bg-red-500' },
+                                { label: 'Technical', value: rec.technical_score, color: rec.technical_score >= 70 ? 'bg-green-500' : rec.technical_score >= 50 ? 'bg-yellow-500' : 'bg-red-500' },
+                                { label: 'Combined', value: rec.combined_score, color: rec.combined_score >= 70 ? 'bg-green-500' : rec.combined_score >= 50 ? 'bg-yellow-500' : 'bg-red-500' },
+                              ].map((s) => (
+                                <div key={s.label} className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                                  <div className="flex items-center gap-1">
+                                    <div className="w-8 h-1 bg-muted rounded-full overflow-hidden">
+                                      <div className={cn('h-full rounded-full', s.color)} style={{ width: `${Math.min(s.value, 100)}%` }} />
+                                    </div>
+                                    <span className="text-[10px] font-medium w-4 text-right">{s.value.toFixed(0)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Thesis / Reasons */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Activity className="h-3 w-3 text-purple-500" />
+                              <h4 className="font-semibold text-[10px]">Thesis</h4>
+                            </div>
+                            <div className="space-y-0.5">
+                              {rec.thesis ? (
+                                <p className="text-[10px] text-muted-foreground leading-tight line-clamp-3">{rec.thesis}</p>
+                              ) : rec.reasons.length > 0 ? (
+                                rec.reasons.slice(0, 2).map((reason, ridx) => (
+                                  <div key={ridx} className="flex items-start gap-1">
+                                    <CheckCircle2 className="h-2.5 w-2.5 text-green-500 mt-0.5 shrink-0" />
+                                    <span className="text-[10px] text-muted-foreground leading-tight line-clamp-1">{reason}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-[10px] text-muted-foreground italic">No thesis</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Metrics */}
+                          <div className="rounded-lg border bg-card p-2 shadow-sm">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <Target className="h-3 w-3 text-orange-500" />
+                              <h4 className="font-semibold text-[10px]">Metrics</h4>
+                            </div>
+                            <div className="space-y-0.5">
+                              {rec.current_price && (
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] text-muted-foreground">Price</span>
+                                  <span className="text-[10px] font-medium">{formatCurrency(rec.current_price)}</span>
+                                </div>
+                              )}
+                              {rec.pe_ratio && (
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] text-muted-foreground">P/E</span>
+                                  <span className="text-[10px] font-medium">{rec.pe_ratio.toFixed(1)}</span>
+                                </div>
+                              )}
+                              {rec.roe && (
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] text-muted-foreground">ROE</span>
+                                  <span className="text-[10px] font-medium">{(rec.roe * 100).toFixed(1)}%</span>
+                                </div>
+                              )}
+                              {rec.rsi && (
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[10px] text-muted-foreground">RSI</span>
+                                  <span className={cn('text-[10px] font-medium', rec.rsi > 70 ? 'text-yellow-500' : rec.rsi < 30 ? 'text-red-500' : 'text-green-500')}>{rec.rsi.toFixed(0)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </CollapsibleContent>
