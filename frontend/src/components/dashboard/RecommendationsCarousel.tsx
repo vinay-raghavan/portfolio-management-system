@@ -11,12 +11,14 @@ import {
   Star,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { screenerApi, researchApi, type RecommendationCategory, type RecommendationItem } from '@/lib/api';
 import { useUIStore } from '@/store';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -51,6 +53,7 @@ export function RecommendationsCarousel() {
   const { format: formatCurrency } = useCurrency();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Fetch screener recommendations
   const { data: screenerData, isLoading: screenerLoading, refetch: refetchScreener } = useQuery({
@@ -60,10 +63,10 @@ export function RecommendationsCarousel() {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  // Fetch research recommendations (4 items for compact view)
+  // Fetch research recommendations (5 items for expanded view)
   const { data: researchData, isLoading: researchLoading, refetch: refetchResearch } = useQuery({
     queryKey: ['recommendations-carousel-research'],
-    queryFn: () => researchApi.getRecommendations(undefined, 4),
+    queryFn: () => researchApi.getRecommendations(undefined, 5),
     staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
@@ -82,13 +85,29 @@ export function RecommendationsCarousel() {
     refetchResearch();
   }, [refetchScreener, refetchResearch]);
 
-  const handleNavigateSymbol = (symbol: string) => {
-    setSelectedSymbol(symbol);
-    router.push('/analysis');
+  const handleNavigateSymbol = (symbol: string, isResearch: boolean) => {
+    if (isResearch) {
+      router.push('/research?tab=recommendations');
+    } else {
+      setSelectedSymbol(symbol);
+      router.push('/analysis');
+    }
   };
 
   const handleViewAll = () => {
     router.push(SLIDE_CONFIGS[currentSlide].navigateTo);
+  };
+
+  const toggleExpand = (symbol: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) {
+        next.delete(symbol);
+      } else {
+        next.add(symbol);
+      }
+      return next;
+    });
   };
 
   const goToSlide = (index: number) => setCurrentSlide(index);
@@ -99,14 +118,14 @@ export function RecommendationsCarousel() {
   const screenerCategories = screenerData?.categories ?? [];
   const researchRecs = researchData?.data?.recommendations ?? [];
 
-  // Get data for current slide (4 items max for compact view)
+  // Get data for current slide (5 items for expanded view)
   const getCurrentSlideData = (): { items: Array<RecommendationItem | RecommendationStock>; isScreener: boolean } => {
     const config = SLIDE_CONFIGS[currentSlide];
     if (config.type === 'research') {
-      return { items: researchRecs.slice(0, 4), isScreener: false };
+      return { items: researchRecs.slice(0, 5), isScreener: false };
     }
     const category = screenerCategories.find((c) => c.category === config.type);
-    return { items: category?.recommendations.slice(0, 4) ?? [], isScreener: true };
+    return { items: category?.recommendations.slice(0, 5) ?? [], isScreener: true };
   };
 
   const { items, isScreener } = getCurrentSlideData();
@@ -151,7 +170,7 @@ export function RecommendationsCarousel() {
       <CardContent className="px-4 pb-4 pt-0">
         {isLoading ? (
           <div className="space-y-1">
-            {[...Array(4)].map((_, i) => (
+            {[...Array(5)].map((_, i) => (
               <div key={i} className="h-8 bg-muted rounded animate-pulse" />
             ))}
           </div>
@@ -161,47 +180,85 @@ export function RecommendationsCarousel() {
           </div>
         ) : (
           <div className="space-y-0.5">
-            {items.slice(0, 4).map((item, idx) => {
+            {items.slice(0, 5).map((item, idx) => {
               if (isScreener) {
                 const rec = item as RecommendationItem;
+                const isExpanded = expandedItems.has(rec.symbol);
                 return (
-                  <button
-                    key={rec.symbol}
-                    onClick={() => handleNavigateSymbol(rec.symbol)}
-                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1.5 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-xs text-muted-foreground w-4">{rec.rank}</span>
-                      <span className="font-medium text-sm truncate">{rec.symbol}</span>
+                  <Collapsible key={rec.symbol} open={isExpanded}>
+                    <div className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1 transition-colors">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => toggleExpand(rec.symbol)}>
+                            <ChevronDown className={cn('h-3 w-3 transition-transform', !isExpanded && '-rotate-90')} />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <span className="text-xs text-muted-foreground w-3">{rec.rank}</span>
+                        <button onClick={() => handleNavigateSymbol(rec.symbol, false)} className="font-medium text-sm truncate hover:underline">
+                          {rec.symbol}
+                        </button>
+                      </div>
+                      <button onClick={() => handleNavigateSymbol(rec.symbol, false)} className="flex items-center gap-2">
+                        <span className="text-xs font-medium">{formatCurrency(rec.price_at_rec)}</span>
+                        {rec.return_1d !== null && rec.return_1d !== undefined && (
+                          <span className={cn('text-xs', rec.return_1d >= 0 ? 'text-profit' : 'text-loss')}>
+                            {formatPercent(rec.return_1d)}
+                          </span>
+                        )}
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium">{formatCurrency(rec.price_at_rec)}</span>
-                      {rec.return_1d !== null && rec.return_1d !== undefined && (
-                        <span className={cn('text-xs', rec.return_1d >= 0 ? 'text-profit' : 'text-loss')}>
-                          {formatPercent(rec.return_1d)}
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                    <CollapsibleContent>
+                      <div className="ml-6 mr-1 mb-1 px-2 py-1.5 bg-muted/30 rounded text-xs">
+                        <p className="text-muted-foreground">{rec.reasons[0]}</p>
+                        {rec.reasons[1] && <p className="text-muted-foreground mt-0.5">{rec.reasons[1]}</p>}
+                        <div className="flex gap-2 mt-1">
+                          {rec.return_1w !== null && rec.return_1w !== undefined && (
+                            <span className={cn(rec.return_1w >= 0 ? 'text-profit' : 'text-loss')}>1W: {formatPercent(rec.return_1w)}</span>
+                          )}
+                          {rec.return_1m !== null && rec.return_1m !== undefined && (
+                            <span className={cn(rec.return_1m >= 0 ? 'text-profit' : 'text-loss')}>1M: {formatPercent(rec.return_1m)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 );
               } else {
                 const rec = item as RecommendationStock;
+                const isExpanded = expandedItems.has(rec.symbol);
                 return (
-                  <button
-                    key={rec.symbol}
-                    onClick={() => handleNavigateSymbol(rec.symbol)}
-                    className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1.5 transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-xs text-muted-foreground w-4">{idx + 1}</span>
-                      <span className="font-medium text-sm truncate">{rec.symbol}</span>
-                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{rec.category}</Badge>
+                  <Collapsible key={rec.symbol} open={isExpanded}>
+                    <div className="flex items-center justify-between w-full hover:bg-muted/50 rounded px-1.5 py-1 transition-colors">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => toggleExpand(rec.symbol)}>
+                            <ChevronDown className={cn('h-3 w-3 transition-transform', !isExpanded && '-rotate-90')} />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <span className="text-xs text-muted-foreground w-3">{idx + 1}</span>
+                        <button onClick={() => handleNavigateSymbol(rec.symbol, true)} className="font-medium text-sm truncate hover:underline">
+                          {rec.symbol}
+                        </button>
+                        <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{rec.category}</Badge>
+                      </div>
+                      <button onClick={() => handleNavigateSymbol(rec.symbol, true)} className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                          <Zap className="h-2.5 w-2.5 mr-0.5" />
+                          {rec.combined_score.toFixed(0)}
+                        </Badge>
+                      </button>
                     </div>
-                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                      <Zap className="h-2.5 w-2.5 mr-0.5" />
-                      {rec.combined_score.toFixed(0)}
-                    </Badge>
-                  </button>
+                    <CollapsibleContent>
+                      <div className="ml-6 mr-1 mb-1 px-2 py-1.5 bg-muted/30 rounded text-xs">
+                        <p className="text-muted-foreground">{rec.thesis || rec.reasons[0]}</p>
+                        <div className="flex gap-3 mt-1">
+                          <span>Fund: <strong>{rec.fundamental_score.toFixed(0)}</strong></span>
+                          <span>Tech: <strong>{rec.technical_score.toFixed(0)}</strong></span>
+                          {rec.current_price && <span className="text-muted-foreground">{formatCurrency(rec.current_price)}</span>}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 );
               }
             })}
