@@ -5,5 +5,6 @@ export { MarketOverview } from './MarketOverview';
 export { AlgoSummary } from './AlgoSummary';
 export { FundsSummary } from './FundsSummary';
 export { RecommendationsWidget } from './RecommendationsWidget';
+export { RecommendationsCarousel } from './RecommendationsCarousel';
 export { TotalAccountValue } from './TotalAccountValue';
 
