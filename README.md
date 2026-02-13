@@ -1,5 +1,8 @@
 # Portfolio Management System
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.0.0)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A personal automated financial portfolio management system with algorithmic trading, paper trading, technical/fundamental analysis, and real-time market data for Indian markets (NSE/BSE).
 
 ## 🎯 Overview
@@ -8,13 +11,40 @@ This system performs comprehensive market analysis, executes automated trading s
 
 ### Key Features
 
-- **Algorithmic Trading**: Automated strategy execution with RSI, MACD, VWAP, ORB, and more
-- **Paper Trading**: Simulated trading to test strategies risk-free
-- **Portfolio Tracking**: Real-time P&L, positions, and performance analytics
-- **Stock Screener**: Preset screeners (momentum, breakout, consolidation, pullback, sector) with daily recommendations and performance tracking
-- **Modern UI**: Interactive charts, watchlists, trading signals, and research page
-- **Risk Management**: Kill switch, circuit breakers, daily loss limits
-- **Indian Market Focus**: NSE/BSE support with Yahoo Finance and NSE data providers
+#### 📊 Dashboard & Portfolio
+- **Unified Dashboard**: Portfolio summary, funds, algo status, market overview
+- **Recommendations Carousel**: Combined screener + research picks with expandable details
+- **Sector Heatmap**: Visual sector performance with drill-down
+- **Recent Trades**: Trade history with P&L tracking
+
+#### 🤖 Algorithmic Trading
+- **Strategy Framework**: RSI, MACD, VWAP, ORB, Supertrend, and custom strategies
+- **Safety Controls**: Kill switch, circuit breakers, daily loss limits
+- **Trailing Stops & Profit Booking**: Automated position management
+- **Backtesting**: Full metrics (Sharpe, Sortino, Max DD, Win Rate)
+
+#### 📈 Stock Screener
+- **Preset Screeners**: Momentum, Breakout, Consolidation, Pullback, Sector
+- **Daily Recommendations**: Auto-generated picks with performance tracking
+- **Custom Filters**: Build your own screener configurations
+
+#### 🔬 Research Module
+- **Fundamental Analysis**: P/E, EPS, ROE, Revenue trends
+- **News Integration**: Multi-source news with sentiment scoring
+- **Sector Analysis**: Heatmap with rotation tracking
+- **Daily Digest**: Market summary, top movers, breakout candidates
+
+#### 💹 Trading
+- **Paper Trading**: Risk-free strategy validation
+- **Live Trading**: Fyers broker integration (Angel One planned)
+- **Order Types**: Market, Limit, Stop Loss, Stop Loss Market
+- **Trade from Charts**: Quick trade panel with keyboard shortcuts
+
+#### 🎨 User Experience
+- **Keyboard Shortcuts**: Fast navigation and trading
+- **Accessibility**: Skip links, ARIA labels, focus states
+- **Error Handling**: Error boundaries with graceful recovery
+- **Toast Notifications**: Real-time feedback for actions
 
 ## 🏗️ Architecture
 
@@ -100,6 +130,8 @@ portfolio-management-system/
 
 ## 📚 Documentation
 
+- [Release Notes](docs/RELEASE_NOTES.md) - Version history and changelogs
+- [Project Plan (TODO)](docs/TODO.md) - Detailed task breakdown and roadmap
 - [Architecture v2](docs/ARCHITECTURE_v2.md) - Current architecture details
 - [System Design](docs/SYSTEM_DESIGN.md) - Detailed design document
 - [Trading Engine Design](docs/trading-engine-design.md) - Trading engine separation
@@ -108,21 +140,22 @@ portfolio-management-system/
 ## 🚀 Quick Start
 
 ```bash
-# Prerequisites: Docker, Docker Compose (or Podman), Python 3.13+
+# Prerequisites: Docker/Podman, Docker Compose, Python 3.13+
 
 # Clone and setup
-git clone <repo-url>
+git clone https://github.com/vinay-raghavan/portfolio-management-system.git
 cd portfolio-management-system
 
 # Copy environment file
 cp .env.example .env
 # Edit .env with your settings
 
-# Start all containers
+# Start all containers (use podman-compose if using Podman)
 docker-compose up -d
 
 # Access the UI
-open http://localhost:3000
+open http://localhost:3001  # Frontend
+open http://localhost:8010  # Backend API
 ```
 
 ## 🛠️ Development
