@@ -9,10 +9,10 @@ import {
   MarketOverview,
   AlgoSummary,
   FundsSummary,
-  RecommendationsWidget,
+  RecommendationsCarousel,
   TotalAccountValue,
 } from '@/components/dashboard';
-import { DigestWidget, SectorHeatmap } from '@/components/research';
+import { SectorHeatmap } from '@/components/research';
 
 export default function DashboardPage() {
   const { data: portfolio, isLoading } = useQuery({
@@ -47,14 +47,11 @@ export default function DashboardPage() {
         <MarketOverview />
       </div>
 
-      {/* Research Digest & Sector Heatmap */}
+      {/* Unified Recommendations Carousel & Sector Heatmap */}
       <div className="grid gap-4 md:grid-cols-2">
-        <DigestWidget />
+        <RecommendationsCarousel />
         <SectorHeatmap compact />
       </div>
-
-      {/* Daily Recommendations */}
-      <RecommendationsWidget />
 
       {/* Recent Trades */}
       <RecentTrades limit={5} />
