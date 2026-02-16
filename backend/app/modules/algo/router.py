@@ -194,6 +194,22 @@ async def create_composite_strategy(
         "max_consecutive_losses": data.max_consecutive_losses,
         "is_paper_trading": data.is_paper_trading,
         "product_type": data.product_type.value if data.product_type else "delivery",
+        # Profit cutoff settings
+        "max_daily_profit": float(data.max_daily_profit) if data.max_daily_profit else None,
+        "overall_profit_target": float(data.overall_profit_target)
+        if data.overall_profit_target
+        else None,
+        "profit_cutoff_action": data.profit_cutoff_action.value
+        if data.profit_cutoff_action
+        else None,
+        # Trailing stop and profit booking settings
+        "default_trailing_stop_enabled": data.default_trailing_stop_enabled,
+        "default_trailing_stop_pct": float(data.default_trailing_stop_pct)
+        if data.default_trailing_stop_pct
+        else None,
+        "default_profit_booking_rules": data.default_profit_booking_rules.model_dump()
+        if data.default_profit_booking_rules
+        else None,
     }
 
     try:

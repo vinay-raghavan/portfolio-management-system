@@ -150,9 +150,19 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
   };
 
   const updateComponent = (index: number, field: keyof CompositeStrategyComponent, value: unknown) => {
-    const newComponents = [...components];
-    newComponents[index] = { ...newComponents[index], [field]: value };
-    setComponents(newComponents);
+    setComponents(prev => {
+      const newComponents = [...prev];
+      newComponents[index] = { ...newComponents[index], [field]: value };
+      return newComponents;
+    });
+  };
+
+  const updateComponentWithReset = (index: number, strategyValue: string) => {
+    setComponents(prev => {
+      const newComponents = [...prev];
+      newComponents[index] = { ...newComponents[index], strategy: strategyValue, params: {} };
+      return newComponents;
+    });
   };
 
   const handleSubmit = () => {
@@ -182,7 +192,7 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
   const canSubmit = name.trim() && validComponentCount >= 2;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -284,16 +294,12 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
                       </Badge>
                       <Select
                         value={comp.strategy}
-                        onValueChange={(value) => {
-                          updateComponent(index, 'strategy', value);
-                          // Reset params when strategy changes
-                          updateComponent(index, 'params', {});
-                        }}
+                        onValueChange={(value) => updateComponentWithReset(index, value)}
                       >
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Select strategy" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent position="popper" sideOffset={4}>
                           {baseStrategies.map((s) => (
                             <SelectItem
                               key={s.name}

@@ -241,11 +241,34 @@ class AlgoService:
 
         # Validate strategy parameters if being updated
         if data.strategy_config is not None:
-            is_valid, errors = StrategyRegistry.validate_params(
-                strategy.strategy_name, data.strategy_config
-            )
-            if not is_valid:
-                raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
+            # Check if this is a composite strategy config (has components key)
+            if "components" in data.strategy_config:
+                # Composite strategy config - validate component structure
+                components = data.strategy_config.get("components", [])
+                if not isinstance(components, list) or len(components) < 2:
+                    raise ValueError("Composite strategy requires at least 2 components")
+                # Validate each component has a strategy name
+                for i, comp in enumerate(components):
+                    if not isinstance(comp, dict) or not comp.get("strategy"):
+                        raise ValueError(f"Component {i + 1} must have a strategy name")
+                    # Optionally validate component strategy params if provided
+                    comp_strategy = comp.get("strategy")
+                    comp_params = comp.get("params", {})
+                    if comp_params and StrategyRegistry.has_strategy(comp_strategy):
+                        is_valid, errors = StrategyRegistry.validate_params(
+                            comp_strategy, comp_params
+                        )
+                        if not is_valid:
+                            raise ValueError(
+                                f"Invalid parameters for component '{comp_strategy}': {'; '.join(errors)}"
+                            )
+            else:
+                # Regular strategy parameter validation
+                is_valid, errors = StrategyRegistry.validate_params(
+                    strategy.strategy_name, data.strategy_config
+                )
+                if not is_valid:
+                    raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
 
         update_data = data.model_dump(exclude_unset=True)
 

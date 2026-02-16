@@ -20,7 +20,6 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
-  Layers,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,7 +53,7 @@ import {
 import { algoApi, portfolioApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
-import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, CompositeStrategyBuilder } from '@/components/algo';
+import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard } from '@/components/algo';
 import { FundsSummary } from '@/components/dashboard';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
@@ -80,7 +79,6 @@ export default function AlgoTradingPage() {
   const queryClient = useQueryClient();
   const [selectedStrategy, setSelectedStrategy] = useState<AlgoStrategy | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [compositeDialogOpen, setCompositeDialogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<AlgoStrategy | null>(null);
@@ -438,10 +436,6 @@ export default function AlgoTradingPage() {
               <CardDescription>Manage your automated trading strategies</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" className="gap-2" onClick={() => setCompositeDialogOpen(true)}>
-                <Layers className="h-4 w-4" />
-                Composite
-              </Button>
               <Button className="gap-2" onClick={() => { setEditingStrategy(null); setDialogOpen(true); }}>
                 <Plus className="h-4 w-4" />
                 New Strategy
@@ -649,12 +643,6 @@ export default function AlgoTradingPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         strategy={editingStrategy}
-      />
-
-      {/* Composite Strategy Builder Dialog */}
-      <CompositeStrategyBuilder
-        open={compositeDialogOpen}
-        onOpenChange={setCompositeDialogOpen}
       />
 
       {/* Execution History Dialog */}

@@ -999,8 +999,16 @@ export interface CompositeStrategyCreate {
   max_position_value?: number;
   max_daily_loss?: number;
   max_consecutive_losses?: number;
+  // Profit cutoff settings
+  max_daily_profit?: number;
+  overall_profit_target?: number;
+  profit_cutoff_action?: ProfitCutoffAction;
   is_paper_trading?: boolean;
   product_type?: StrategyProductType;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
 }
 
 export interface CompositeStrategyResponse {
