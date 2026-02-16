@@ -342,3 +342,67 @@ class TestStrategyRegistry:
                 assert param["min_value"] is not None
                 assert param["max_value"] is not None
                 assert param["min_value"] <= param["max_value"]
+
+    def test_validate_params_valid(self):
+        """Test validation of valid parameters."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        is_valid, errors = StrategyRegistry.validate_params(
+            "rsi", {"rsi_period": 14, "oversold_threshold": 30}
+        )
+        assert is_valid is True
+        assert errors == []
+
+    def test_validate_params_empty(self):
+        """Test validation with empty params returns valid."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        is_valid, errors = StrategyRegistry.validate_params("rsi", None)
+        assert is_valid is True
+        assert errors == []
+
+        is_valid, errors = StrategyRegistry.validate_params("rsi", {})
+        assert is_valid is True
+        assert errors == []
+
+    def test_validate_params_unknown_param(self):
+        """Test validation catches unknown parameters."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        is_valid, errors = StrategyRegistry.validate_params("rsi", {"unknown_param": 42})
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "Unknown parameter" in errors[0]
+
+    def test_validate_params_type_mismatch(self):
+        """Test validation catches type mismatches."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        # Should be int, not string
+        is_valid, errors = StrategyRegistry.validate_params("rsi", {"rsi_period": "fourteen"})
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "must be an integer" in errors[0]
+
+    def test_validate_params_range_violation(self):
+        """Test validation catches values outside min/max range."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        # rsi_period has min=2, max=200
+        is_valid, errors = StrategyRegistry.validate_params("rsi", {"rsi_period": 1})
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "below minimum" in errors[0]
+
+        is_valid, errors = StrategyRegistry.validate_params("rsi", {"rsi_period": 300})
+        assert is_valid is False
+        assert len(errors) == 1
+        assert "exceeds maximum" in errors[0]
+
+    def test_validate_params_nonexistent_strategy(self):
+        """Test validation with non-existent strategy returns error."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        is_valid, errors = StrategyRegistry.validate_params("nonexistent_strategy", {"param": 1})
+        assert is_valid is False
+        assert "not found" in errors[0]

@@ -140,7 +140,10 @@ async def create_strategy(
 ) -> StrategyResponse:
     """Create a new algo strategy."""
     service = AlgoService(db)
-    strategy = await service.create_strategy(current_user.id, data)
+    try:
+        strategy = await service.create_strategy(current_user.id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     await db.commit()
     return StrategyResponse.from_model(strategy, executions=[])
 
@@ -170,7 +173,10 @@ async def update_strategy(
 ) -> StrategyResponse:
     """Update a strategy."""
     service = AlgoService(db)
-    strategy = await service.update_strategy(current_user.id, strategy_id, data)
+    try:
+        strategy = await service.update_strategy(current_user.id, strategy_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.commit()
