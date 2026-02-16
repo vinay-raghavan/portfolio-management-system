@@ -2435,6 +2435,211 @@ Better strategy evaluation through comparison.
   - CSV export
   - PDF report generation
 
+---
+
+### 1.13 Strategy Parameter Customization
+> 🌿 **Branch:** `phase-1/strategy-params`
+
+**Goal**: Allow users to customize parameters of prebuilt strategies instead of using only default values.
+
+**Effort Estimate**: 2-3 days
+
+**Architecture Note**: The infrastructure already exists via `StrategyRegistry.get_strategy(name, params)` which accepts custom parameters. This task exposes that functionality to end users.
+
+#### 1.13.1 Strategy Parameter Schema Endpoints
+**Tasks:**
+- [ ] Create `GET /api/v1/algo/strategy-types` endpoint
+  - List all registered strategies with name, description, default timeframe
+  - Include parameter schemas for each strategy
+- [ ] Create `GET /api/v1/algo/strategy-types/{name}/parameters` endpoint
+  - Return detailed parameter schema with types, defaults, min/max bounds
+  ```python
+  class StrategyParameterSchema(BaseModel):
+      name: str               # "rsi_period"
+      type: str               # "int", "float", "bool", "select"
+      default: Any            # 14
+      min: float | None       # 5
+      max: float | None       # 50
+      options: list | None    # For select type
+      description: str        # "RSI calculation period"
+  ```
+- [ ] Add parameter validation in strategy creation/update endpoints
+  - Validate parameter types and bounds
+  - Return clear error messages for invalid parameters
+
+#### 1.13.2 Frontend Strategy Parameter Form
+**Tasks:**
+- [ ] Create `StrategyParameterForm` component
+  - Dynamic form based on parameter schema
+  - Appropriate input types (number, slider, checkbox, select)
+  - Show defaults and valid ranges
+  - Real-time validation feedback
+- [ ] Integrate into strategy creation dialog
+  - Show parameters when strategy type is selected
+  - Allow customization before saving
+- [ ] Integrate into strategy edit dialog
+  - Load existing parameters
+  - Allow modification
+- [ ] Add "Reset to Defaults" button
+
+#### 1.13.3 Backend Parameter Storage
+**Tasks:**
+- [x] `UserStrategy.strategy_params` JSON field already exists
+- [ ] Store user-customized parameters when strategy is created/updated
+- [ ] Pass `strategy_params` to `StrategyRegistry.get_strategy()` at execution time
+- [ ] Validate parameters match expected schema before execution
+
+---
+
+### 1.14 Composite Strategy Builder
+> 🌿 **Branch:** `phase-1/composite-builder`
+
+**Goal**: Allow users to combine 2-5 prebuilt strategies with configurable logic (AND/OR/MAJORITY/WEIGHTED) without writing code.
+
+**Effort Estimate**: 3-5 days
+
+**Architecture Note**: `CompositeStrategy` class already exists in `shared/shared/strategies/composite.py` with full support for AND/OR/MAJORITY/WEIGHTED logic. This task exposes that functionality via UI.
+
+#### 1.14.1 Composite Strategy API
+**Tasks:**
+- [ ] Create `POST /api/v1/algo/strategies/composite` endpoint
+  - Accept list of component strategies with parameters
+  - Accept combining logic (AND/OR/MAJORITY/WEIGHTED)
+  - Accept per-strategy weights (for WEIGHTED logic)
+  - Validate component count (2-5 strategies)
+  ```python
+  class CompositeStrategyCreate(BaseModel):
+      name: str
+      description: str | None
+      components: list[StrategyComponent]
+      combining_logic: CombiningLogic  # AND | OR | MAJORITY | WEIGHTED
+      min_agreement: float | None      # For MAJORITY, e.g., 0.6 for 60%
+
+  class StrategyComponent(BaseModel):
+      strategy_name: str               # "rsi", "macd", etc.
+      weight: float = 1.0              # For WEIGHTED logic
+      required: bool = False           # Must agree for AND logic
+      custom_params: dict | None       # Per-component parameters
+  ```
+- [ ] Store composite config in `UserStrategy.strategy_params` with `type: "composite"`
+- [ ] Runtime composite strategy creation via `CompositeStrategyFactory`
+
+#### 1.14.2 Frontend Composite Builder UI
+**Tasks:**
+- [ ] Create `CompositeStrategyBuilder` component
+  - Multi-select for choosing component strategies (2-5)
+  - Per-component parameter customization (reuse `StrategyParameterForm`)
+  - Per-component weight slider
+  - Combining logic selector (AND/OR/MAJORITY/WEIGHTED)
+  - Visual preview of logic flow
+- [ ] Add "Composite Strategy" tab/option in strategy creation dialog
+- [ ] Visual representation of combined strategy
+  ```
+  ┌─────────────────────────────────────────────────────┐
+  │ My RSI + MACD Strategy                              │
+  ├─────────────────────────────────────────────────────┤
+  │ ┌─────────┐    ┌─────────┐    ┌─────────┐          │
+  │ │   RSI   │    │  MACD   │    │   BB    │          │
+  │ │ wt: 1.5 │ OR │ wt: 1.0 │ OR │ wt: 0.5 │          │
+  │ └─────────┘    └─────────┘    └─────────┘          │
+  │                     │                               │
+  │              WEIGHTED (60% min)                     │
+  │                     ↓                               │
+  │               Final Signal                          │
+  └─────────────────────────────────────────────────────┘
+  ```
+- [ ] Show combined parameter summary
+- [ ] Strategy testing (dry run) before saving
+
+#### 1.14.3 Composite Strategy Execution
+**Tasks:**
+- [ ] Detect `type: "composite"` in `strategy_params` at execution time
+- [ ] Build composite strategy via `CompositeStrategyFactory.create()`
+- [ ] Register temporarily in `StrategyRegistry` for execution
+- [ ] Track individual component signals in execution logs
+- [ ] Show per-component performance metrics in strategy dashboard
+
+---
+
+### 1.15 Custom Strategy DSL (Phase 2 Consideration)
+> 🌿 **Branch:** `phase-2/strategy-dsl`
+
+**Goal**: Allow power users to define custom rule-based strategies using a domain-specific language without full Python access.
+
+**Effort Estimate**: 3-4 weeks (recommended for Phase 2)
+
+**Security Note**: This is sandboxed execution - no arbitrary code, only predefined operators and indicators.
+
+#### 1.15.1 DSL Design
+**Tasks:**
+- [ ] Define DSL syntax (YAML or JSON-based)
+  ```yaml
+  name: "My Custom RSI Divergence Strategy"
+  version: 1
+  rules:
+    entry:
+      - condition: "rsi(14) < 30 AND macd_histogram > 0"
+        action: BUY
+        confidence: 0.8
+      - condition: "rsi(14) > 70 AND macd_histogram < 0"
+        action: SELL
+        confidence: 0.8
+    exit:
+      stop_loss_pct: 2.0
+      take_profit_pct: 4.0
+      trailing_stop_pct: 1.5
+    filters:
+      - "volume > sma(volume, 20) * 1.5"
+      - "close > sma(close, 200)"
+  indicators:
+    - rsi: { period: 14 }
+    - macd: { fast: 12, slow: 26, signal: 9 }
+    - sma: { periods: [20, 50, 200] }
+  ```
+- [ ] Define supported operators: `>`, `<`, `>=`, `<=`, `==`, `!=`, `AND`, `OR`, `NOT`
+- [ ] Define supported functions: `rsi()`, `macd()`, `sma()`, `ema()`, `bbands()`, `atr()`, `volume`, `close`, `high`, `low`, `open`
+- [ ] Define supported variables: `close`, `open`, `high`, `low`, `volume`, `previous_close`, etc.
+
+#### 1.15.2 DSL Parser & Validator
+**Tasks:**
+- [ ] Create DSL parser (convert YAML/JSON to AST)
+- [ ] Validate syntax and semantics
+  - Check indicator availability
+  - Validate parameter types
+  - Check for undefined variables
+- [ ] Return clear error messages with line numbers
+- [ ] Security validation (no code injection)
+
+#### 1.15.3 DSL Executor
+**Tasks:**
+- [ ] Create `DSLStrategy` class implementing `BaseStrategy`
+- [ ] Evaluate conditions against market data
+- [ ] Generate signals based on rule evaluation
+- [ ] Calculate confidence from rule matches
+- [ ] Support for complex nested conditions
+
+#### 1.15.4 Strategy Validation
+**Tasks:**
+- [ ] Required backtesting before activation
+  - Run strategy on historical data
+  - Show simulated performance
+  - Warn if poor performance
+- [ ] Paper trading trial period option
+  - Force N days of paper trading first
+  - Compare predicted vs actual performance
+- [ ] Risk analysis
+  - Detect potentially dangerous rules
+  - Warn about excessive trading frequency
+  - Validate SL/TP settings
+
+#### 1.15.5 DSL Editor UI (Future)
+**Tasks:**
+- [ ] Code editor component with syntax highlighting
+- [ ] Auto-complete for indicators and functions
+- [ ] Real-time syntax validation
+- [ ] Preview mode with sample data
+- [ ] "Test Strategy" button for quick backtesting
+
 
 ---
 
