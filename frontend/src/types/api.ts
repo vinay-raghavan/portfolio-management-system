@@ -1290,3 +1290,29 @@ export interface UniverseFilterParams {
   sector?: string;
   limit?: number;
 }
+
+// ============== Strategy Parameter Customization Types ==============
+
+export interface StrategyParameterSchema {
+  name: string;
+  type: 'int' | 'float' | 'bool' | 'select';
+  default: number | boolean | string | null;
+  min_value: number | null;
+  max_value: number | null;
+  options: string[] | null;
+  description: string;
+}
+
+export interface StrategyTypeInfo {
+  name: string;
+  description: string;
+  default_timeframe: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface StrategyTypeDetailResponse {
+  name: string;
+  description: string;
+  default_timeframe: string;
+  parameters: StrategyParameterSchema[];
+}

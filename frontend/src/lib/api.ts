@@ -404,6 +404,8 @@ import type {
   AlgoPosition,
   SquareOffStrategyRequest,
   SquareOffStrategyResponse,
+  StrategyTypeInfo,
+  StrategyTypeDetailResponse,
 } from '@/types';
 
 export const algoApi = {
@@ -426,6 +428,12 @@ export const algoApi = {
     api.post<{ task_id: string; status: string }>(`/algo/strategies/${id}/trigger`, { symbols }),
   getExecutionHistory: (strategyId: string, limit = 50) =>
     api.get<StrategyExecution[]>(`/algo/strategies/${strategyId}/executions`, { params: { limit } }),
+
+  // Strategy Types (for parameter customization)
+  getStrategyTypes: () =>
+    api.get<StrategyTypeInfo[]>('/algo/strategy-types'),
+  getStrategyTypeDetail: (name: string) =>
+    api.get<StrategyTypeDetailResponse>(`/algo/strategy-types/${encodeURIComponent(name)}`),
 
   // Kill Switch
   getKillSwitchStatus: () =>
