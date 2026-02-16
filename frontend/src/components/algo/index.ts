@@ -6,4 +6,5 @@ export { PnLDashboard } from './PnLDashboard';
 export { AlgoProfitBookingDialog } from './AlgoProfitBookingDialog';
 export { AlgoTrailingStopDialog } from './AlgoTrailingStopDialog';
 export { StrategyParameterForm } from './StrategyParameterForm';
+export { ComponentParameterForm } from './ComponentParameterForm';
 export { CompositeStrategyBuilder } from './CompositeStrategyBuilder';

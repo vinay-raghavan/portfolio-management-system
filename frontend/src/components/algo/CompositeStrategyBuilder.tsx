@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Layers, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Layers, AlertCircle, Settings2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { algoApi, signalsApi } from '@/lib/api';
+import { ComponentParameterForm } from './ComponentParameterForm';
 import type {
   CombineLogic,
   CompositeStrategyComponent,
@@ -76,9 +77,11 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
   const [combineLogic, setCombineLogic] = useState<CombineLogic>('AND');
   const [minAgreementPct, setMinAgreementPct] = useState('0.5');
   const [components, setComponents] = useState<CompositeStrategyComponent[]>([
-    { strategy: '', weight: 1.0, required: false },
-    { strategy: '', weight: 1.0, required: false },
+    { strategy: '', weight: 1.0, required: false, params: {} },
+    { strategy: '', weight: 1.0, required: false, params: {} },
   ]);
+  // Track which component's parameter form is expanded
+  const [expandedParams, setExpandedParams] = useState<number | null>(null);
   
   // Execution settings
   const [symbols, setSymbols] = useState('');
@@ -120,9 +123,10 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
     setCombineLogic('AND');
     setMinAgreementPct('0.5');
     setComponents([
-      { strategy: '', weight: 1.0, required: false },
-      { strategy: '', weight: 1.0, required: false },
+      { strategy: '', weight: 1.0, required: false, params: {} },
+      { strategy: '', weight: 1.0, required: false, params: {} },
     ]);
+    setExpandedParams(null);
     setSymbols('');
     setScheduleType('MARKET_OPEN');
     setIntervalSeconds('300');
@@ -135,7 +139,7 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
 
   const addComponent = () => {
     if (components.length < 5) {
-      setComponents([...components, { strategy: '', weight: 1.0, required: false }]);
+      setComponents([...components, { strategy: '', weight: 1.0, required: false, params: {} }]);
     }
   };
 
@@ -269,53 +273,89 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              {components.map((comp, index) => (
-                <div key={index} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
-                  <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
-                    {index + 1}
-                  </Badge>
-                  <Select
-                    value={comp.strategy}
-                    onValueChange={(value) => updateComponent(index, 'strategy', value)}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select strategy" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {baseStrategies.map((s) => (
-                        <SelectItem
-                          key={s.name}
-                          value={s.name}
-                          disabled={components.some((c, i) => i !== index && c.strategy === s.name)}
+              {components.map((comp, index) => {
+                const isExpanded = expandedParams === index;
+                const hasCustomParams = comp.params && Object.keys(comp.params).length > 0;
+                return (
+                  <div key={index} className="rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-2 p-2">
+                      <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0 shrink-0">
+                        {index + 1}
+                      </Badge>
+                      <Select
+                        value={comp.strategy}
+                        onValueChange={(value) => {
+                          updateComponent(index, 'strategy', value);
+                          // Reset params when strategy changes
+                          updateComponent(index, 'params', {});
+                        }}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select strategy" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {baseStrategies.map((s) => (
+                            <SelectItem
+                              key={s.name}
+                              value={s.name}
+                              disabled={components.some((c, i) => i !== index && c.strategy === s.name)}
+                            >
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {combineLogic === 'WEIGHTED' && (
+                        <Input
+                          type="number"
+                          min="0.1"
+                          max="10"
+                          step="0.1"
+                          value={comp.weight}
+                          onChange={(e) => updateComponent(index, 'weight', parseFloat(e.target.value))}
+                          className="w-20"
+                          placeholder="Weight"
+                        />
+                      )}
+                      {comp.strategy && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setExpandedParams(isExpanded ? null : index)}
+                          className={`h-8 w-8 shrink-0 ${hasCustomParams ? 'text-blue-500' : ''}`}
+                          title="Customize parameters"
                         >
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {combineLogic === 'WEIGHTED' && (
-                    <Input
-                      type="number"
-                      min="0.1"
-                      max="10"
-                      step="0.1"
-                      value={comp.weight}
-                      onChange={(e) => updateComponent(index, 'weight', parseFloat(e.target.value))}
-                      className="w-20"
-                      placeholder="Weight"
-                    />
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeComponent(index)}
-                    disabled={components.length <= 2}
-                    className="h-8 w-8"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
+                          <Settings2 className="h-4 w-4" />
+                          {isExpanded ? (
+                            <ChevronDown className="h-3 w-3 ml-0.5" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3 ml-0.5" />
+                          )}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeComponent(index)}
+                        disabled={components.length <= 2}
+                        className="h-8 w-8 shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    {/* Parameter customization panel */}
+                    {isExpanded && comp.strategy && (
+                      <div className="px-3 pb-3 border-t bg-background/50">
+                        <ComponentParameterForm
+                          strategyType={comp.strategy}
+                          params={comp.params || {}}
+                          onChange={(newParams) => updateComponent(index, 'params', newParams)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {validComponentCount < 2 && (
                 <Alert variant="destructive" className="mt-2">
                   <AlertCircle className="h-4 w-4" />
