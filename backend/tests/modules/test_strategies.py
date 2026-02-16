@@ -413,7 +413,7 @@ class TestCompositeStrategy:
 
     def test_composite_strategy_create(self):
         """Test creating a composite strategy via factory."""
-        from shared.strategies.composite import CompositeStrategyFactory, CombineLogic
+        from shared.strategies.composite import CombineLogic, CompositeStrategyFactory
 
         components = [
             {"strategy": "rsi", "params": {"rsi_period": 14}, "weight": 1.0},
@@ -433,7 +433,7 @@ class TestCompositeStrategy:
 
     def test_composite_strategy_weighted(self):
         """Test creating a weighted composite strategy."""
-        from shared.strategies.composite import CompositeStrategyFactory, CombineLogic
+        from shared.strategies.composite import CombineLogic, CompositeStrategyFactory
 
         components = [
             {"strategy": "rsi", "weight": 2.0},
