@@ -172,3 +172,149 @@ class StrategyRegistry:
     def clear(cls) -> None:
         """Clear all registered strategies. Mainly for testing."""
         cls._strategies.clear()
+
+    @classmethod
+    def get_parameter_schema(cls, name: str) -> list[dict] | None:
+        """Get parameter schema for a strategy.
+
+        Returns a list of parameter definitions with types, defaults, and constraints.
+
+        Args:
+            name: Strategy name
+
+        Returns:
+            List of parameter schema dicts or None if strategy not found
+        """
+        strategy_class = cls._strategies.get(name)
+        if not strategy_class:
+            return None
+
+        # Get the __init__ signature
+        sig = inspect.signature(strategy_class.__init__)
+        params = []
+
+        for param_name, param in sig.parameters.items():
+            if param_name == "self":
+                continue
+
+            # Determine type from annotation or default value
+            param_type = "float"  # default
+            default_value = None
+            min_value = None
+            max_value = None
+
+            if param.default is not inspect.Parameter.empty:
+                default_value = param.default
+                if isinstance(default_value, bool):
+                    param_type = "bool"
+                elif isinstance(default_value, int):
+                    param_type = "int"
+                elif isinstance(default_value, float):
+                    param_type = "float"
+                elif isinstance(default_value, str):
+                    param_type = "str"
+
+            # Set reasonable bounds based on common parameter patterns
+            if param_type == "int":
+                if "period" in param_name.lower():
+                    min_value, max_value = 2, 200
+                elif "threshold" in param_name.lower():
+                    min_value, max_value = 0, 100
+                else:
+                    min_value, max_value = 1, 1000
+            elif param_type == "float":
+                if "multiplier" in param_name.lower():
+                    min_value, max_value = 0.1, 10.0
+                elif "ratio" in param_name.lower():
+                    min_value, max_value = 0.5, 10.0
+                elif "percent" in param_name.lower() or "pct" in param_name.lower():
+                    min_value, max_value = 0.0, 100.0
+                else:
+                    min_value, max_value = 0.0, 100.0
+
+            # Generate description from parameter name
+            description = param_name.replace("_", " ").title()
+
+            params.append(
+                {
+                    "name": param_name,
+                    "type": param_type,
+                    "default": default_value,
+                    "min_value": min_value,
+                    "max_value": max_value,
+                    "options": None,
+                    "description": description,
+                }
+            )
+
+        return params
+
+    @classmethod
+    def validate_params(cls, name: str, params: dict | None) -> tuple[bool, list[str]]:
+        """Validate parameters against the strategy's parameter schema.
+
+        Args:
+            name: Strategy name
+            params: Parameters to validate
+
+        Returns:
+            Tuple of (is_valid, list of error messages)
+        """
+        if not params:
+            return True, []
+
+        schema = cls.get_parameter_schema(name)
+        if schema is None:
+            return False, [f"Strategy '{name}' not found"]
+
+        errors = []
+        valid_param_names = {p["name"] for p in schema}
+
+        # Check for unknown parameters
+        for param_name in params:
+            if param_name not in valid_param_names:
+                errors.append(f"Unknown parameter '{param_name}' for strategy '{name}'")
+
+        # Validate each parameter against schema
+        for param_schema in schema:
+            param_name = param_schema["name"]
+            if param_name not in params:
+                continue  # Not provided, will use default
+
+            value = params[param_name]
+            expected_type = param_schema["type"]
+            min_val = param_schema.get("min_value")
+            max_val = param_schema.get("max_value")
+
+            # Type validation
+            if expected_type == "int":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    errors.append(
+                        f"Parameter '{param_name}' must be an integer, got {type(value).__name__}"
+                    )
+                    continue
+            elif expected_type == "float":
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    errors.append(
+                        f"Parameter '{param_name}' must be a number, got {type(value).__name__}"
+                    )
+                    continue
+            elif expected_type == "bool":
+                if not isinstance(value, bool):
+                    errors.append(
+                        f"Parameter '{param_name}' must be a boolean, got {type(value).__name__}"
+                    )
+                    continue
+
+            # Range validation for numeric types
+            if expected_type in ("int", "float") and isinstance(value, (int, float)):
+                if min_val is not None and value < min_val:
+                    errors.append(
+                        f"Parameter '{param_name}' value {value} is below minimum {min_val}"
+                    )
+                if max_val is not None and value > max_val:
+                    errors.append(
+                        f"Parameter '{param_name}' value {value} exceeds maximum {max_val}"
+                    )
+
+        return len(errors) == 0, errors

@@ -25,6 +25,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { algoApi, signalsApi } from '@/lib/api';
+import { StrategyParameterForm } from './StrategyParameterForm';
 import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule, StrategyProductType } from '@/types';
 
 interface StrategyDialogProps {
@@ -97,6 +98,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     { target_pct: 10, quantity_pct: 25 },
     { target_pct: 15, quantity_pct: 50 },
   ]);
+  // Strategy parameter customization state
+  const [strategyParams, setStrategyParams] = useState<Record<string, unknown>>({});
+  const [paramsExpanded, setParamsExpanded] = useState(false);
 
   // Fetch available strategies and universes
   const { data: availableStrategies } = useQuery({
@@ -146,6 +150,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           { target_pct: 15, quantity_pct: 50 },
         ]);
       }
+      // Strategy parameter customization
+      setStrategyParams(strategy.strategy_config || {});
+      setParamsExpanded(Object.keys(strategy.strategy_config || {}).length > 0);
     } else {
       // Reset to defaults
       setName('');
@@ -177,6 +184,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
         { target_pct: 10, quantity_pct: 25 },
         { target_pct: 15, quantity_pct: 50 },
       ]);
+      // Strategy parameter customization reset
+      setStrategyParams({});
+      setParamsExpanded(false);
     }
   }, [strategy, open]);
 
@@ -207,6 +217,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       name,
       description: description || undefined,
       strategy_type: strategyType,
+      // Strategy parameter customization (only include if user customized params)
+      strategy_config: Object.keys(strategyParams).length > 0 ? strategyParams : undefined,
       universe_id: universeId || undefined,
       symbols: symbols ? symbols.split(',').map((s) => s.trim().toUpperCase()) : undefined,
       schedule_type: scheduleType,
@@ -383,6 +395,16 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 <p className="text-xs text-muted-foreground">
                   {availableStrategies?.strategies?.find((s) => s.name === strategyType)?.description}
                 </p>
+              )}
+              {/* Strategy Parameter Customization - appears when strategy is selected */}
+              {strategyType && (
+                <StrategyParameterForm
+                  strategyType={strategyType}
+                  params={strategyParams}
+                  onChange={setStrategyParams}
+                  isOpen={paramsExpanded}
+                  onOpenChange={setParamsExpanded}
+                />
               )}
             </div>
 

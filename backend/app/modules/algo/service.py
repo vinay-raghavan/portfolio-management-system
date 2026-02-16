@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from shared.providers.schemas import ProductType
+from shared.strategies import StrategyRegistry
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +53,18 @@ class AlgoService:
 
     async def create_strategy(self, user_id: str, data: StrategyCreate) -> UserStrategy:
         """Create a new strategy."""
+        # Validate strategy type exists
+        if not StrategyRegistry.has_strategy(data.strategy_type):
+            raise ValueError(f"Unknown strategy type: {data.strategy_type}")
+
+        # Validate strategy parameters if provided
+        if data.strategy_config:
+            is_valid, errors = StrategyRegistry.validate_params(
+                data.strategy_type, data.strategy_config
+            )
+            if not is_valid:
+                raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
+
         strategy = UserStrategy(
             user_id=user_id,
             name=data.name,
@@ -225,6 +238,14 @@ class AlgoService:
         strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
+
+        # Validate strategy parameters if being updated
+        if data.strategy_config is not None:
+            is_valid, errors = StrategyRegistry.validate_params(
+                strategy.strategy_name, data.strategy_config
+            )
+            if not is_valid:
+                raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
 
         update_data = data.model_dump(exclude_unset=True)
 

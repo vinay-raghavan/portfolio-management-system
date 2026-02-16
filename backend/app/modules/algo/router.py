@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from redis.asyncio import Redis
+from shared.strategies.registry import StrategyRegistry
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.redis import get_redis
@@ -26,7 +27,10 @@ from app.modules.algo.schemas import (
     SquareOffStrategyRequest,
     SquareOffStrategyResponse,
     StrategyCreate,
+    StrategyParameterSchema,
     StrategyResponse,
+    StrategyTypeDetailResponse,
+    StrategyTypeInfo,
     StrategyUpdate,
     UniverseCreate,
     UniverseResponse,
@@ -52,6 +56,61 @@ logger = logging.getLogger(__name__)
 _notification_service = AlgoNotificationService()
 
 router = APIRouter()
+
+
+# ============== Strategy Type Endpoints ==============
+
+
+@router.get("/strategy-types", response_model=list[StrategyTypeInfo])
+async def list_strategy_types() -> list[StrategyTypeInfo]:
+    """List all available strategy types with their parameters.
+
+    Returns a list of all registered strategies with their default parameters.
+    This can be used to populate a strategy selection dropdown or similar UI.
+    """
+    strategies = StrategyRegistry.list_strategies()
+    return [
+        StrategyTypeInfo(
+            name=s["name"],
+            description=s["description"],
+            default_timeframe=s["default_timeframe"],
+            parameters=s["parameters"],
+        )
+        for s in strategies
+    ]
+
+
+@router.get("/strategy-types/{name}", response_model=StrategyTypeDetailResponse)
+async def get_strategy_type_detail(name: str) -> StrategyTypeDetailResponse:
+    """Get detailed information about a specific strategy type.
+
+    Returns the strategy type with detailed parameter schemas including
+    types, defaults, min/max values for building parameter forms.
+
+    Args:
+        name: Strategy name (e.g., 'rsi', 'macd', 'vwap')
+
+    Returns:
+        Strategy type details with parameter schemas
+
+    Raises:
+        HTTPException: 404 if strategy type not found
+    """
+    strategy_class = StrategyRegistry.get_class(name)
+    if not strategy_class:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Strategy type '{name}' not found",
+        )
+
+    parameter_schema = StrategyRegistry.get_parameter_schema(name) or []
+
+    return StrategyTypeDetailResponse(
+        name=strategy_class.name,
+        description=strategy_class.description,
+        default_timeframe=strategy_class.default_timeframe,
+        parameters=[StrategyParameterSchema(**p) for p in parameter_schema],
+    )
 
 
 # ============== Strategy Endpoints ==============
@@ -81,7 +140,10 @@ async def create_strategy(
 ) -> StrategyResponse:
     """Create a new algo strategy."""
     service = AlgoService(db)
-    strategy = await service.create_strategy(current_user.id, data)
+    try:
+        strategy = await service.create_strategy(current_user.id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     await db.commit()
     return StrategyResponse.from_model(strategy, executions=[])
 
@@ -111,7 +173,10 @@ async def update_strategy(
 ) -> StrategyResponse:
     """Update a strategy."""
     service = AlgoService(db)
-    strategy = await service.update_strategy(current_user.id, strategy_id, data)
+    try:
+        strategy = await service.update_strategy(current_user.id, strategy_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.commit()

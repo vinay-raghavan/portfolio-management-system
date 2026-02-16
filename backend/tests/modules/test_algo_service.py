@@ -38,8 +38,8 @@ def sample_strategy_create():
     """Create a sample strategy creation request."""
     return StrategyCreate(
         name="Test Strategy",
-        strategy_type="momentum",
-        strategy_config={"period": 14},
+        strategy_type="rsi",
+        strategy_config={"rsi_period": 14},
         schedule_type=ScheduleType.INTERVAL,
         interval_seconds=300,
         position_sizing_method=PositionSizingMethod.FIXED_QUANTITY,
@@ -70,7 +70,7 @@ class TestAlgoService:
         )
 
         assert strategy.name == "Test Strategy"
-        assert strategy.strategy_name == "momentum"
+        assert strategy.strategy_name == "rsi"
         assert strategy.user_id == "test-user-id"
         assert strategy.status == StrategyStatus.DISABLED
         mock_db.add.assert_called_once()
@@ -84,7 +84,7 @@ class TestAlgoService:
         existing_strategy.id = "test-strategy-id"
         existing_strategy.user_id = "test-user-id"
         existing_strategy.name = "Old Name"
-        existing_strategy.strategy_name = "momentum"
+        existing_strategy.strategy_name = "rsi"
         existing_strategy.status = StrategyStatus.DISABLED
 
         # Mock get_strategy to return the existing strategy
