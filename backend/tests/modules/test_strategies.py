@@ -283,3 +283,62 @@ class TestStrategyRegistry:
             assert hasattr(strategy, "generate_signals")
             assert hasattr(strategy, "name")
             assert hasattr(strategy, "description")
+
+    def test_get_parameter_schema(self):
+        """Test getting parameter schema for a strategy."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        schema = StrategyRegistry.get_parameter_schema("rsi")
+        assert schema is not None
+        assert isinstance(schema, list)
+        assert len(schema) >= 1
+
+        # Check that each parameter has required fields
+        for param in schema:
+            assert "name" in param
+            assert "type" in param
+            assert "default" in param
+            assert "description" in param
+
+        # Check that RSI-specific parameters are present
+        param_names = [p["name"] for p in schema]
+        assert "rsi_period" in param_names
+        assert "oversold_threshold" in param_names
+        assert "overbought_threshold" in param_names
+
+    def test_get_parameter_schema_nonexistent(self):
+        """Test getting parameter schema for non-existent strategy returns None."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        schema = StrategyRegistry.get_parameter_schema("nonexistent_strategy")
+        assert schema is None
+
+    def test_get_parameter_schema_type_inference(self):
+        """Test that parameter types are correctly inferred."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        schema = StrategyRegistry.get_parameter_schema("rsi")
+        assert schema is not None
+
+        param_dict = {p["name"]: p for p in schema}
+
+        # rsi_period should be an int
+        assert param_dict["rsi_period"]["type"] == "int"
+        assert isinstance(param_dict["rsi_period"]["default"], int)
+
+        # atr_multiplier should be a float
+        assert param_dict["atr_multiplier"]["type"] == "float"
+
+    def test_get_parameter_schema_has_bounds(self):
+        """Test that parameter schemas include min/max bounds."""
+        from app.modules.signals.strategies import StrategyRegistry
+
+        schema = StrategyRegistry.get_parameter_schema("macd")
+        assert schema is not None
+
+        for param in schema:
+            # Period parameters should have bounds
+            if "period" in param["name"]:
+                assert param["min_value"] is not None
+                assert param["max_value"] is not None
+                assert param["min_value"] <= param["max_value"]

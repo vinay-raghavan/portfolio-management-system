@@ -805,3 +805,38 @@ class SquareOffStrategyResponse(BaseModel):
     total_realized_pnl: Decimal
     closed_positions: list[ClosePositionResponse]
     message: str
+
+
+# ============== Strategy Type Schemas ==============
+
+
+class StrategyParameterSchema(BaseModel):
+    """Schema for a single strategy parameter."""
+
+    name: str = Field(..., description="Parameter name")
+    type: str = Field(..., description="Parameter type: int, float, bool, select")
+    default: int | float | bool | str | None = Field(None, description="Default value")
+    min_value: float | None = Field(None, description="Minimum allowed value")
+    max_value: float | None = Field(None, description="Maximum allowed value")
+    options: list[str] | None = Field(None, description="Valid options for select type")
+    description: str = Field("", description="Parameter description")
+
+
+class StrategyTypeInfo(BaseModel):
+    """Information about a strategy type."""
+
+    name: str = Field(..., description="Strategy name/identifier")
+    description: str = Field(..., description="Strategy description")
+    default_timeframe: str = Field(..., description="Default timeframe")
+    parameters: dict = Field(default_factory=dict, description="Current parameter values")
+
+
+class StrategyTypeDetailResponse(BaseModel):
+    """Detailed response for a specific strategy type."""
+
+    name: str = Field(..., description="Strategy name/identifier")
+    description: str = Field(..., description="Strategy description")
+    default_timeframe: str = Field(..., description="Default timeframe")
+    parameters: list[StrategyParameterSchema] = Field(
+        default_factory=list, description="Parameter schemas"
+    )
