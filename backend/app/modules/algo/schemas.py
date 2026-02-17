@@ -945,3 +945,37 @@ class DSLStrategyResponse(BaseModel):
     strategy_type: str  # Will be "dsl_<name>"
     definition: dict
     message: str
+
+
+class CompositeStrategyDryRunRequest(BaseModel):
+    """Request for dry-run testing a composite strategy before saving."""
+
+    components: list[CompositeStrategyComponent] = Field(
+        ..., min_length=2, max_length=5, description="2-5 component strategies to combine"
+    )
+    combine_logic: str = Field(
+        default="AND",
+        pattern="^(AND|OR|MAJORITY|WEIGHTED)$",
+        description="Logic for combining signals: AND, OR, MAJORITY, or WEIGHTED",
+    )
+    min_agreement_pct: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="Minimum agreement for MAJORITY logic"
+    )
+    symbol: str = Field(..., min_length=1, max_length=20, description="Symbol to test on")
+    days_back: int = Field(default=90, ge=30, le=365, description="Days of historical data to test")
+
+
+class CompositeStrategyDryRunResponse(BaseModel):
+    """Response for composite strategy dry-run test."""
+
+    success: bool
+    symbol: str
+    test_period_days: int
+    total_return: float | None = None
+    win_rate: float | None = None
+    total_trades: int | None = None
+    max_drawdown: float | None = None
+    sharpe_ratio: float | None = None
+    profit_factor: float | None = None
+    component_signals: list[dict] | None = None  # Signal breakdown per component
+    error_message: str | None = None

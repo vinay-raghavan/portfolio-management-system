@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
@@ -204,6 +205,51 @@ class BacktestService:
         await self.db.delete(backtest)
         await self.db.commit()
         return True
+
+    async def run_dry_backtest(
+        self,
+        symbol: str,
+        strategy: Any,
+        start_date: datetime,
+        end_date: datetime,
+        initial_capital: Decimal = Decimal("100000"),
+        timeframe: str = "1d",
+    ) -> dict:
+        """Run a backtest without persisting to database.
+
+        Used for dry-run testing of strategies before saving.
+
+        Args:
+            symbol: Symbol to backtest
+            strategy: Strategy instance to test
+            start_date: Backtest start date
+            end_date: Backtest end date
+            initial_capital: Starting capital
+            timeframe: Data timeframe
+
+        Returns:
+            Dictionary with backtest results
+        """
+        # Run backtest synchronously in thread
+        result = await asyncio.to_thread(
+            self._run_backtest_sync,
+            symbol,
+            start_date,
+            end_date,
+            timeframe,
+            initial_capital,
+            strategy,
+        )
+
+        # Return simplified results dict
+        return {
+            "total_return": float(result.total_return) if result.total_return else None,
+            "win_rate": float(result.win_rate) if result.win_rate else None,
+            "total_trades": result.total_trades,
+            "max_drawdown": float(result.max_drawdown) if result.max_drawdown else None,
+            "sharpe_ratio": float(result.sharpe_ratio) if result.sharpe_ratio else None,
+            "profit_factor": float(result.profit_factor) if result.profit_factor else None,
+        }
 
     def _fetch_historical_data(
         self, symbol: str, start_date: datetime, end_date: datetime, timeframe: str
