@@ -63,6 +63,7 @@ dev = [
 override-dependencies = [
     "aiohttp>=3.11.0",
     "requests>=2.32.0",
+    "setuptools>=78.1.1",
 ]
 
 [tool.pytest.ini_options]
