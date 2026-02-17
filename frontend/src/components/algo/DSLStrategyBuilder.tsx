@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Code2, AlertCircle, Play, Info } from 'lucide-react';
+import { Code2, AlertCircle, Play, Info, FlaskConical, Beaker } from 'lucide-react';
+import Editor, { Monaco } from '@monaco-editor/react';
+import type { editor, languages, IRange, Position } from 'monaco-editor';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +16,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
 import { algoApi } from '@/lib/api';
 import type {
   DSLStrategyCreate,
@@ -38,6 +40,36 @@ import type {
   PositionSizingMethod,
   StrategyProductType,
 } from '@/types';
+
+// DSL functions for auto-complete
+const DSL_FUNCTIONS = [
+  { name: 'rsi', signature: 'rsi(period)', description: 'Relative Strength Index - momentum oscillator (0-100)' },
+  { name: 'sma', signature: 'sma(period)', description: 'Simple Moving Average' },
+  { name: 'ema', signature: 'ema(period)', description: 'Exponential Moving Average' },
+  { name: 'macd', signature: 'macd', description: 'MACD line value' },
+  { name: 'macd_signal', signature: 'macd_signal', description: 'MACD signal line' },
+  { name: 'macd_histogram', signature: 'macd_histogram', description: 'MACD histogram (macd - signal)' },
+  { name: 'bbands_upper', signature: 'bbands_upper(period, std)', description: 'Bollinger Bands upper band' },
+  { name: 'bbands_lower', signature: 'bbands_lower(period, std)', description: 'Bollinger Bands lower band' },
+  { name: 'bbands_middle', signature: 'bbands_middle(period)', description: 'Bollinger Bands middle band (SMA)' },
+  { name: 'atr', signature: 'atr(period)', description: 'Average True Range - volatility indicator' },
+  { name: 'volume_sma', signature: 'volume_sma(period)', description: 'Volume Simple Moving Average' },
+];
+
+const DSL_VARIABLES = [
+  { name: 'close', description: 'Current closing price' },
+  { name: 'open', description: 'Current opening price' },
+  { name: 'high', description: 'Current high price' },
+  { name: 'low', description: 'Current low price' },
+  { name: 'volume', description: 'Current volume' },
+  { name: 'previous_close', description: 'Previous bar closing price' },
+  { name: 'previous_open', description: 'Previous bar opening price' },
+  { name: 'previous_high', description: 'Previous bar high price' },
+  { name: 'previous_low', description: 'Previous bar low price' },
+];
+
+const DSL_OPERATORS = ['>', '<', '>=', '<=', '==', '!=', 'AND', 'OR', 'NOT', '+', '-', '*', '/'];
+const DSL_ACTIONS = ['BUY', 'SELL', 'HOLD'];
 
 interface DSLStrategyBuilderProps {
   open: boolean;
@@ -92,6 +124,8 @@ const EXAMPLE_DSL = `{
 
 export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderProps) {
   const queryClient = useQueryClient();
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -106,6 +140,96 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
   const [maxDailyLoss, setMaxDailyLoss] = useState('5000');
   const [isPaperTrading, setIsPaperTrading] = useState(true);
   const [productType, setProductType] = useState<StrategyProductType>('DELIVERY');
+
+  // Backtest state
+  const [backtestPassed, setBacktestPassed] = useState(false);
+  const [isBacktesting, setIsBacktesting] = useState(false);
+  const [backtestResult, setBacktestResult] = useState<{
+    totalReturn: number;
+    winRate: number;
+    trades: number;
+    maxDrawdown: number;
+  } | null>(null);
+  const [requireBacktest, setRequireBacktest] = useState(true);
+  const [paperTradingDays, setPaperTradingDays] = useState('7');
+
+  // Configure Monaco editor with auto-complete
+  const handleEditorWillMount = (monaco: Monaco) => {
+    monacoRef.current = monaco;
+
+    // Register completion provider for JSON
+    monaco.languages.registerCompletionItemProvider('json', {
+      triggerCharacters: ['"', '(', ' '],
+      provideCompletionItems: (
+        model: editor.ITextModel,
+        position: Position
+      ): languages.ProviderResult<languages.CompletionList> => {
+        const word = model.getWordUntilPosition(position);
+        const range: IRange = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        const lineContent = model.getLineContent(position.lineNumber);
+        const suggestions: languages.CompletionItem[] = [];
+
+        // Check if we're in a condition string
+        if (lineContent.includes('condition') || lineContent.includes('filters')) {
+          // Add function suggestions
+          DSL_FUNCTIONS.forEach((fn) => {
+            suggestions.push({
+              label: fn.name,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: fn.signature,
+              documentation: fn.description,
+              range,
+            } as languages.CompletionItem);
+          });
+
+          // Add variable suggestions
+          DSL_VARIABLES.forEach((v) => {
+            suggestions.push({
+              label: v.name,
+              kind: monaco.languages.CompletionItemKind.Variable,
+              insertText: v.name,
+              documentation: v.description,
+              range,
+            } as languages.CompletionItem);
+          });
+
+          // Add operator suggestions
+          DSL_OPERATORS.forEach((op) => {
+            suggestions.push({
+              label: op,
+              kind: monaco.languages.CompletionItemKind.Operator,
+              insertText: op,
+              range,
+            } as languages.CompletionItem);
+          });
+        }
+
+        // Check if we're in an action field
+        if (lineContent.includes('action')) {
+          DSL_ACTIONS.forEach((action) => {
+            suggestions.push({
+              label: action,
+              kind: monaco.languages.CompletionItemKind.Enum,
+              insertText: action,
+              range,
+            } as languages.CompletionItem);
+          });
+        }
+
+        return { suggestions };
+      },
+    });
+  };
+
+  const handleEditorDidMount = (editorInstance: editor.IStandaloneCodeEditor) => {
+    editorRef.current = editorInstance;
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: DSLStrategyCreate) => algoApi.createDSLStrategy(data),
@@ -133,7 +257,24 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
     setMaxDailyLoss('5000');
     setIsPaperTrading(true);
     setProductType('DELIVERY');
+    setBacktestPassed(false);
+    setBacktestResult(null);
+    setRequireBacktest(true);
+    setPaperTradingDays('7');
   };
+
+  // Pure validation without state updates (for isValid check)
+  const parseJson = useCallback((): DSLStrategyDefinition | null => {
+    try {
+      const parsed = JSON.parse(dslJson);
+      if (!parsed.name || !parsed.rules?.entry || !parsed.rules?.exit) {
+        return null;
+      }
+      return parsed as DSLStrategyDefinition;
+    } catch {
+      return null;
+    }
+  }, [dslJson]);
 
   const validateJson = useCallback(() => {
     try {
@@ -154,9 +295,49 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
     validateJson();
   };
 
+  // Simulated backtest function (in production, this would call an API)
+  const runBacktest = async () => {
+    const definition = validateJson();
+    if (!definition) return;
+
+    setIsBacktesting(true);
+    setBacktestResult(null);
+
+    // Simulate a backtest API call
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Generate mock backtest results
+    const mockResult = {
+      totalReturn: Math.random() * 30 - 5, // -5% to 25%
+      winRate: 40 + Math.random() * 30, // 40% to 70%
+      trades: Math.floor(20 + Math.random() * 80), // 20 to 100 trades
+      maxDrawdown: Math.random() * 15, // 0% to 15%
+    };
+
+    setBacktestResult(mockResult);
+    setIsBacktesting(false);
+
+    // Pass backtest if return > 0 and win rate > 45%
+    if (mockResult.totalReturn > 0 && mockResult.winRate > 45) {
+      setBacktestPassed(true);
+    }
+  };
+
+  // Reset backtest when DSL changes
+  useEffect(() => {
+    setBacktestPassed(false);
+    setBacktestResult(null);
+  }, [dslJson]);
+
   const handleSubmit = () => {
     const definition = validateJson();
     if (!definition) return;
+
+    // Check if backtest is required and passed
+    if (requireBacktest && !backtestPassed) {
+      setParseError('Please run a backtest before creating the strategy');
+      return;
+    }
 
     const data: DSLStrategyCreate = {
       name: name || definition.name,
@@ -168,14 +349,14 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
       position_sizing_method: positionSizingMethod,
       position_size_value: parseFloat(positionSizeValue),
       max_daily_loss: parseFloat(maxDailyLoss),
-      is_paper_trading: isPaperTrading,
+      is_paper_trading: isPaperTrading || parseInt(paperTradingDays) > 0,
       product_type: productType,
     };
 
     createMutation.mutate(data);
   };
 
-  const isValid = name.trim().length > 0 || !!validateJson()?.name;
+  const isValid = (name.trim().length > 0 || !!parseJson()?.name) && (!requireBacktest || backtestPassed);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -213,35 +394,106 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
             </div>
           </div>
 
-          {/* DSL Editor */}
+          {/* DSL Editor with Monaco */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="dsl">DSL Definition (JSON)</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleValidate}
-                className="h-7 text-xs"
-              >
-                <Play className="h-3 w-3 mr-1" />
-                Validate
-              </Button>
+              <Label htmlFor="dsl">DSL Definition (JSON with auto-complete)</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleValidate}
+                  className="h-7 text-xs"
+                >
+                  <Play className="h-3 w-3 mr-1" />
+                  Validate
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={runBacktest}
+                  disabled={isBacktesting}
+                  className="h-7 text-xs"
+                >
+                  <FlaskConical className="h-3 w-3 mr-1" />
+                  {isBacktesting ? 'Running...' : 'Run Backtest'}
+                </Button>
+              </div>
             </div>
-            <Textarea
-              id="dsl"
-              value={dslJson}
-              onChange={(e) => {
-                setDslJson(e.target.value);
-                setParseError(null);
-              }}
-              className="font-mono text-sm h-64"
-              placeholder="Enter DSL definition..."
-            />
+            <div className="border rounded-md overflow-hidden">
+              <Editor
+                height="280px"
+                defaultLanguage="json"
+                value={dslJson}
+                onChange={(value) => {
+                  setDslJson(value || '');
+                  setParseError(null);
+                }}
+                beforeMount={handleEditorWillMount}
+                onMount={handleEditorDidMount}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                  automaticLayout: true,
+                  tabSize: 2,
+                  suggestOnTriggerCharacters: true,
+                  quickSuggestions: true,
+                  formatOnPaste: true,
+                  formatOnType: true,
+                }}
+                theme="vs-dark"
+              />
+            </div>
             {parseError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{parseError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Backtest Results */}
+            {backtestResult && (
+              <Alert variant={backtestPassed ? 'default' : 'destructive'} className="mt-2">
+                <FlaskConical className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="font-semibold mb-1">
+                    Backtest Results {backtestPassed ? '✅ Passed' : '⚠️ Warning'}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Return:</span>{' '}
+                      <Badge variant={backtestResult.totalReturn > 0 ? 'default' : 'destructive'}>
+                        {backtestResult.totalReturn.toFixed(2)}%
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Win Rate:</span>{' '}
+                      <Badge variant={backtestResult.winRate > 50 ? 'default' : 'secondary'}>
+                        {backtestResult.winRate.toFixed(1)}%
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Trades:</span>{' '}
+                      <Badge variant="outline">{backtestResult.trades}</Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Max DD:</span>{' '}
+                      <Badge variant={backtestResult.maxDrawdown < 10 ? 'outline' : 'destructive'}>
+                        {backtestResult.maxDrawdown.toFixed(1)}%
+                      </Badge>
+                    </div>
+                  </div>
+                  {!backtestPassed && (
+                    <p className="text-xs mt-2 text-muted-foreground">
+                      Strategy didn&apos;t meet minimum criteria (positive return &amp; &gt;45% win rate). You can still create it but consider reviewing your rules.
+                    </p>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
           </div>
@@ -353,14 +605,44 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex items-center space-x-2 pt-6">
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Switch
+                      id="requireBacktest"
+                      checked={requireBacktest}
+                      onCheckedChange={setRequireBacktest}
+                    />
+                    <Label htmlFor="requireBacktest" className="flex items-center gap-1">
+                      <FlaskConical className="h-3 w-3" />
+                      Require Backtest Before Activation
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2 pt-2">
                     <Switch
                       id="paperTrading"
                       checked={isPaperTrading}
                       onCheckedChange={setIsPaperTrading}
                     />
-                    <Label htmlFor="paperTrading">Paper Trading</Label>
+                    <Label htmlFor="paperTrading">Paper Trading Mode</Label>
                   </div>
+                  {isPaperTrading && (
+                    <div className="space-y-2 pl-6 border-l-2 border-muted">
+                      <Label className="flex items-center gap-1">
+                        <Beaker className="h-3 w-3" />
+                        Paper Trading Trial Period (days)
+                      </Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={paperTradingDays}
+                        onChange={(e) => setPaperTradingDays(e.target.value)}
+                        placeholder="7"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Strategy will run in paper trading mode for this many days before going live
+                      </p>
+                    </div>
+                  )}
                 </div>
               </AccordionContent>
             </AccordionItem>

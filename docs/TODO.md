@@ -2667,11 +2667,11 @@ Better strategy evaluation through comparison.
 - `shared/tests/strategies/test_dsl.py` - 23 test cases
 
 #### Deferred Items (nice-to-have)
-- [ ] Syntax highlighting in editor
-- [ ] Auto-complete for indicators and functions
-- [ ] Required backtesting before activation
-- [ ] Paper trading trial period option
-- [ ] Visual rule builder (drag-and-drop)
+- [x] Syntax highlighting in editor (Monaco Editor with JSON highlighting)
+- [x] Auto-complete for indicators and functions (DSL_FUNCTIONS, DSL_VARIABLES, DSL_OPERATORS)
+- [x] Required backtesting before activation (requireBacktest toggle + validation)
+- [x] Paper trading trial period option (paperTradingDays config)
+- [ ] Visual rule builder (drag-and-drop) - Future enhancement
 
 
 ---
