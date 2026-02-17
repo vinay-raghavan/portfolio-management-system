@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Check, Loader2, Settings2, Trash2, Unplug } from 'lucide-react';
+import { ExternalLink, Check, Loader2, Settings2, Trash2, Unplug, AlertCircle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { brokersApi, type BrokerType, type BrokerCredentialStatus } from '@/lib/api';
+import { brokersApi, type BrokerType, type BrokerCredentialStatus, type BrokerHealthResponse } from '@/lib/api';
 import { useNotificationStore } from '@/store';
 
 interface BrokerConfig {
@@ -70,6 +70,17 @@ export function BrokerIntegrations() {
     queryKey: ['brokers'],
     queryFn: () => brokersApi.listBrokers(),
     select: (res) => res.data,
+  });
+
+  // Check Fyers token health for connected brokers
+  const { data: fyersHealth, isLoading: isCheckingHealth, refetch: refetchHealth } = useQuery({
+    queryKey: ['brokers', 'fyers', 'health'],
+    queryFn: () => brokersApi.checkFyersHealth(),
+    select: (res) => res.data,
+    // Only run if Fyers is connected
+    enabled: brokersData?.brokers.some((b) => b.broker_type === 'fyers' && b.is_connected) ?? false,
+    // Don't refetch automatically - user can trigger manually
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   // Save credentials mutation
@@ -211,25 +222,55 @@ export function BrokerIntegrations() {
           const status = getBrokerStatus(config.type);
           const isConfigured = status?.is_configured ?? false;
           const isConnected = status?.is_connected ?? false;
+          // Get token health for Fyers
+          const isFyers = config.type === 'fyers';
+          const tokenValid = isFyers && fyersHealth ? fyersHealth.token_valid : null;
+          const tokenExpired = tokenValid === false;
 
           return (
             <Card key={config.type}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">{config.name}</CardTitle>
-                  {isConnected ? (
-                    <Badge variant="default" className="bg-green-600">
-                      <Check className="mr-1 h-3 w-3" /> Connected
-                    </Badge>
-                  ) : isConfigured ? (
-                    <Badge variant="secondary">
-                      <Settings2 className="mr-1 h-3 w-3" /> Configured
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Not configured</Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isConnected && isFyers && (
+                      <>
+                        {isCheckingHealth ? (
+                          <Badge variant="outline" className="text-muted-foreground">
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Checking...
+                          </Badge>
+                        ) : tokenExpired ? (
+                          <Badge variant="destructive">
+                            <AlertCircle className="mr-1 h-3 w-3" /> Token Expired
+                          </Badge>
+                        ) : tokenValid ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <Check className="mr-1 h-3 w-3" /> Token Valid
+                          </Badge>
+                        ) : null}
+                      </>
+                    )}
+                    {isConnected ? (
+                      <Badge variant="default" className="bg-green-600">
+                        <Check className="mr-1 h-3 w-3" /> Connected
+                      </Badge>
+                    ) : isConfigured ? (
+                      <Badge variant="secondary">
+                        <Settings2 className="mr-1 h-3 w-3" /> Configured
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Not configured</Badge>
+                    )}
+                  </div>
                 </div>
                 <CardDescription>{config.description}</CardDescription>
+                {/* Token expired warning message */}
+                {isConnected && isFyers && tokenExpired && fyersHealth && (
+                  <div className="mt-2 flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{fyersHealth.message}</span>
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
@@ -259,15 +300,45 @@ export function BrokerIntegrations() {
                     </>
                   )}
                   {isConnected && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => disconnectMutation.mutate(config.type)}
-                      disabled={disconnectMutation.isPending}
-                    >
-                      <Unplug className="mr-2 h-4 w-4" />
-                      Disconnect
-                    </Button>
+                    <>
+                      {/* Reconnect button when token expired */}
+                      {isFyers && tokenExpired && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleConnect(config.type)}
+                          disabled={authUrlMutation.isPending}
+                        >
+                          {authUrlMutation.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                          )}
+                          Reconnect
+                        </Button>
+                      )}
+                      {/* Refresh health check button */}
+                      {isFyers && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => refetchHealth()}
+                          disabled={isCheckingHealth}
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${isCheckingHealth ? 'animate-spin' : ''}`} />
+                          Check Status
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => disconnectMutation.mutate(config.type)}
+                        disabled={disconnectMutation.isPending}
+                      >
+                        <Unplug className="mr-2 h-4 w-4" />
+                        Disconnect
+                      </Button>
+                    </>
                   )}
                   {isConfigured && (
                     <Button

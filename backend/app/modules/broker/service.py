@@ -113,3 +113,44 @@ class BrokerService:
         credential = await self.get_credential(user_id, broker_type)
         if credential:
             credential.last_used_at = datetime.now(UTC)
+
+    async def check_fyers_token_health(
+        self, user_id: str
+    ) -> tuple[bool, str]:
+        """Check if Fyers access token is still valid.
+
+        Returns:
+            Tuple of (is_valid: bool, message: str)
+        """
+        from fyers_apiv3 import fyersModel
+
+        credential = await self.get_credential(user_id, "fyers")
+        if not credential:
+            return False, "Fyers credentials not configured"
+
+        if not credential.access_token:
+            return False, "Not connected - please authenticate"
+
+        try:
+            fyers = fyersModel.FyersModel(
+                client_id=credential.client_id,
+                is_async=False,
+                token=credential.access_token,  # Decrypted via property
+                log_path="",
+            )
+
+            # Test token by calling get_profile
+            response = fyers.get_profile()
+            code = response.get("code")
+
+            if code == 200:
+                return True, "Token is valid"
+            elif code == -16:
+                # Invalid or expired token
+                return False, "Token expired - please reconnect"
+            else:
+                return False, f"Token validation failed (code: {code})"
+
+        except Exception as e:
+            logger.error(f"Fyers health check error: {e}")
+            return False, f"Health check failed: {str(e)}"

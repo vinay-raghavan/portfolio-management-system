@@ -86,8 +86,9 @@ class FyersDataProvider(DataProvider):
         self._fyers = None  # Force recreation with new token
 
     # Mapping from Yahoo index symbols to Fyers format
+    # Note: Fyers uses different symbol names than Yahoo
     INDEX_SYMBOL_MAP: dict[str, str] = {
-        "^NSEI": "NSE:NIFTY50-INDEX",
+        "^NSEI": "NSE:NIFTY50-INDEX",  # NIFTY 50
         "^BSESN": "BSE:SENSEX-INDEX",
         "^NSEBANK": "NSE:NIFTYBANK-INDEX",
         "^NSMIDCP": "NSE:NIFTYMIDCAP50-INDEX",
