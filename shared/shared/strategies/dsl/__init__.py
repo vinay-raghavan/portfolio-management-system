@@ -17,6 +17,13 @@ from shared.strategies.dsl.operators import (
     DSLFunctionParam,
     LogicalOperator,
 )
+from shared.strategies.dsl.parser import (
+    ASTNode,
+    DSLParseError,
+    DSLParser,
+    NodeType,
+    parse_condition,
+)
 from shared.strategies.dsl.schemas import (
     DSLAction,
     DSLCondition,
@@ -39,6 +46,12 @@ __all__ = [
     "ALL_COMPARISON_OPS",
     "ALL_LOGICAL_OPS",
     "ALL_ARITHMETIC_OPS",
+    # Parser
+    "ASTNode",
+    "DSLParseError",
+    "DSLParser",
+    "NodeType",
+    "parse_condition",
     # Schemas
     "DSLAction",
     "DSLCondition",
