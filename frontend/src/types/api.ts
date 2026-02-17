@@ -1021,6 +1021,73 @@ export interface CompositeStrategyResponse {
   message: string;
 }
 
+// ============== DSL Strategy Types ==============
+
+export interface DSLEntryRule {
+  condition: string;
+  action: 'BUY' | 'SELL' | 'HOLD';
+  confidence?: number;
+  strength?: number;
+}
+
+export interface DSLExitConfig {
+  stop_loss_pct: number;
+  take_profit_pct: number;
+  trailing_stop_pct?: number;
+}
+
+export interface DSLRules {
+  entry: DSLEntryRule[];
+  exit: DSLExitConfig;
+  filters?: string[];
+}
+
+export interface DSLIndicatorConfig {
+  [indicator: string]: Record<string, number>;
+}
+
+export interface DSLStrategyDefinition {
+  name: string;
+  version?: number;
+  description?: string;
+  timeframe?: string;
+  rules: DSLRules;
+  indicators?: DSLIndicatorConfig[];
+}
+
+export interface DSLStrategyCreate {
+  name: string;
+  description?: string;
+  definition: DSLStrategyDefinition;
+  universe_id?: string;
+  symbols?: string[];
+  schedule_type?: ScheduleType;
+  interval_seconds?: number;
+  cron_expression?: string;
+  position_sizing_method?: PositionSizingMethod;
+  position_size_value?: number;
+  max_position_value?: number;
+  max_daily_loss?: number;
+  max_consecutive_losses?: number;
+  max_daily_profit?: number;
+  overall_profit_target?: number;
+  profit_cutoff_action?: ProfitCutoffAction;
+  is_paper_trading?: boolean;
+  product_type?: StrategyProductType;
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
+}
+
+export interface DSLStrategyResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  strategy_type: string;
+  definition: DSLStrategyDefinition;
+  message: string;
+}
+
 // ============== Research Types ==============
 
 export interface IndexPerformance {

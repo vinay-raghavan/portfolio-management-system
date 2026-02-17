@@ -394,6 +394,8 @@ import type {
   ClosePositionResponse,
   CompositeStrategyCreate,
   CompositeStrategyResponse,
+  DSLStrategyCreate,
+  DSLStrategyResponse,
   StrategyExecution,
   Universe,
   UniverseCreate,
@@ -420,6 +422,8 @@ export const algoApi = {
     api.post<AlgoStrategy>('/algo/strategies', data),
   createCompositeStrategy: (data: CompositeStrategyCreate) =>
     api.post<CompositeStrategyResponse>('/algo/strategies/composite', data),
+  createDSLStrategy: (data: DSLStrategyCreate) =>
+    api.post<DSLStrategyResponse>('/algo/strategies/dsl', data),
   updateStrategy: (id: string, data: AlgoStrategyUpdate) =>
     api.patch<AlgoStrategy>(`/algo/strategies/${id}`, data),
   deleteStrategy: (id: string) =>
