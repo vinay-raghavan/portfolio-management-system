@@ -19,6 +19,8 @@ from app.modules.algo.schemas import (
     ClosePositionResponse,
     CompositeStrategyCreate,
     CompositeStrategyResponse,
+    DSLStrategyCreate,
+    DSLStrategyResponse,
     ExecutionHistoryResponse,
     KillSwitchResponse,
     KillSwitchToggle,
@@ -235,6 +237,88 @@ async def create_composite_strategy(
         components=data.components,
         combine_logic=data.combine_logic,
         message=f"Composite strategy '{data.name}' created successfully",
+    )
+
+
+@router.post(
+    "/strategies/dsl",
+    response_model=DSLStrategyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dsl_strategy(
+    db: DbSession,
+    current_user: CurrentUser,
+    data: DSLStrategyCreate,
+) -> DSLStrategyResponse:
+    """Create a DSL-based custom strategy.
+
+    Allows creating custom strategies using a domain-specific language
+    with conditions like:
+    - "rsi(14) < 30 AND macd_histogram > 0" for entry rules
+    - Stop loss and take profit percentages for exit rules
+    - Technical indicator definitions (RSI, MACD, SMA, EMA, BBands, ATR)
+
+    The DSL strategy is validated, registered at runtime, and can be used
+    like any other strategy.
+    """
+    service = AlgoService(db)
+
+    # Build strategy config from request
+    strategy_config = {
+        "universe_id": data.universe_id,
+        "symbols": data.symbols,
+        "schedule_type": data.schedule_type.value if data.schedule_type else "market_open",
+        "interval_seconds": data.interval_seconds,
+        "cron_expression": data.cron_expression,
+        "position_sizing_method": (
+            data.position_sizing_method.value
+            if data.position_sizing_method
+            else "percent_of_portfolio"
+        ),
+        "position_size_value": float(data.position_size_value),
+        "max_position_value": float(data.max_position_value) if data.max_position_value else None,
+        "max_daily_loss": float(data.max_daily_loss),
+        "max_consecutive_losses": data.max_consecutive_losses,
+        "max_daily_profit": float(data.max_daily_profit) if data.max_daily_profit else None,
+        "overall_profit_target": (
+            float(data.overall_profit_target) if data.overall_profit_target else None
+        ),
+        "profit_cutoff_action": (
+            data.profit_cutoff_action.value if data.profit_cutoff_action else "pause_strategy"
+        ),
+        "is_paper_trading": data.is_paper_trading,
+        "product_type": data.product_type.value if data.product_type else "delivery",
+        "default_trailing_stop_enabled": data.default_trailing_stop_enabled,
+        "default_trailing_stop_pct": (
+            float(data.default_trailing_stop_pct) if data.default_trailing_stop_pct else None
+        ),
+        "default_profit_booking_rules": (
+            data.default_profit_booking_rules.model_dump()
+            if data.default_profit_booking_rules
+            else None
+        ),
+    }
+
+    try:
+        strategy = await service.create_dsl_strategy(
+            user_id=current_user.id,
+            name=data.name,
+            description=data.description,
+            definition=data.definition,
+            strategy_config=strategy_config,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    await db.commit()
+
+    return DSLStrategyResponse(
+        id=strategy.id,
+        name=strategy.name,
+        description=strategy.description,
+        strategy_type=strategy.strategy_name,
+        definition=data.definition,
+        message=f"DSL strategy '{data.name}' created successfully",
     )
 
 

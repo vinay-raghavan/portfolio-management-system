@@ -903,3 +903,45 @@ class CompositeStrategyResponse(BaseModel):
     components: list[CompositeStrategyComponent]
     combine_logic: str
     message: str
+
+
+class DSLStrategyCreate(BaseModel):
+    """Request to create a DSL-based custom strategy."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="User-friendly name")
+    description: str | None = Field(default=None, description="Strategy description")
+    definition: dict = Field(
+        ..., description="DSL strategy definition with rules, indicators, etc."
+    )
+    # Execution settings (same as regular strategy)
+    universe_id: str | None = None
+    symbols: list[str] | None = None
+    schedule_type: ScheduleType = ScheduleType.MARKET_OPEN
+    interval_seconds: int | None = None
+    cron_expression: str | None = None
+    position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
+    position_size_value: Decimal = Decimal("5.00")
+    max_position_value: Decimal | None = None
+    max_daily_loss: Decimal = Decimal("5000.00")
+    max_consecutive_losses: int = 3
+    # Profit cutoff settings
+    max_daily_profit: Decimal | None = None
+    overall_profit_target: Decimal | None = None
+    profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
+    is_paper_trading: bool = True
+    product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default trailing stop and profit booking settings
+    default_trailing_stop_enabled: bool = False
+    default_trailing_stop_pct: Decimal | None = None
+    default_profit_booking_rules: ProfitBookingRules | None = None
+
+
+class DSLStrategyResponse(BaseModel):
+    """Response for a created DSL strategy."""
+
+    id: str
+    name: str
+    description: str | None
+    strategy_type: str  # Will be "dsl_<name>"
+    definition: dict
+    message: str
