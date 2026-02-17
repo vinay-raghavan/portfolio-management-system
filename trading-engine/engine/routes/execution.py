@@ -139,6 +139,7 @@ async def _update_funds_for_closed_positions(
             side = "SELL" if pos.side == "LONG" else "BUY"
             exit_price = pos.exit_price if pos.exit_price else Decimal("0")
 
+            # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
                 side=side,
@@ -147,6 +148,7 @@ async def _update_funds_for_closed_positions(
                 fees=Decimal("0"),  # Fees handled separately
                 product_type=product_type,
                 existing_position_qty=Decimal(str(pos.quantity)),  # Closing position
+                entry_price=pos.entry_price,  # Required for P&L calculation
             )
             logger.debug(
                 f"Updated funds for closed position {pos.symbol}: "

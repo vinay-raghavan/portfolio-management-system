@@ -529,6 +529,7 @@ class StrategyExecutor:
 
                 # Pass product_type and existing_position_qty to properly release margin
                 # For closing positions, existing_position_qty is the quantity being closed
+                # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
                 await funds_provider.update_funds_for_trade(
                     user_id=user_id,
                     side=side,
@@ -537,6 +538,7 @@ class StrategyExecutor:
                     fees=Decimal("0"),  # Fees already accounted for in P&L
                     product_type=product_type,
                     existing_position_qty=Decimal(str(pos.quantity)),  # Closing full position
+                    entry_price=pos.entry_price,  # Required for P&L calculation
                 )
                 logger.debug(
                     f"Updated funds for closed position {pos.symbol}: "
