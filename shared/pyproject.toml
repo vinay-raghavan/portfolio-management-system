@@ -22,6 +22,10 @@ dependencies = [
     "httpx>=0.27.0",
     "tenacity>=8.0.0",
     "fyers-apiv3>=3.1.7",
+    # Security: override transitive deps to fix vulnerabilities
+    # Note: aiohttp/requests cannot be upgraded due to fyers-apiv3 pinning exact versions
+    "protobuf>=6.0.0",
+    "urllib3>=2.6.3",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +56,13 @@ dev = [
     "mypy>=1.10.0",
     "bandit>=1.9.3",
     "pip-audit>=2.10.0",
+]
+
+[tool.uv]
+# Force override fyers-apiv3's pinned dependencies to fix security vulnerabilities
+override-dependencies = [
+    "aiohttp>=3.11.0",
+    "requests>=2.32.0",
 ]
 
 [tool.pytest.ini_options]

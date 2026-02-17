@@ -16,6 +16,10 @@ dependencies = [
     "yfinance>=0.2.50",
     "ta>=0.11.0",
     "httpx>=0.28.0",
+    # Security: override transitive deps to fix vulnerabilities
+    "protobuf>=6.0.0",
+    "requests>=2.32.0",
+    "urllib3>=2.6.3",
 ]
 
 [project.optional-dependencies]
