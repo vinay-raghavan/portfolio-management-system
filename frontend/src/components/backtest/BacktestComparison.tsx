@@ -107,10 +107,10 @@ export function BacktestComparison({ className }: BacktestComparisonProps) {
   // Get metric value from backtest
   const getMetricValue = (backtest: BacktestResult, key: string): number | null => {
     if (key in backtest.performance) {
-      return (backtest.performance as Record<string, number | null>)[key];
+      return (backtest.performance as unknown as Record<string, number | null>)[key];
     }
     if (key in backtest.trade_stats) {
-      return (backtest.trade_stats as Record<string, number | null>)[key];
+      return (backtest.trade_stats as unknown as Record<string, number | null>)[key];
     }
     return null;
   };
