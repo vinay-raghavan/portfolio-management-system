@@ -2533,7 +2533,7 @@ Better strategy evaluation through comparison.
   - Combining logic selector (AND/OR/MAJORITY/WEIGHTED)
   - Visual preview of logic flow
 - [x] Add "Composite Strategy" tab/option in strategy creation dialog
-- [ ] Visual representation of combined strategy (deferred - nice to have)
+- [x] Visual representation of combined strategy (Task 1.14.2a - CompositeFlowDiagram)
   ```
   ┌─────────────────────────────────────────────────────┐
   │ My RSI + MACD Strategy                              │
@@ -2549,15 +2549,15 @@ Better strategy evaluation through comparison.
   └─────────────────────────────────────────────────────┘
   ```
 - [x] Show combined parameter summary
-- [ ] Strategy testing (dry run) before saving (deferred - nice to have)
+- [x] Strategy testing (dry run) before saving (Task 1.14.2b - dry-run endpoint)
 
 #### 1.14.3 Composite Strategy Execution
 **Tasks:**
 - [x] Detect `type: "composite"` in `strategy_params` at execution time
 - [x] Build composite strategy via `CompositeStrategyFactory.create()`
 - [x] Register temporarily in `StrategyRegistry` for execution
-- [ ] Track individual component signals in execution logs (deferred - nice to have)
-- [ ] Show per-component performance metrics in strategy dashboard (deferred - nice to have)
+- [x] Track individual component signals in execution logs (Task 1.14.3a)
+- [x] Show per-component performance metrics in strategy dashboard (Task 1.14.3b)
 
 ---
 
