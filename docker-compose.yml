@@ -42,6 +42,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: dev
     container_name: portfolio-migrations
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
@@ -58,6 +59,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: dev
     container_name: portfolio-api
     restart: unless-stopped
     environment:
@@ -92,6 +94,7 @@ services:
     build:
       context: .
       dockerfile: trading-engine/Dockerfile
+      target: dev
     container_name: portfolio-trading-engine
     restart: unless-stopped
     environment:
@@ -129,6 +132,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: dev
     container_name: portfolio-web
     restart: unless-stopped
     environment:
@@ -143,8 +147,9 @@ services:
   # Celery Worker
   worker:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
+      target: dev
     container_name: portfolio-worker
     restart: unless-stopped
     environment:
@@ -171,11 +176,12 @@ services:
   # Celery Beat (scheduler)
   beat:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
+      target: dev
     container_name: portfolio-beat
     restart: unless-stopped
-    command: celery -A worker.celery_app beat --loglevel=info
+    command: ["uv", "run", "celery", "-A", "worker.celery_app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
       REDIS_URL: redis://redis:6379/0
