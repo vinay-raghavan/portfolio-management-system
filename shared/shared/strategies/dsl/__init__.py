@@ -5,6 +5,7 @@ rule-based trading strategies using a YAML/JSON-based DSL without
 requiring full Python access.
 """
 
+from shared.strategies.dsl.executor import DSLExecutionError, DSLExecutor
 from shared.strategies.dsl.operators import (
     ALL_ARITHMETIC_OPS,
     ALL_COMPARISON_OPS,
@@ -33,6 +34,7 @@ from shared.strategies.dsl.schemas import (
     DSLRules,
     DSLStrategyDefinition,
 )
+from shared.strategies.dsl.strategy import DSLStrategy, create_dsl_strategy
 from shared.strategies.dsl.validator import (
     DSLValidator,
     ValidationError,
@@ -63,6 +65,12 @@ __all__ = [
     "ValidationError",
     "ValidationResult",
     "validate_dsl_strategy",
+    # Executor
+    "DSLExecutionError",
+    "DSLExecutor",
+    # Strategy
+    "DSLStrategy",
+    "create_dsl_strategy",
     # Schemas
     "DSLAction",
     "DSLCondition",
