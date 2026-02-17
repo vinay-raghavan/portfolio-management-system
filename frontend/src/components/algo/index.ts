@@ -9,3 +9,4 @@ export { StrategyParameterForm } from './StrategyParameterForm';
 export { ComponentParameterForm } from './ComponentParameterForm';
 export { CompositeStrategyBuilder } from './CompositeStrategyBuilder';
 export { DSLStrategyBuilder } from './DSLStrategyBuilder';
+export { VisualRuleBuilder } from './VisualRuleBuilder';

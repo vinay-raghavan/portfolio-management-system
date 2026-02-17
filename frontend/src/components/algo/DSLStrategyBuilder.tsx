@@ -2,9 +2,16 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Code2, AlertCircle, Play, Info, FlaskConical, Beaker } from 'lucide-react';
+import { Code2, AlertCircle, Play, Info, FlaskConical, Beaker, MousePointer2 } from 'lucide-react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import type { editor, languages, IRange, Position } from 'monaco-editor';
+import {
+  VisualRuleBuilder,
+  EntryRule,
+  ExitConfig,
+  rulesToConditionString,
+} from './VisualRuleBuilder';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -153,6 +160,48 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
   const [requireBacktest, setRequireBacktest] = useState(true);
   const [paperTradingDays, setPaperTradingDays] = useState('7');
 
+  // Visual builder state
+  const [editorMode, setEditorMode] = useState<'json' | 'visual'>('json');
+  const [visualEntryRules, setVisualEntryRules] = useState<EntryRule[]>([]);
+  const [visualExitConfig, setVisualExitConfig] = useState<ExitConfig>({
+    stopLossPct: 2.0,
+    takeProfitPct: 4.0,
+  });
+  const [visualFilters, setVisualFilters] = useState<string[]>([]);
+
+  // Sync visual builder to JSON
+  const syncVisualToJson = useCallback(() => {
+    const definition: DSLStrategyDefinition = {
+      name: name || 'Visual Strategy',
+      version: 1,
+      description: description,
+      timeframe: '1d',
+      rules: {
+        entry: visualEntryRules.map((rule) => ({
+          condition: rulesToConditionString(rule.conditions),
+          action: rule.action,
+          confidence: rule.confidence,
+          strength: rule.strength,
+        })),
+        exit: {
+          stop_loss_pct: visualExitConfig.stopLossPct,
+          take_profit_pct: visualExitConfig.takeProfitPct,
+          trailing_stop_pct: visualExitConfig.trailingStopPct,
+        },
+        filters: visualFilters,
+      },
+      indicators: [],
+    };
+    setDslJson(JSON.stringify(definition, null, 2));
+  }, [name, description, visualEntryRules, visualExitConfig, visualFilters]);
+
+  // Auto-sync when switching from visual to JSON mode
+  useEffect(() => {
+    if (editorMode === 'json' && visualEntryRules.length > 0) {
+      syncVisualToJson();
+    }
+  }, [editorMode, syncVisualToJson, visualEntryRules.length]);
+
   // Configure Monaco editor with auto-complete
   const handleEditorWillMount = (monaco: Monaco) => {
     monacoRef.current = monaco;
@@ -261,6 +310,11 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
     setBacktestResult(null);
     setRequireBacktest(true);
     setPaperTradingDays('7');
+    // Reset visual builder state
+    setEditorMode('json');
+    setVisualEntryRules([]);
+    setVisualExitConfig({ stopLossPct: 2.0, takeProfitPct: 4.0 });
+    setVisualFilters([]);
   };
 
   // Pure validation without state updates (for isValid check)
@@ -394,10 +448,19 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
             </div>
           </div>
 
-          {/* DSL Editor with Monaco */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="dsl">DSL Definition (JSON with auto-complete)</Label>
+          {/* Editor Mode Tabs */}
+          <Tabs value={editorMode} onValueChange={(v) => setEditorMode(v as 'json' | 'visual')}>
+            <div className="flex items-center justify-between mb-2">
+              <TabsList className="h-8">
+                <TabsTrigger value="json" className="text-xs h-7 px-3">
+                  <Code2 className="h-3 w-3 mr-1" />
+                  JSON Editor
+                </TabsTrigger>
+                <TabsTrigger value="visual" className="text-xs h-7 px-3">
+                  <MousePointer2 className="h-3 w-3 mr-1" />
+                  Visual Builder
+                </TabsTrigger>
+              </TabsList>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -422,81 +485,115 @@ export function DSLStrategyBuilder({ open, onOpenChange }: DSLStrategyBuilderPro
                 </Button>
               </div>
             </div>
-            <div className="border rounded-md overflow-hidden">
-              <Editor
-                height="280px"
-                defaultLanguage="json"
-                value={dslJson}
-                onChange={(value) => {
-                  setDslJson(value || '');
-                  setParseError(null);
-                }}
-                beforeMount={handleEditorWillMount}
-                onMount={handleEditorDidMount}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  tabSize: 2,
-                  suggestOnTriggerCharacters: true,
-                  quickSuggestions: true,
-                  formatOnPaste: true,
-                  formatOnType: true,
-                }}
-                theme="vs-dark"
-              />
-            </div>
-            {parseError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{parseError}</AlertDescription>
-              </Alert>
-            )}
 
-            {/* Backtest Results */}
-            {backtestResult && (
-              <Alert variant={backtestPassed ? 'default' : 'destructive'} className="mt-2">
-                <FlaskConical className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="font-semibold mb-1">
-                    Backtest Results {backtestPassed ? '✅ Passed' : '⚠️ Warning'}
+            {/* JSON Editor Tab */}
+            <TabsContent value="json" className="mt-0">
+              <div className="space-y-2">
+                <div className="border rounded-md overflow-hidden">
+                  <Editor
+                    height="280px"
+                    defaultLanguage="json"
+                    value={dslJson}
+                    onChange={(value) => {
+                      setDslJson(value || '');
+                      setParseError(null);
+                    }}
+                    beforeMount={handleEditorWillMount}
+                    onMount={handleEditorDidMount}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      automaticLayout: true,
+                      tabSize: 2,
+                      suggestOnTriggerCharacters: true,
+                      quickSuggestions: true,
+                      formatOnPaste: true,
+                      formatOnType: true,
+                    }}
+                    theme="vs-dark"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Visual Builder Tab */}
+            <TabsContent value="visual" className="mt-0">
+              <div className="border rounded-md p-4 bg-muted/20 max-h-[320px] overflow-y-auto">
+                <VisualRuleBuilder
+                  entryRules={visualEntryRules}
+                  exitConfig={visualExitConfig}
+                  filters={visualFilters}
+                  onEntryRulesChange={setVisualEntryRules}
+                  onExitConfigChange={setVisualExitConfig}
+                  onFiltersChange={setVisualFilters}
+                />
+              </div>
+              {visualEntryRules.length > 0 && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={syncVisualToJson}
+                  className="mt-2 h-7 text-xs"
+                >
+                  <Code2 className="h-3 w-3 mr-1" />
+                  Generate JSON from Visual
+                </Button>
+              )}
+            </TabsContent>
+          </Tabs>
+
+          {/* Errors and Results */}
+          {parseError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{parseError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Backtest Results */}
+          {backtestResult && (
+            <Alert variant={backtestPassed ? 'default' : 'destructive'} className="mt-2">
+              <FlaskConical className="h-4 w-4" />
+              <AlertDescription>
+                <div className="font-semibold mb-1">
+                  Backtest Results {backtestPassed ? '✅ Passed' : '⚠️ Warning'}
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Return:</span>{' '}
+                    <Badge variant={backtestResult.totalReturn > 0 ? 'default' : 'destructive'}>
+                      {backtestResult.totalReturn.toFixed(2)}%
+                    </Badge>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    <div>
-                      <span className="text-muted-foreground">Return:</span>{' '}
-                      <Badge variant={backtestResult.totalReturn > 0 ? 'default' : 'destructive'}>
-                        {backtestResult.totalReturn.toFixed(2)}%
-                      </Badge>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Win Rate:</span>{' '}
-                      <Badge variant={backtestResult.winRate > 50 ? 'default' : 'secondary'}>
-                        {backtestResult.winRate.toFixed(1)}%
-                      </Badge>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Trades:</span>{' '}
-                      <Badge variant="outline">{backtestResult.trades}</Badge>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Max DD:</span>{' '}
-                      <Badge variant={backtestResult.maxDrawdown < 10 ? 'outline' : 'destructive'}>
-                        {backtestResult.maxDrawdown.toFixed(1)}%
-                      </Badge>
-                    </div>
+                  <div>
+                    <span className="text-muted-foreground">Win Rate:</span>{' '}
+                    <Badge variant={backtestResult.winRate > 50 ? 'default' : 'secondary'}>
+                      {backtestResult.winRate.toFixed(1)}%
+                    </Badge>
                   </div>
-                  {!backtestPassed && (
-                    <p className="text-xs mt-2 text-muted-foreground">
-                      Strategy didn&apos;t meet minimum criteria (positive return &amp; &gt;45% win rate). You can still create it but consider reviewing your rules.
-                    </p>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+                  <div>
+                    <span className="text-muted-foreground">Trades:</span>{' '}
+                    <Badge variant="outline">{backtestResult.trades}</Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Max DD:</span>{' '}
+                    <Badge variant={backtestResult.maxDrawdown < 10 ? 'outline' : 'destructive'}>
+                      {backtestResult.maxDrawdown.toFixed(1)}%
+                    </Badge>
+                  </div>
+                </div>
+                {!backtestPassed && (
+                  <p className="text-xs mt-2 text-muted-foreground">
+                    Strategy didn&apos;t meet minimum criteria (positive return &amp; &gt;45% win rate). You can still create it but consider reviewing your rules.
+                  </p>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* DSL Help */}
           <Accordion type="single" collapsible className="w-full">
