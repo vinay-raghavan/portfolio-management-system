@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { CandlestickChart, DrawingToolbar } from '@/components/charts';
 import { QuickTradePanel } from '@/components/trading';
+import { BrandedSpinner, SkeletonChart } from '@/components/shared';
 import { marketDataApi, analysisApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
 import { formatPercent, formatCompactNumber, safeToFixed, cn } from '@/lib/utils';
@@ -334,9 +335,7 @@ export default function AnalysisPage() {
         </CardHeader>
         <CardContent>
           {historyLoading ? (
-            <div className="h-96 flex items-center justify-center">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-            </div>
+            <SkeletonChart height={384} />
           ) : chartData.length === 0 ? (
             <div className="h-96 flex items-center justify-center text-muted-foreground">
               No data available

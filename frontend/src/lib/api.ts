@@ -197,6 +197,10 @@ export const watchlistApi = {
     api.post<Watchlist>(`/watchlist/${watchlistId}/items`, { symbol, notes }),
   removeItem: (watchlistId: string, symbol: string) =>
     api.delete<Watchlist>(`/watchlist/${watchlistId}/items/${symbol}`),
+  reorderWatchlists: (items: { id: string; sort_order: number }[]) =>
+    api.put<WatchlistListResponse>('/watchlist/reorder', { items }),
+  reorderItems: (watchlistId: string, items: { id: string; sort_order: number }[]) =>
+    api.put<Watchlist>(`/watchlist/${watchlistId}/items/reorder`, { items }),
 };
 
 // Risk Management API
