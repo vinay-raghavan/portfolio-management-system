@@ -32,11 +32,11 @@ async def load_user_composite_strategies(db) -> int:
     Returns:
         Number of composite strategies loaded
     """
+    from shared.strategies.composite import CompositeStrategyFactory
+    from shared.strategies.registry import StrategyRegistry
     from sqlalchemy import select
 
     from engine.models.algo import UserStrategy
-    from shared.strategies.composite import CompositeStrategyFactory
-    from shared.strategies.registry import StrategyRegistry
 
     # Find all strategies with names starting with "composite_"
     result = await db.execute(
@@ -59,9 +59,7 @@ async def load_user_composite_strategies(db) -> int:
         min_agreement_pct = params.get("min_agreement_pct", 0.5)
 
         if not components:
-            logger.warning(
-                f"Skipping composite strategy '{strategy_name}' - no components defined"
-            )
+            logger.warning(f"Skipping composite strategy '{strategy_name}' - no components defined")
             continue
 
         try:
