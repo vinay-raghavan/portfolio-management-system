@@ -422,6 +422,8 @@ export const algoApi = {
     api.post<AlgoStrategy>('/algo/strategies', data),
   createCompositeStrategy: (data: CompositeStrategyCreate) =>
     api.post<CompositeStrategyResponse>('/algo/strategies/composite', data),
+  dryRunCompositeStrategy: (data: CompositeStrategyDryRunRequest) =>
+    api.post<CompositeStrategyDryRunResponse>('/algo/strategies/composite/dry-run', data),
   createDSLStrategy: (data: DSLStrategyCreate) =>
     api.post<DSLStrategyResponse>('/algo/strategies/dsl', data),
   updateStrategy: (id: string, data: AlgoStrategyUpdate) =>

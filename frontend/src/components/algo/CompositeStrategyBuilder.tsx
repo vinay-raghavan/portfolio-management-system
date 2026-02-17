@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Layers, AlertCircle, Settings2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Layers, AlertCircle, Settings2, ChevronDown, ChevronRight, PlayCircle, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,10 +28,13 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { algoApi, signalsApi } from '@/lib/api';
 import { ComponentParameterForm } from './ComponentParameterForm';
+import { CompositeFlowDiagram } from './CompositeFlowDiagram';
 import type {
   CombineLogic,
   CompositeStrategyComponent,
   CompositeStrategyCreate,
+  CompositeStrategyDryRunRequest,
+  CompositeStrategyDryRunResponse,
   ScheduleType,
   PositionSizingMethod,
   StrategyProductType,
@@ -93,6 +96,10 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
   const [isPaperTrading, setIsPaperTrading] = useState(true);
   const [productType, setProductType] = useState<StrategyProductType>('DELIVERY');
 
+  // Dry run testing state
+  const [dryRunSymbol, setDryRunSymbol] = useState('RELIANCE');
+  const [dryRunResult, setDryRunResult] = useState<CompositeStrategyDryRunResponse | null>(null);
+
   // Fetch available strategies
   const { data: availableStrategies } = useQuery({
     queryKey: ['signal-strategies'],
@@ -117,6 +124,44 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
     },
   });
 
+  const dryRunMutation = useMutation({
+    mutationFn: (data: CompositeStrategyDryRunRequest) => algoApi.dryRunCompositeStrategy(data),
+    onSuccess: (res) => {
+      setDryRunResult(res.data);
+    },
+    onError: (error) => {
+      console.error('Dry run failed:', error);
+      setDryRunResult({
+        success: false,
+        symbol: dryRunSymbol,
+        test_period_days: 90,
+        total_return: null,
+        win_rate: null,
+        total_trades: null,
+        max_drawdown: null,
+        sharpe_ratio: null,
+        profit_factor: null,
+        error_message: 'Failed to run test. Check console for details.',
+      });
+    },
+  });
+
+  const handleDryRun = () => {
+    const validComponents = components.filter((c) => c.strategy);
+    if (validComponents.length < 2 || !dryRunSymbol) return;
+
+    const data: CompositeStrategyDryRunRequest = {
+      components: validComponents,
+      combine_logic: combineLogic,
+      min_agreement_pct: combineLogic === 'MAJORITY' ? parseFloat(minAgreementPct) : 0.5,
+      symbol: dryRunSymbol.trim().toUpperCase(),
+      days_back: 90,
+    };
+
+    setDryRunResult(null);
+    dryRunMutation.mutate(data);
+  };
+
   const resetForm = () => {
     setName('');
     setDescription('');
@@ -135,6 +180,8 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
     setMaxDailyLoss('5000');
     setIsPaperTrading(true);
     setProductType('DELIVERY');
+    setDryRunSymbol('RELIANCE');
+    setDryRunResult(null);
   };
 
   const addComponent = () => {
@@ -370,6 +417,97 @@ export function CompositeStrategyBuilder({ open, onOpenChange }: CompositeStrate
               )}
             </CardContent>
           </Card>
+
+          {/* Visual Flow Diagram */}
+          {validComponentCount >= 2 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium">Signal Flow Preview</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <CompositeFlowDiagram
+                  components={components}
+                  combineLogic={combineLogic}
+                  minAgreementPct={parseFloat(minAgreementPct)}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Strategy Dry Run / Testing */}
+          {validComponentCount >= 2 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <PlayCircle className="h-4 w-4" />
+                  Test Strategy (Dry Run)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={dryRunSymbol}
+                    onChange={(e) => setDryRunSymbol(e.target.value.toUpperCase())}
+                    placeholder="RELIANCE"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={handleDryRun}
+                    disabled={dryRunMutation.isPending || !dryRunSymbol}
+                  >
+                    {dryRunMutation.isPending ? 'Testing...' : 'Run Test'}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Test on 90 days of historical data to validate your strategy
+                </p>
+
+                {dryRunResult && (
+                  <div className={`p-3 rounded-lg ${dryRunResult.success ? 'bg-muted/50' : 'bg-destructive/10'}`}>
+                    {dryRunResult.success ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm font-medium">
+                          <span>Test Results ({dryRunResult.symbol})</span>
+                          <span className="text-xs text-muted-foreground">{dryRunResult.test_period_days} days</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div className="flex items-center gap-1">
+                            {(dryRunResult.total_return ?? 0) >= 0 ? (
+                              <TrendingUp className="h-3 w-3 text-green-500" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 text-red-500" />
+                            )}
+                            <span className={(dryRunResult.total_return ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {dryRunResult.total_return?.toFixed(1) ?? '--'}%
+                            </span>
+                          </div>
+                          <div className="text-center">
+                            <span className="text-muted-foreground">Win: </span>
+                            <span>{dryRunResult.win_rate?.toFixed(0) ?? '--'}%</span>
+                          </div>
+                          <div className="text-center">
+                            <span className="text-muted-foreground">Trades: </span>
+                            <span>{dryRunResult.total_trades ?? '--'}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                          <div>Max DD: {dryRunResult.max_drawdown?.toFixed(1) ?? '--'}%</div>
+                          <div className="text-center">Sharpe: {dryRunResult.sharpe_ratio?.toFixed(2) ?? '--'}</div>
+                          <div className="text-center">PF: {dryRunResult.profit_factor?.toFixed(2) ?? '--'}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-destructive text-sm">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{dryRunResult.error_message || 'Test failed'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Execution Settings */}
           <Card>

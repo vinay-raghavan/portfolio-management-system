@@ -1021,6 +1021,28 @@ export interface CompositeStrategyResponse {
   message: string;
 }
 
+export interface CompositeStrategyDryRunRequest {
+  components: CompositeStrategyComponent[];
+  combine_logic: CombineLogic;
+  min_agreement_pct?: number;
+  symbol: string;
+  days_back?: number;
+}
+
+export interface CompositeStrategyDryRunResponse {
+  success: boolean;
+  symbol: string;
+  test_period_days: number;
+  total_return: number | null;
+  win_rate: number | null;
+  total_trades: number | null;
+  max_drawdown: number | null;
+  sharpe_ratio: number | null;
+  profit_factor: number | null;
+  component_signals?: Array<Record<string, unknown>>;
+  error_message: string | null;
+}
+
 // ============== DSL Strategy Types ==============
 
 export interface DSLEntryRule {

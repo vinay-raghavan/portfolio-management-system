@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, Target, BarChart3, OctagonX, CircleArrowOutUpRight, Loader2, ChevronDown, ChevronRight, Layers, GitMerge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -243,6 +243,19 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
   const openPositions = positions?.filter((p) => p.status === 'OPEN' || p.status === 'PARTIAL') ?? [];
   const closedPositions = positions?.filter((p) => p.status === 'CLOSED').slice(0, 5) ?? [];
 
+  // Extract composite strategy component info from strategy_config
+  const isCompositeStrategy = strategy.strategy_type === 'composite';
+  const compositeComponents = isCompositeStrategy && strategy.strategy_config?.components
+    ? (strategy.strategy_config.components as Array<{
+        strategy: string;
+        weight?: number;
+        required?: boolean;
+      }>)
+    : [];
+  const combineLogic = isCompositeStrategy
+    ? (strategy.strategy_config?.combine_logic as string || 'AND')
+    : '';
+
   return (
     <div className="bg-muted/30 p-4 space-y-4">
       {/* Description */}
@@ -390,6 +403,50 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
           </div>
         </div>
       </div>
+
+      {/* Composite Strategy Component Metrics */}
+      {isCompositeStrategy && compositeComponents.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            Component Strategies
+          </h4>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <GitMerge className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Combine Logic:</span>
+              <Badge variant="secondary">{combineLogic}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {compositeComponents.map((comp, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <span className="font-medium text-sm capitalize">{comp.strategy}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    {combineLogic === 'WEIGHTED' && comp.weight && (
+                      <span>Weight: {comp.weight}</span>
+                    )}
+                    {comp.required && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Required</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {combineLogic === 'AND' && 'All component strategies must agree for a signal to be generated.'}
+              {combineLogic === 'OR' && 'Any single component can trigger a signal.'}
+              {combineLogic === 'MAJORITY' && 'A majority of components must agree for a signal.'}
+              {combineLogic === 'WEIGHTED' && 'Signals are weighted by their assigned weights.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Positions and Executions Tabs */}
       <Tabs defaultValue="positions" className="w-full">

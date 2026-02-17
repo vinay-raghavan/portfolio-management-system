@@ -1,5 +1,6 @@
 """Composite strategy for combining multiple indicators with configurable logic."""
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -10,6 +11,8 @@ import pandas as pd
 from shared.models.signals import SignalData, SignalType
 from shared.strategies.base import BaseStrategy
 from shared.strategies.registry import StrategyRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class CombineLogic(str, Enum):
@@ -128,6 +131,8 @@ class CompositeStrategy(BaseStrategy):
             SignalType.HOLD: [],
         }
         all_indicators: dict[str, Any] = {}
+        # Track component signals for logging and indicators
+        component_signal_breakdown: list[dict[str, Any]] = []
 
         for component, signals in component_signals:
             if signals:
@@ -137,6 +142,32 @@ class CompositeStrategy(BaseStrategy):
                     prefix = component.strategy_name
                     for key, value in signal.indicators.items():
                         all_indicators[f"{prefix}_{key}"] = value
+                # Log individual component signal
+                component_info = {
+                    "strategy": component.strategy_name,
+                    "signal_type": signal.signal_type.value,
+                    "strength": float(signal.strength),
+                    "confidence": float(signal.confidence),
+                    "weight": component.weight,
+                    "required": component.required,
+                }
+                component_signal_breakdown.append(component_info)
+                logger.info(
+                    "Composite component signal | strategy=%s symbol=%s type=%s strength=%.2f confidence=%.2f weight=%.1f",
+                    component.strategy_name,
+                    symbol,
+                    signal.signal_type.value,
+                    float(signal.strength),
+                    float(signal.confidence),
+                    component.weight,
+                )
+            else:
+                # Log when a component produces no signal
+                logger.debug(
+                    "Composite component no signal | strategy=%s symbol=%s",
+                    component.strategy_name,
+                    symbol,
+                )
 
         current_price = self._to_decimal(df["Close"].iloc[-1])
         if current_price is None:
@@ -154,6 +185,33 @@ class CompositeStrategy(BaseStrategy):
         final_signal_type, strength, confidence, notes = self._determine_signal(
             signals_by_type, len(component_signals)
         )
+
+        # Log signal agreement summary
+        buy_count = len(signals_by_type[SignalType.BUY])
+        sell_count = len(signals_by_type[SignalType.SELL])
+        hold_count = len(signals_by_type[SignalType.HOLD])
+        total = len(component_signals)
+        logger.info(
+            "Composite signal decision | symbol=%s combine_logic=%s final=%s buy=%d sell=%d hold=%d total=%d notes=%s",
+            symbol,
+            self.combine_logic.value,
+            final_signal_type.value,
+            buy_count,
+            sell_count,
+            hold_count,
+            total,
+            notes,
+        )
+
+        # Add component breakdown to indicators for execution tracking
+        all_indicators["_component_signals"] = component_signal_breakdown
+        all_indicators["_signal_agreement"] = {
+            "buy_count": buy_count,
+            "sell_count": sell_count,
+            "hold_count": hold_count,
+            "total_components": total,
+            "combine_logic": self.combine_logic.value,
+        }
 
         if final_signal_type in (SignalType.BUY, SignalType.SELL):
             stop_loss = self.calculate_stop_loss(

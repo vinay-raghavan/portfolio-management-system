@@ -1,6 +1,7 @@
 """API routes for algo trading."""
 
 import logging
+from datetime import UTC
 from decimal import Decimal
 from typing import Annotated
 
@@ -18,6 +19,8 @@ from app.modules.algo.schemas import (
     ClosePositionRequest,
     ClosePositionResponse,
     CompositeStrategyCreate,
+    CompositeStrategyDryRunRequest,
+    CompositeStrategyDryRunResponse,
     CompositeStrategyResponse,
     DSLStrategyCreate,
     DSLStrategyResponse,
@@ -238,6 +241,83 @@ async def create_composite_strategy(
         combine_logic=data.combine_logic,
         message=f"Composite strategy '{data.name}' created successfully",
     )
+
+
+@router.post(
+    "/strategies/composite/dry-run",
+    response_model=CompositeStrategyDryRunResponse,
+)
+async def dry_run_composite_strategy(
+    db: DbSession,
+    current_user: CurrentUser,
+    data: CompositeStrategyDryRunRequest,
+) -> CompositeStrategyDryRunResponse:
+    """Test a composite strategy configuration without saving.
+
+    Runs a quick backtest on recent historical data to validate
+    the strategy configuration and show expected performance.
+    Does not persist any data.
+    """
+    from datetime import datetime, timedelta
+
+    from shared.strategies.composite import CompositeStrategyFactory
+
+    # Validate component strategies exist
+    for comp in data.components:
+        if not StrategyRegistry.has_strategy(comp.strategy):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown component strategy: {comp.strategy}",
+            )
+
+    try:
+        # Create temporary composite strategy (not registered)
+        components = [comp.model_dump() for comp in data.components]
+        temp_strategy = CompositeStrategyFactory.create(
+            name="__dry_run_temp__",
+            description="Temporary strategy for dry run",
+            components=components,
+            combine_logic=data.combine_logic,
+            min_agreement_pct=data.min_agreement_pct,
+        )
+
+        # Run a quick backtest using the backtest service
+        from app.modules.backtest.service import BacktestService
+
+        backtest_service = BacktestService(db)
+
+        end_date = datetime.now(UTC)
+        start_date = end_date - timedelta(days=data.days_back)
+
+        # Directly run backtest without saving to DB
+        result = await backtest_service.run_dry_backtest(
+            symbol=data.symbol,
+            strategy=temp_strategy,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return CompositeStrategyDryRunResponse(
+            success=True,
+            symbol=data.symbol,
+            test_period_days=data.days_back,
+            total_return=result.get("total_return"),
+            win_rate=result.get("win_rate"),
+            total_trades=result.get("total_trades"),
+            max_drawdown=result.get("max_drawdown"),
+            sharpe_ratio=result.get("sharpe_ratio"),
+            profit_factor=result.get("profit_factor"),
+            component_signals=result.get("component_signals"),
+        )
+
+    except Exception as e:
+        logger.error(f"Composite strategy dry run failed: {e}")
+        return CompositeStrategyDryRunResponse(
+            success=False,
+            symbol=data.symbol,
+            test_period_days=data.days_back,
+            error_message=str(e),
+        )
 
 
 @router.post(
