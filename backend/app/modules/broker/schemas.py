@@ -51,6 +51,9 @@ class BrokerCredentialStatus(BaseModel):
     client_id: str | None = None  # Masked
     last_used_at: datetime | None = None
     token_expires_at: datetime | None = None
+    # Live token validation status (only populated when health check is performed)
+    token_valid: bool | None = None
+    token_status_message: str | None = None
 
 
 class BrokerAuthUrlResponse(BaseModel):
@@ -89,3 +92,12 @@ class BrokerListResponse(BaseModel):
     """Schema for listing all broker integrations."""
 
     brokers: list[BrokerCredentialStatus]
+
+
+class BrokerHealthResponse(BaseModel):
+    """Schema for broker health check response."""
+
+    broker_type: str
+    token_valid: bool
+    message: str
+    last_checked_at: datetime

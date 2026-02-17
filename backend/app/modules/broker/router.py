@@ -1,6 +1,7 @@
 """Broker integration API routes."""
 
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -13,6 +14,7 @@ from app.modules.broker.schemas import (
     BrokerCredentialResponse,
     BrokerCredentialStatus,
     BrokerDisconnectResponse,
+    BrokerHealthResponse,
     BrokerListResponse,
     BrokerType,
 )
@@ -154,6 +156,26 @@ async def disconnect_broker(
 # ============================================================================
 # Fyers-specific OAuth endpoints
 # ============================================================================
+
+
+@router.get("/fyers/health", response_model=BrokerHealthResponse)
+async def check_fyers_health(
+    db: DbSession, current_user: CurrentUser
+) -> BrokerHealthResponse:
+    """Check if Fyers access token is valid.
+
+    Performs a live API call to verify the token is working.
+    Use this to check if the user needs to re-authenticate.
+    """
+    service = BrokerService(db)
+    token_valid, message = await service.check_fyers_token_health(current_user.id)
+
+    return BrokerHealthResponse(
+        broker_type=BrokerType.FYERS.value,
+        token_valid=token_valid,
+        message=message,
+        last_checked_at=datetime.now(UTC),
+    )
 
 
 @router.get("/fyers/auth-url", response_model=BrokerAuthUrlResponse)

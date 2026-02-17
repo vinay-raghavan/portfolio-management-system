@@ -393,6 +393,8 @@ import type {
   ClosePositionRequest,
   ClosePositionResponse,
   CompositeStrategyCreate,
+  CompositeStrategyDryRunRequest,
+  CompositeStrategyDryRunResponse,
   CompositeStrategyResponse,
   DSLStrategyCreate,
   DSLStrategyResponse,
@@ -534,6 +536,16 @@ export interface BrokerCredentialStatus {
   client_id?: string | null;
   last_used_at?: string | null;
   token_expires_at?: string | null;
+  // Live token validation status
+  token_valid?: boolean | null;
+  token_status_message?: string | null;
+}
+
+export interface BrokerHealthResponse {
+  broker_type: string;
+  token_valid: boolean;
+  message: string;
+  last_checked_at: string;
 }
 
 export interface BrokerListResponse {
@@ -611,6 +623,10 @@ export const brokersApi = {
 
   fyersCallback: (data: BrokerCallbackRequest) =>
     api.post<BrokerCallbackResponse>('/brokers/fyers/callback', data),
+
+  // Check Fyers token health
+  checkFyersHealth: () =>
+    api.get<BrokerHealthResponse>('/brokers/fyers/health'),
 };
 
 // User Settings Types
