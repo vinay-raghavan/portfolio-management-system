@@ -47,6 +47,7 @@ import { formatPercent, safeToFixed, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart';
 import { BrandedSpinner, SkeletonTable, ProgressIndicator } from '@/components/shared';
+import { BacktestComparison } from '@/components/backtest';
 
 export default function BacktestPage() {
   const { format: formatPrice } = useCurrency();
@@ -391,6 +392,9 @@ export default function BacktestPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Backtest Comparison */}
+      <BacktestComparison className="mt-6" />
     </div>
   );
 }
