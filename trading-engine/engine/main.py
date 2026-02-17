@@ -22,6 +22,64 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def load_user_composite_strategies(db) -> int:
+    """Load user-created composite strategies from database and register them.
+
+    User-created composite strategies are stored in the database with their
+    configuration. This function loads them and registers them with the
+    StrategyRegistry so they can be executed.
+
+    Returns:
+        Number of composite strategies loaded
+    """
+    from shared.strategies.composite import CompositeStrategyFactory
+    from shared.strategies.registry import StrategyRegistry
+    from sqlalchemy import select
+
+    from engine.models.algo import UserStrategy
+
+    # Find all strategies with names starting with "composite_"
+    result = await db.execute(
+        select(UserStrategy).where(UserStrategy.strategy_name.like("composite_%"))
+    )
+    composite_strategies = result.scalars().all()
+
+    loaded = 0
+    for strategy in composite_strategies:
+        strategy_name = strategy.strategy_name
+        params = strategy.strategy_params or {}
+
+        # Skip if already registered (e.g., prebuilt strategies)
+        if StrategyRegistry.has_strategy(strategy_name):
+            continue
+
+        # Extract components and combine logic from params
+        components = params.get("components", [])
+        combine_logic = params.get("combine_logic", "AND")
+        min_agreement_pct = params.get("min_agreement_pct", 0.5)
+
+        if not components:
+            logger.warning(f"Skipping composite strategy '{strategy_name}' - no components defined")
+            continue
+
+        try:
+            # Create and register the composite strategy
+            composite = CompositeStrategyFactory.create(
+                name=strategy_name,
+                description=strategy.description or f"User composite strategy: {strategy.name}",
+                components=components,
+                combine_logic=combine_logic,
+                min_agreement_pct=min_agreement_pct,
+            )
+            CompositeStrategyFactory.register(composite)
+            loaded += 1
+            logger.info(f"Registered user composite strategy: {strategy_name}")
+        except Exception as e:
+            logger.warning(f"Failed to register composite strategy '{strategy_name}': {e}")
+
+    return loaded
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -30,6 +88,16 @@ async def lifespan(app: FastAPI):
     # Register prebuilt composite strategies (e.g., rsi_macd_confluence, etc.)
     prebuilt = register_all_prebuilt_strategies()
     logger.info(f"Registered {len(prebuilt)} prebuilt composite strategies")
+
+    # Load user-created composite strategies from database
+    try:
+        from engine.core.database import get_db_context
+
+        async with get_db_context() as db:
+            user_composites = await load_user_composite_strategies(db)
+            logger.info(f"Registered {user_composites} user composite strategies from database")
+    except Exception as e:
+        logger.warning(f"Failed to load user composite strategies on startup: {e}")
 
     # Load circuit breaker states from DB to Redis on startup
     try:
