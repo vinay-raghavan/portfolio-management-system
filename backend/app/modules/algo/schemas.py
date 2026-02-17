@@ -840,3 +840,66 @@ class StrategyTypeDetailResponse(BaseModel):
     parameters: list[StrategyParameterSchema] = Field(
         default_factory=list, description="Parameter schemas"
     )
+
+
+# ============== Composite Strategy Schemas ==============
+
+
+class CompositeStrategyComponent(BaseModel):
+    """A component strategy within a composite strategy."""
+
+    strategy: str = Field(..., min_length=1, description="Strategy type name (e.g., 'rsi', 'macd')")
+    params: dict | None = Field(default=None, description="Custom parameters for this strategy")
+    weight: float = Field(default=1.0, ge=0.0, le=10.0, description="Weight for WEIGHTED logic")
+    required: bool = Field(default=False, description="Must agree in AND/MAJORITY logic")
+
+
+class CompositeStrategyCreate(BaseModel):
+    """Request to create a composite strategy."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="User-friendly name")
+    description: str | None = Field(default=None, description="Strategy description")
+    components: list[CompositeStrategyComponent] = Field(
+        ..., min_length=2, max_length=5, description="2-5 component strategies to combine"
+    )
+    combine_logic: str = Field(
+        default="AND",
+        pattern="^(AND|OR|MAJORITY|WEIGHTED)$",
+        description="Logic for combining signals: AND, OR, MAJORITY, or WEIGHTED",
+    )
+    min_agreement_pct: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="Minimum agreement for MAJORITY logic"
+    )
+    # Execution settings (same as regular strategy)
+    universe_id: str | None = None
+    symbols: list[str] | None = None
+    schedule_type: ScheduleType = ScheduleType.MARKET_OPEN
+    interval_seconds: int | None = None
+    cron_expression: str | None = None
+    position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
+    position_size_value: Decimal = Decimal("5.00")
+    max_position_value: Decimal | None = None
+    max_daily_loss: Decimal = Decimal("5000.00")
+    max_consecutive_losses: int = 3
+    # Profit cutoff settings
+    max_daily_profit: Decimal | None = None
+    overall_profit_target: Decimal | None = None
+    profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
+    is_paper_trading: bool = True
+    product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default trailing stop and profit booking settings
+    default_trailing_stop_enabled: bool = False
+    default_trailing_stop_pct: Decimal | None = None
+    default_profit_booking_rules: ProfitBookingRules | None = None
+
+
+class CompositeStrategyResponse(BaseModel):
+    """Response for a created composite strategy."""
+
+    id: str
+    name: str
+    description: str | None
+    strategy_type: str  # Will be "composite_<name>"
+    components: list[CompositeStrategyComponent]
+    combine_logic: str
+    message: str

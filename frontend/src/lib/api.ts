@@ -392,6 +392,8 @@ import type {
   CircuitBreakerStatus,
   ClosePositionRequest,
   ClosePositionResponse,
+  CompositeStrategyCreate,
+  CompositeStrategyResponse,
   StrategyExecution,
   Universe,
   UniverseCreate,
@@ -416,6 +418,8 @@ export const algoApi = {
     api.get<AlgoStrategy>(`/algo/strategies/${id}`),
   createStrategy: (data: AlgoStrategyCreate) =>
     api.post<AlgoStrategy>('/algo/strategies', data),
+  createCompositeStrategy: (data: CompositeStrategyCreate) =>
+    api.post<CompositeStrategyResponse>('/algo/strategies/composite', data),
   updateStrategy: (id: string, data: AlgoStrategyUpdate) =>
     api.patch<AlgoStrategy>(`/algo/strategies/${id}`, data),
   deleteStrategy: (id: string) =>

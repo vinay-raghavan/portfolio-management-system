@@ -241,11 +241,34 @@ class AlgoService:
 
         # Validate strategy parameters if being updated
         if data.strategy_config is not None:
-            is_valid, errors = StrategyRegistry.validate_params(
-                strategy.strategy_name, data.strategy_config
-            )
-            if not is_valid:
-                raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
+            # Check if this is a composite strategy config (has components key)
+            if "components" in data.strategy_config:
+                # Composite strategy config - validate component structure
+                components = data.strategy_config.get("components", [])
+                if not isinstance(components, list) or len(components) < 2:
+                    raise ValueError("Composite strategy requires at least 2 components")
+                # Validate each component has a strategy name
+                for i, comp in enumerate(components):
+                    if not isinstance(comp, dict) or not comp.get("strategy"):
+                        raise ValueError(f"Component {i + 1} must have a strategy name")
+                    # Optionally validate component strategy params if provided
+                    comp_strategy = comp.get("strategy")
+                    comp_params = comp.get("params", {})
+                    if comp_params and StrategyRegistry.has_strategy(comp_strategy):
+                        is_valid, errors = StrategyRegistry.validate_params(
+                            comp_strategy, comp_params
+                        )
+                        if not is_valid:
+                            raise ValueError(
+                                f"Invalid parameters for component '{comp_strategy}': {'; '.join(errors)}"
+                            )
+            else:
+                # Regular strategy parameter validation
+                is_valid, errors = StrategyRegistry.validate_params(
+                    strategy.strategy_name, data.strategy_config
+                )
+                if not is_valid:
+                    raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
 
         update_data = data.model_dump(exclude_unset=True)
 
@@ -1104,3 +1127,94 @@ class AlgoService:
             closed_positions=closed_responses,
             message=f"Successfully closed {len(closed_responses)} positions",
         )
+
+    async def create_composite_strategy(
+        self,
+        user_id: str,
+        name: str,
+        description: str | None,
+        components: list[dict],
+        combine_logic: str,
+        min_agreement_pct: float,
+        strategy_config: dict,
+    ) -> UserStrategy:
+        """Create and register a composite strategy.
+
+        Args:
+            user_id: User creating the strategy
+            name: User-friendly name for the composite strategy
+            description: Optional description
+            components: List of component strategy configs
+            combine_logic: AND, OR, MAJORITY, or WEIGHTED
+            min_agreement_pct: Minimum agreement for MAJORITY logic
+            strategy_config: Full strategy configuration for execution settings
+
+        Returns:
+            Created UserStrategy record
+        """
+        from shared.strategies.composite import CompositeStrategyFactory
+        from shared.strategies.registry import StrategyRegistry
+
+        # Validate component strategies exist
+        for comp in components:
+            if not StrategyRegistry.has_strategy(comp["strategy"]):
+                raise ValueError(f"Unknown component strategy: {comp['strategy']}")
+
+        # Create the composite strategy and register it
+        composite_name = f"composite_{name.lower().replace(' ', '_')}"
+
+        # Create composite strategy instance
+        composite = CompositeStrategyFactory.create(
+            name=composite_name,
+            description=description or f"Composite strategy: {name}",
+            components=components,
+            combine_logic=combine_logic,
+            min_agreement_pct=min_agreement_pct,
+        )
+
+        # Register it with the strategy registry for runtime use
+        CompositeStrategyFactory.register(composite)
+
+        logger.info(f"Registered composite strategy: {composite_name}")
+
+        # Store the strategy configuration including components
+        strategy_params = {
+            "type": "composite",
+            "components": components,
+            "combine_logic": combine_logic,
+            "min_agreement_pct": min_agreement_pct,
+        }
+
+        # Create the UserStrategy record
+        strategy = UserStrategy(
+            user_id=user_id,
+            name=name,
+            description=description,
+            strategy_name=composite_name,
+            strategy_params=strategy_params,
+            universe_id=strategy_config.get("universe_id"),
+            custom_symbols=strategy_config.get("symbols"),
+            schedule_type=strategy_config.get("schedule_type", "market_open"),
+            interval_seconds=strategy_config.get("interval_seconds"),
+            cron_expression=strategy_config.get("cron_expression"),
+            position_sizing_method=strategy_config.get(
+                "position_sizing_method", "percent_of_portfolio"
+            ),
+            portfolio_percent=Decimal(str(strategy_config.get("position_size_value", "5.00"))),
+            max_position_value=(
+                Decimal(str(strategy_config["max_position_value"]))
+                if strategy_config.get("max_position_value")
+                else None
+            ),
+            max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
+            is_paper_trading=strategy_config.get("is_paper_trading", True),
+            product_type=strategy_config.get("product_type", "delivery"),
+        )
+
+        self.db.add(strategy)
+        await self.db.flush()
+
+        logger.info(f"Created composite strategy '{name}' (id={strategy.id}) for user {user_id}")
+
+        return strategy

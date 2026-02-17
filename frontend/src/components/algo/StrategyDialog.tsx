@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign } from 'lucide-react';
+import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign, Layers, Settings2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -24,9 +24,20 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { algoApi, signalsApi } from '@/lib/api';
 import { StrategyParameterForm } from './StrategyParameterForm';
-import type { AlgoStrategy, AlgoStrategyCreate, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule, StrategyProductType } from '@/types';
+import { ComponentParameterForm } from './ComponentParameterForm';
+import type { AlgoStrategy, AlgoStrategyCreate, CompositeStrategyCreate, CompositeStrategyComponent, CombineLogic, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule, StrategyProductType } from '@/types';
+
+type StrategyMode = 'single' | 'composite';
+
+const combineLogicOptions: { value: CombineLogic; label: string; description: string }[] = [
+  { value: 'AND', label: 'AND (All Agree)', description: 'All strategies must signal the same direction' },
+  { value: 'OR', label: 'OR (Any)', description: 'Any strategy signal triggers action' },
+  { value: 'MAJORITY', label: 'Majority Vote', description: 'More than half must agree' },
+  { value: 'WEIGHTED', label: 'Weighted', description: 'Weighted combination of signals' },
+];
 
 interface StrategyDialogProps {
   open: boolean;
@@ -67,10 +78,12 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const queryClient = useQueryClient();
   const isEditing = !!strategy;
 
-  // Form state
+  // Strategy mode (single vs composite)
+  const [strategyMode, setStrategyMode] = useState<StrategyMode>('single');
+
+  // Form state - common fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [strategyType, setStrategyType] = useState('');
   const [universeId, setUniverseId] = useState<string>('');
   const [symbols, setSymbols] = useState('');
   const [scheduleType, setScheduleType] = useState<ScheduleType>('INTERVAL');
@@ -98,9 +111,20 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     { target_pct: 10, quantity_pct: 25 },
     { target_pct: 15, quantity_pct: 50 },
   ]);
-  // Strategy parameter customization state
+
+  // Single strategy specific state
+  const [strategyType, setStrategyType] = useState('');
   const [strategyParams, setStrategyParams] = useState<Record<string, unknown>>({});
   const [paramsExpanded, setParamsExpanded] = useState(false);
+
+  // Composite strategy specific state
+  const [combineLogic, setCombineLogic] = useState<CombineLogic>('AND');
+  const [minAgreementPct, setMinAgreementPct] = useState('0.5');
+  const [components, setComponents] = useState<CompositeStrategyComponent[]>([
+    { strategy: '', weight: 1.0, required: false, params: {} },
+    { strategy: '', weight: 1.0, required: false, params: {} },
+  ]);
+  const [expandedParams, setExpandedParams] = useState<number | null>(null);
 
   // Fetch available strategies and universes
   const { data: availableStrategies } = useQuery({
@@ -150,11 +174,47 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           { target_pct: 15, quantity_pct: 50 },
         ]);
       }
-      // Strategy parameter customization
-      setStrategyParams(strategy.strategy_config || {});
-      setParamsExpanded(Object.keys(strategy.strategy_config || {}).length > 0);
+
+      // Check if this is a composite strategy (has components in strategy_config)
+      const config = strategy.strategy_config || {};
+      const isComposite = Array.isArray(config.components) && config.components.length > 0;
+
+      if (isComposite) {
+        setStrategyMode('composite');
+        setCombineLogic((config.combine_logic as CombineLogic) || 'AND');
+        setMinAgreementPct(String(config.min_agreement_pct ?? 0.5));
+        // Map components from strategy_config
+        const mappedComponents = (config.components as CompositeStrategyComponent[]).map((c) => ({
+          strategy: c.strategy || '',
+          weight: c.weight ?? 1.0,
+          required: c.required ?? false,
+          params: c.params || {},
+        }));
+        setComponents(mappedComponents.length >= 2 ? mappedComponents : [
+          ...mappedComponents,
+          ...Array(2 - mappedComponents.length).fill({ strategy: '', weight: 1.0, required: false, params: {} }),
+        ]);
+        setExpandedParams(null);
+        // For composite, we don't use strategyParams (individual params are in components)
+        setStrategyParams({});
+        setParamsExpanded(false);
+      } else {
+        setStrategyMode('single');
+        // Strategy parameter customization for single strategies
+        setStrategyParams(config);
+        setParamsExpanded(Object.keys(config).length > 0);
+        // Reset composite fields
+        setCombineLogic('AND');
+        setMinAgreementPct('0.5');
+        setComponents([
+          { strategy: '', weight: 1.0, required: false, params: {} },
+          { strategy: '', weight: 1.0, required: false, params: {} },
+        ]);
+        setExpandedParams(null);
+      }
     } else {
       // Reset to defaults
+      setStrategyMode('single');
       setName('');
       setDescription('');
       setStrategyType('');
@@ -187,8 +247,50 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       // Strategy parameter customization reset
       setStrategyParams({});
       setParamsExpanded(false);
+      // Composite strategy reset
+      setCombineLogic('AND');
+      setMinAgreementPct('0.5');
+      setComponents([
+        { strategy: '', weight: 1.0, required: false, params: {} },
+        { strategy: '', weight: 1.0, required: false, params: {} },
+      ]);
+      setExpandedParams(null);
     }
   }, [strategy, open]);
+
+  // Get base strategies (non-composite) for composite component selection
+  const baseStrategies = availableStrategies?.strategies?.filter(
+    (s) => !s.parameters?.components
+  ) || [];
+
+  // Composite component helpers
+  const addComponent = () => {
+    if (components.length < 5) {
+      setComponents([...components, { strategy: '', weight: 1.0, required: false, params: {} }]);
+    }
+  };
+
+  const removeComponent = (index: number) => {
+    if (components.length > 2) {
+      setComponents(components.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateComponent = (index: number, field: keyof CompositeStrategyComponent, value: unknown) => {
+    setComponents(prev => {
+      const newComponents = [...prev];
+      newComponents[index] = { ...newComponents[index], [field]: value };
+      return newComponents;
+    });
+  };
+
+  const updateComponentWithReset = (index: number, strategyValue: string) => {
+    setComponents(prev => {
+      const newComponents = [...prev];
+      newComponents[index] = { ...newComponents[index], strategy: strategyValue, params: {} };
+      return newComponents;
+    });
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: AlgoStrategyCreate) => algoApi.createStrategy(data),
@@ -198,6 +300,17 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     },
     onError: (error) => {
       console.error('Failed to create strategy:', error);
+    },
+  });
+
+  const createCompositeMutation = useMutation({
+    mutationFn: (data: CompositeStrategyCreate) => algoApi.createCompositeStrategy(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      console.error('Failed to create composite strategy:', error);
     },
   });
 
@@ -213,12 +326,10 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   });
 
   const handleSubmit = () => {
-    const data: AlgoStrategyCreate = {
+    // Common fields for both strategy types
+    const commonFields = {
       name,
       description: description || undefined,
-      strategy_type: strategyType,
-      // Strategy parameter customization (only include if user customized params)
-      strategy_config: Object.keys(strategyParams).length > 0 ? strategyParams : undefined,
       universe_id: universeId || undefined,
       symbols: symbols ? symbols.split(',').map((s) => s.trim().toUpperCase()) : undefined,
       schedule_type: scheduleType,
@@ -229,14 +340,11 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       max_position_value: parseFloat(maxPositionValue),
       max_daily_loss: parseFloat(maxDailyLoss),
       max_consecutive_losses: parseInt(maxConsecutiveLosses),
-      // Profit cutoff fields
       max_daily_profit: maxDailyProfit ? parseFloat(maxDailyProfit) : undefined,
       overall_profit_target: overallProfitTarget ? parseFloat(overallProfitTarget) : undefined,
       profit_cutoff_action: profitCutoffAction,
       is_paper_trading: isPaperTrading,
-      // Product type for orders
       product_type: productType,
-      // Strategy-level default trailing stop and profit booking
       default_trailing_stop_enabled: defaultTrailingStopEnabled,
       default_trailing_stop_pct: defaultTrailingStopEnabled ? parseFloat(defaultTrailingStopPct) / 100 : undefined,
       default_profit_booking_rules: defaultProfitBookingEnabled
@@ -248,10 +356,50 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
         : undefined,
     };
 
-    if (isEditing) {
-      updateMutation.mutate(data);
+    if (strategyMode === 'composite') {
+      // Validate components
+      const validComponents = components.filter(c => c.strategy);
+      if (validComponents.length < 2) {
+        console.error('At least 2 strategies are required for a composite');
+        return;
+      }
+
+      if (isEditing) {
+        // For editing composite strategies, update via the regular update endpoint
+        // with strategy_config containing the composite configuration
+        const updateData: AlgoStrategyCreate = {
+          ...commonFields,
+          strategy_type: strategy!.strategy_type, // Keep the original strategy_type
+          strategy_config: {
+            components: validComponents,
+            combine_logic: combineLogic,
+            min_agreement_pct: combineLogic === 'MAJORITY' ? parseFloat(minAgreementPct) : 0.5,
+          },
+        };
+        updateMutation.mutate(updateData);
+      } else {
+        // Create new composite strategy
+        const compositeData: CompositeStrategyCreate = {
+          ...commonFields,
+          components: validComponents,
+          combine_logic: combineLogic,
+          min_agreement_pct: combineLogic === 'MAJORITY' ? parseFloat(minAgreementPct) : undefined,
+        };
+        createCompositeMutation.mutate(compositeData);
+      }
     } else {
-      createMutation.mutate(data);
+      // Single strategy
+      const data: AlgoStrategyCreate = {
+        ...commonFields,
+        strategy_type: strategyType,
+        strategy_config: Object.keys(strategyParams).length > 0 ? strategyParams : undefined,
+      };
+
+      if (isEditing) {
+        updateMutation.mutate(data);
+      } else {
+        createMutation.mutate(data);
+      }
     }
   };
 
@@ -288,7 +436,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     }
   };
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending || createCompositeMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -326,87 +474,267 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe your strategy..."
-                rows={3}
+                rows={2}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="strategyType">Strategy Type</Label>
-              <Select value={strategyType} onValueChange={setStrategyType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a strategy" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {/* Group combined/composite strategies */}
-                  {availableStrategies?.strategies?.some((s) => s.parameters?.components) && (
-                    <>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                        Combined Strategies ⭐
-                      </div>
-                      {availableStrategies?.strategies
-                        ?.filter((s) => s.parameters?.components)
-                        .map((s) => (
-                          <SelectItem key={s.name} value={s.name}>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                                combo
-                              </span>
-                              <span>{s.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </>
-                  )}
-                  {/* Group intraday strategies */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
-                    Intraday Strategies (5m)
-                  </div>
-                  {availableStrategies?.strategies
-                    ?.filter((s) => s.default_timeframe === '5m' && !s.parameters?.components)
-                    .map((s) => (
-                      <SelectItem key={s.name} value={s.name}>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            5m
-                          </span>
-                          <span>{s.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  {/* Group swing/daily strategies */}
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
-                    Swing/Position Strategies (1d)
-                  </div>
-                  {availableStrategies?.strategies
-                    ?.filter((s) => (s.default_timeframe === '1d' || !s.default_timeframe) && !s.parameters?.components)
-                    .map((s) => (
-                      <SelectItem key={s.name} value={s.name}>
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                            1d
-                          </span>
-                          <span>{s.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {strategyType && (
+            {/* Strategy Mode Toggle - only show when creating new strategy */}
+            {!isEditing && (
+              <div className="space-y-2">
+                <Label>Strategy Mode</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={strategyMode === 'single' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStrategyMode('single')}
+                    className="flex-1"
+                  >
+                    Single Strategy
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={strategyMode === 'composite' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setStrategyMode('composite')}
+                    className="flex-1"
+                  >
+                    <Layers className="h-4 w-4 mr-1" />
+                    Composite Strategy
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  {availableStrategies?.strategies?.find((s) => s.name === strategyType)?.description}
+                  {strategyMode === 'single'
+                    ? 'Use a single trading strategy'
+                    : 'Combine 2-5 strategies with custom logic (AND/OR/MAJORITY/WEIGHTED)'}
                 </p>
-              )}
-              {/* Strategy Parameter Customization - appears when strategy is selected */}
-              {strategyType && (
-                <StrategyParameterForm
-                  strategyType={strategyType}
-                  params={strategyParams}
-                  onChange={setStrategyParams}
-                  isOpen={paramsExpanded}
-                  onOpenChange={setParamsExpanded}
-                />
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Single Strategy Selection */}
+            {strategyMode === 'single' && (
+              <div className="space-y-2">
+                <Label htmlFor="strategyType">Strategy Type</Label>
+                <Select value={strategyType} onValueChange={setStrategyType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a strategy" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {/* Group combined/composite strategies */}
+                    {availableStrategies?.strategies?.some((s) => s.parameters?.components) && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          Combined Strategies ⭐
+                        </div>
+                        {availableStrategies?.strategies
+                          ?.filter((s) => s.parameters?.components)
+                          .map((s) => (
+                            <SelectItem key={s.name} value={s.name}>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                                  combo
+                                </span>
+                                <span>{s.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                      </>
+                    )}
+                    {/* Group intraday strategies */}
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                      Intraday Strategies (5m)
+                    </div>
+                    {availableStrategies?.strategies
+                      ?.filter((s) => s.default_timeframe === '5m' && !s.parameters?.components)
+                      .map((s) => (
+                        <SelectItem key={s.name} value={s.name}>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              5m
+                            </span>
+                            <span>{s.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    {/* Group swing/daily strategies */}
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                      Swing/Position Strategies (1d)
+                    </div>
+                    {availableStrategies?.strategies
+                      ?.filter((s) => (s.default_timeframe === '1d' || !s.default_timeframe) && !s.parameters?.components)
+                      .map((s) => (
+                        <SelectItem key={s.name} value={s.name}>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                              1d
+                            </span>
+                            <span>{s.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {strategyType && (
+                  <p className="text-xs text-muted-foreground">
+                    {availableStrategies?.strategies?.find((s) => s.name === strategyType)?.description}
+                  </p>
+                )}
+                {strategyType && (
+                  <StrategyParameterForm
+                    strategyType={strategyType}
+                    params={strategyParams}
+                    onChange={setStrategyParams}
+                    isOpen={paramsExpanded}
+                    onOpenChange={setParamsExpanded}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Composite Strategy Configuration */}
+            {strategyMode === 'composite' && (
+              <div className="space-y-4 border rounded-lg p-3 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-purple-500" />
+                    <span className="text-sm font-medium">Composite Strategy Settings</span>
+                  </div>
+                  {isEditing && (
+                    <Badge variant="secondary" className="text-xs">
+                      {strategy?.strategy_type}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Combine Logic */}
+                <div className="space-y-2">
+                  <Label>Combine Logic</Label>
+                  <Select value={combineLogic} onValueChange={(v) => setCombineLogic(v as CombineLogic)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {combineLogicOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          <div className="flex flex-col">
+                            <span>{opt.label}</span>
+                            <span className="text-xs text-muted-foreground">{opt.description}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {combineLogic === 'MAJORITY' && (
+                  <div className="space-y-2">
+                    <Label>Minimum Agreement %</Label>
+                    <Input
+                      type="number"
+                      min="0.1"
+                      max="1"
+                      step="0.1"
+                      value={minAgreementPct}
+                      onChange={(e) => setMinAgreementPct(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      0.5 = majority (more than half must agree)
+                    </p>
+                  </div>
+                )}
+
+                {/* Component Strategies */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Component Strategies ({components.length}/5)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addComponent}
+                      disabled={components.length >= 5}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {components.map((comp, index) => {
+                      const isExpanded = expandedParams === index;
+                      const hasCustomParams = comp.params && Object.keys(comp.params).length > 0;
+
+                      return (
+                        <div key={index} className="rounded-lg border bg-background">
+                          <div className="flex items-center gap-2 p-2">
+                            <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0 shrink-0">
+                              {index + 1}
+                            </Badge>
+                            <Select
+                              value={comp.strategy}
+                              onValueChange={(value) => updateComponentWithReset(index, value)}
+                            >
+                              <SelectTrigger className="flex-1 h-8">
+                                <SelectValue placeholder="Select strategy" />
+                              </SelectTrigger>
+                              <SelectContent position="popper" sideOffset={4} className="z-[100]">
+                                {baseStrategies.map((s) => (
+                                  <SelectItem key={s.name} value={s.name}>
+                                    {s.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {combineLogic === 'WEIGHTED' && (
+                              <Input
+                                type="number"
+                                min="0.1"
+                                max="10"
+                                step="0.1"
+                                value={comp.weight}
+                                onChange={(e) => updateComponent(index, 'weight', parseFloat(e.target.value))}
+                                className="w-16 h-8"
+                                placeholder="Wt"
+                              />
+                            )}
+                            {comp.strategy && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className={`h-8 w-8 p-0 ${hasCustomParams ? 'text-blue-500' : ''}`}
+                                onClick={() => setExpandedParams(isExpanded ? null : index)}
+                              >
+                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeComponent(index)}
+                              disabled={components.length <= 2}
+                              className="h-8 w-8 p-0 text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {isExpanded && comp.strategy && (
+                            <div className="px-3 pb-3 border-t bg-muted/30">
+                              <ComponentParameterForm
+                                strategyType={comp.strategy}
+                                params={comp.params || {}}
+                                onChange={(newParams) => updateComponent(index, 'params', newParams)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center space-x-2">
               <Switch
@@ -786,7 +1114,14 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isPending || !name || !strategyType}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              isPending ||
+              !name ||
+              (strategyMode === 'single' ? !strategyType : components.filter(c => c.strategy).length < 2)
+            }
+          >
             {isPending ? 'Saving...' : isEditing ? 'Update Strategy' : 'Create Strategy'}
           </Button>
         </DialogFooter>

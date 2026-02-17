@@ -972,6 +972,55 @@ export interface SquareOffStrategyResponse {
   message: string;
 }
 
+// ============== Composite Strategy Types ==============
+
+export type CombineLogic = 'AND' | 'OR' | 'MAJORITY' | 'WEIGHTED';
+
+export interface CompositeStrategyComponent {
+  strategy: string;
+  params?: Record<string, unknown>;
+  weight?: number;
+  required?: boolean;
+}
+
+export interface CompositeStrategyCreate {
+  name: string;
+  description?: string;
+  components: CompositeStrategyComponent[];
+  combine_logic: CombineLogic;
+  min_agreement_pct?: number;
+  universe_id?: string;
+  symbols?: string[];
+  schedule_type?: ScheduleType;
+  interval_seconds?: number;
+  cron_expression?: string;
+  position_sizing_method?: PositionSizingMethod;
+  position_size_value?: number;
+  max_position_value?: number;
+  max_daily_loss?: number;
+  max_consecutive_losses?: number;
+  // Profit cutoff settings
+  max_daily_profit?: number;
+  overall_profit_target?: number;
+  profit_cutoff_action?: ProfitCutoffAction;
+  is_paper_trading?: boolean;
+  product_type?: StrategyProductType;
+  // Strategy-level default trailing stop and profit booking settings
+  default_trailing_stop_enabled?: boolean;
+  default_trailing_stop_pct?: number;
+  default_profit_booking_rules?: ProfitBookingRules;
+}
+
+export interface CompositeStrategyResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  strategy_type: string;
+  components: CompositeStrategyComponent[];
+  combine_logic: string;
+  message: string;
+}
+
 // ============== Research Types ==============
 
 export interface IndexPerformance {

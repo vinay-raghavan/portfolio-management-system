@@ -406,3 +406,93 @@ class TestStrategyRegistry:
         is_valid, errors = StrategyRegistry.validate_params("nonexistent_strategy", {"param": 1})
         assert is_valid is False
         assert "not found" in errors[0]
+
+
+class TestCompositeStrategy:
+    """Tests for composite strategy functionality."""
+
+    def test_composite_strategy_create(self):
+        """Test creating a composite strategy via factory."""
+        from shared.strategies.composite import CombineLogic, CompositeStrategyFactory
+
+        components = [
+            {"strategy": "rsi", "params": {"rsi_period": 14}, "weight": 1.0},
+            {"strategy": "macd", "params": {}, "weight": 1.0},
+        ]
+
+        composite = CompositeStrategyFactory.create(
+            name="test_composite",
+            description="Test composite strategy",
+            components=components,
+            combine_logic="AND",
+        )
+
+        assert composite.name == "test_composite"
+        assert len(composite.components) == 2
+        assert composite.combine_logic == CombineLogic.AND
+
+    def test_composite_strategy_weighted(self):
+        """Test creating a weighted composite strategy."""
+        from shared.strategies.composite import CombineLogic, CompositeStrategyFactory
+
+        components = [
+            {"strategy": "rsi", "weight": 2.0},
+            {"strategy": "macd", "weight": 1.5},
+            {"strategy": "bollinger_squeeze", "weight": 1.0},
+        ]
+
+        composite = CompositeStrategyFactory.create(
+            name="weighted_test",
+            description="Weighted test",
+            components=components,
+            combine_logic="WEIGHTED",
+        )
+
+        assert composite.combine_logic == CombineLogic.WEIGHTED
+        assert composite.components[0].weight == 2.0
+        assert composite.components[1].weight == 1.5
+
+    def test_composite_strategy_register(self):
+        """Test registering a composite strategy."""
+        from shared.strategies.composite import CompositeStrategyFactory
+        from shared.strategies.registry import StrategyRegistry
+
+        components = [
+            {"strategy": "rsi"},
+            {"strategy": "macd"},
+        ]
+
+        composite = CompositeStrategyFactory.create(
+            name="registered_test",
+            description="Test registered composite",
+            components=components,
+            combine_logic="OR",
+        )
+
+        CompositeStrategyFactory.register(composite)
+
+        # Verify it's registered
+        assert StrategyRegistry.has_strategy("registered_test")
+
+    def test_composite_strategy_get_parameters(self):
+        """Test getting parameters from composite strategy."""
+        from shared.strategies.composite import CompositeStrategyFactory
+
+        components = [
+            {"strategy": "rsi", "params": {"rsi_period": 21}},
+            {"strategy": "macd"},
+        ]
+
+        composite = CompositeStrategyFactory.create(
+            name="params_test",
+            description="Test params",
+            components=components,
+            combine_logic="MAJORITY",
+            min_agreement_pct=0.6,
+        )
+
+        params = composite.get_parameters()
+        assert params["name"] == "params_test"
+        assert params["combine_logic"] == "MAJORITY"
+        assert params["min_agreement_pct"] == 0.6
+        assert len(params["components"]) == 2

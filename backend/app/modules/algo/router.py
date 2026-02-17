@@ -17,6 +17,8 @@ from app.modules.algo.schemas import (
     CircuitBreakerStatus,
     ClosePositionRequest,
     ClosePositionResponse,
+    CompositeStrategyCreate,
+    CompositeStrategyResponse,
     ExecutionHistoryResponse,
     KillSwitchResponse,
     KillSwitchToggle,
@@ -146,6 +148,94 @@ async def create_strategy(
         raise HTTPException(status_code=400, detail=str(e)) from e
     await db.commit()
     return StrategyResponse.from_model(strategy, executions=[])
+
+
+@router.post(
+    "/strategies/composite",
+    response_model=CompositeStrategyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_composite_strategy(
+    db: DbSession,
+    current_user: CurrentUser,
+    data: CompositeStrategyCreate,
+) -> CompositeStrategyResponse:
+    """Create a composite strategy that combines multiple strategies.
+
+    Allows combining 2-5 strategies with configurable logic:
+    - AND: All strategies must agree on signal
+    - OR: Any strategy signal triggers action
+    - MAJORITY: More than half must agree
+    - WEIGHTED: Weighted combination of signals
+
+    The composite strategy is registered at runtime and can be used
+    like any other strategy.
+    """
+    service = AlgoService(db)
+
+    # Convert Pydantic models to dicts
+    components = [comp.model_dump() for comp in data.components]
+
+    # Build strategy config from request
+    strategy_config = {
+        "universe_id": data.universe_id,
+        "symbols": data.symbols,
+        "schedule_type": data.schedule_type.value if data.schedule_type else "market_open",
+        "interval_seconds": data.interval_seconds,
+        "cron_expression": data.cron_expression,
+        "position_sizing_method": (
+            data.position_sizing_method.value
+            if data.position_sizing_method
+            else "percent_of_portfolio"
+        ),
+        "position_size_value": data.position_size_value,
+        "max_position_value": data.max_position_value,
+        "max_daily_loss": data.max_daily_loss,
+        "max_consecutive_losses": data.max_consecutive_losses,
+        "is_paper_trading": data.is_paper_trading,
+        "product_type": data.product_type.value if data.product_type else "delivery",
+        # Profit cutoff settings
+        "max_daily_profit": float(data.max_daily_profit) if data.max_daily_profit else None,
+        "overall_profit_target": float(data.overall_profit_target)
+        if data.overall_profit_target
+        else None,
+        "profit_cutoff_action": data.profit_cutoff_action.value
+        if data.profit_cutoff_action
+        else None,
+        # Trailing stop and profit booking settings
+        "default_trailing_stop_enabled": data.default_trailing_stop_enabled,
+        "default_trailing_stop_pct": float(data.default_trailing_stop_pct)
+        if data.default_trailing_stop_pct
+        else None,
+        "default_profit_booking_rules": data.default_profit_booking_rules.model_dump()
+        if data.default_profit_booking_rules
+        else None,
+    }
+
+    try:
+        strategy = await service.create_composite_strategy(
+            user_id=current_user.id,
+            name=data.name,
+            description=data.description,
+            components=components,
+            combine_logic=data.combine_logic,
+            min_agreement_pct=data.min_agreement_pct,
+            strategy_config=strategy_config,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    await db.commit()
+
+    return CompositeStrategyResponse(
+        id=strategy.id,
+        name=strategy.name,
+        description=strategy.description,
+        strategy_type=strategy.strategy_name,
+        components=data.components,
+        combine_logic=data.combine_logic,
+        message=f"Composite strategy '{data.name}' created successfully",
+    )
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyResponse)

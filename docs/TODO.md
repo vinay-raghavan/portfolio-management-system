@@ -2437,7 +2437,7 @@ Better strategy evaluation through comparison.
 
 ---
 
-### 1.13 Strategy Parameter Customization
+### 1.13 Strategy Parameter Customization ✅
 > 🌿 **Branch:** `phase-1/strategy-params`
 
 **Goal**: Allow users to customize parameters of prebuilt strategies instead of using only default values.
@@ -2448,10 +2448,10 @@ Better strategy evaluation through comparison.
 
 #### 1.13.1 Strategy Parameter Schema Endpoints
 **Tasks:**
-- [ ] Create `GET /api/v1/algo/strategy-types` endpoint
+- [x] Create `GET /api/v1/algo/strategy-types` endpoint
   - List all registered strategies with name, description, default timeframe
   - Include parameter schemas for each strategy
-- [ ] Create `GET /api/v1/algo/strategy-types/{name}/parameters` endpoint
+- [x] Create `GET /api/v1/algo/strategy-types/{name}/parameters` endpoint
   - Return detailed parameter schema with types, defaults, min/max bounds
   ```python
   class StrategyParameterSchema(BaseModel):
@@ -2463,35 +2463,35 @@ Better strategy evaluation through comparison.
       options: list | None    # For select type
       description: str        # "RSI calculation period"
   ```
-- [ ] Add parameter validation in strategy creation/update endpoints
+- [x] Add parameter validation in strategy creation/update endpoints
   - Validate parameter types and bounds
   - Return clear error messages for invalid parameters
 
 #### 1.13.2 Frontend Strategy Parameter Form
 **Tasks:**
-- [ ] Create `StrategyParameterForm` component
+- [x] Create `StrategyParameterForm` component
   - Dynamic form based on parameter schema
   - Appropriate input types (number, slider, checkbox, select)
   - Show defaults and valid ranges
   - Real-time validation feedback
-- [ ] Integrate into strategy creation dialog
+- [x] Integrate into strategy creation dialog
   - Show parameters when strategy type is selected
   - Allow customization before saving
-- [ ] Integrate into strategy edit dialog
+- [x] Integrate into strategy edit dialog
   - Load existing parameters
   - Allow modification
-- [ ] Add "Reset to Defaults" button
+- [x] Add "Reset to Defaults" button
 
 #### 1.13.3 Backend Parameter Storage
 **Tasks:**
 - [x] `UserStrategy.strategy_params` JSON field already exists
-- [ ] Store user-customized parameters when strategy is created/updated
-- [ ] Pass `strategy_params` to `StrategyRegistry.get_strategy()` at execution time
-- [ ] Validate parameters match expected schema before execution
+- [x] Store user-customized parameters when strategy is created/updated
+- [x] Pass `strategy_params` to `StrategyRegistry.get_strategy()` at execution time
+- [x] Validate parameters match expected schema before execution
 
 ---
 
-### 1.14 Composite Strategy Builder
+### 1.14 Composite Strategy Builder ✅
 > 🌿 **Branch:** `phase-1/composite-builder`
 
 **Goal**: Allow users to combine 2-5 prebuilt strategies with configurable logic (AND/OR/MAJORITY/WEIGHTED) without writing code.
@@ -2502,7 +2502,7 @@ Better strategy evaluation through comparison.
 
 #### 1.14.1 Composite Strategy API
 **Tasks:**
-- [ ] Create `POST /api/v1/algo/strategies/composite` endpoint
+- [x] Create `POST /api/v1/algo/strategies/composite` endpoint
   - Accept list of component strategies with parameters
   - Accept combining logic (AND/OR/MAJORITY/WEIGHTED)
   - Accept per-strategy weights (for WEIGHTED logic)
@@ -2521,19 +2521,19 @@ Better strategy evaluation through comparison.
       required: bool = False           # Must agree for AND logic
       custom_params: dict | None       # Per-component parameters
   ```
-- [ ] Store composite config in `UserStrategy.strategy_params` with `type: "composite"`
-- [ ] Runtime composite strategy creation via `CompositeStrategyFactory`
+- [x] Store composite config in `UserStrategy.strategy_params` with `type: "composite"`
+- [x] Runtime composite strategy creation via `CompositeStrategyFactory`
 
 #### 1.14.2 Frontend Composite Builder UI
 **Tasks:**
-- [ ] Create `CompositeStrategyBuilder` component
+- [x] Create `CompositeStrategyBuilder` component (merged into StrategyDialog)
   - Multi-select for choosing component strategies (2-5)
   - Per-component parameter customization (reuse `StrategyParameterForm`)
   - Per-component weight slider
   - Combining logic selector (AND/OR/MAJORITY/WEIGHTED)
   - Visual preview of logic flow
-- [ ] Add "Composite Strategy" tab/option in strategy creation dialog
-- [ ] Visual representation of combined strategy
+- [x] Add "Composite Strategy" tab/option in strategy creation dialog
+- [ ] Visual representation of combined strategy (deferred - nice to have)
   ```
   ┌─────────────────────────────────────────────────────┐
   │ My RSI + MACD Strategy                              │
@@ -2548,16 +2548,16 @@ Better strategy evaluation through comparison.
   │               Final Signal                          │
   └─────────────────────────────────────────────────────┘
   ```
-- [ ] Show combined parameter summary
-- [ ] Strategy testing (dry run) before saving
+- [x] Show combined parameter summary
+- [ ] Strategy testing (dry run) before saving (deferred - nice to have)
 
 #### 1.14.3 Composite Strategy Execution
 **Tasks:**
-- [ ] Detect `type: "composite"` in `strategy_params` at execution time
-- [ ] Build composite strategy via `CompositeStrategyFactory.create()`
-- [ ] Register temporarily in `StrategyRegistry` for execution
-- [ ] Track individual component signals in execution logs
-- [ ] Show per-component performance metrics in strategy dashboard
+- [x] Detect `type: "composite"` in `strategy_params` at execution time
+- [x] Build composite strategy via `CompositeStrategyFactory.create()`
+- [x] Register temporarily in `StrategyRegistry` for execution
+- [ ] Track individual component signals in execution logs (deferred - nice to have)
+- [ ] Show per-component performance metrics in strategy dashboard (deferred - nice to have)
 
 ---
 

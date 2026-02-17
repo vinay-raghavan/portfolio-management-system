@@ -435,10 +435,12 @@ export default function AlgoTradingPage() {
               <CardTitle>Strategies</CardTitle>
               <CardDescription>Manage your automated trading strategies</CardDescription>
             </div>
-            <Button className="gap-2" onClick={() => { setEditingStrategy(null); setDialogOpen(true); }}>
-              <Plus className="h-4 w-4" />
-              New Strategy
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button className="gap-2" onClick={() => { setEditingStrategy(null); setDialogOpen(true); }}>
+                <Plus className="h-4 w-4" />
+                New Strategy
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
