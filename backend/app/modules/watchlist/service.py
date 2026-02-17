@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.watchlist.models import Watchlist, WatchlistItem
-from app.modules.watchlist.schemas import WatchlistCreate, WatchlistItemCreate, WatchlistUpdate
+from app.modules.watchlist.schemas import (
+    ReorderItemRequest,
+    WatchlistCreate,
+    WatchlistItemCreate,
+    WatchlistUpdate,
+)
 
 
 class WatchlistService:
@@ -20,7 +25,7 @@ class WatchlistService:
             select(Watchlist)
             .where(Watchlist.user_id == user_id)
             .options(selectinload(Watchlist.items))
-            .order_by(Watchlist.created_at.desc())
+            .order_by(Watchlist.sort_order, Watchlist.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -108,3 +113,39 @@ class WatchlistService:
                 return True
 
         return False
+
+    async def reorder_watchlists(
+        self, user_id: str, items: list[ReorderItemRequest]
+    ) -> list[Watchlist]:
+        """Reorder watchlists for a user."""
+        # Get all watchlists for the user
+        watchlists = await self.get_watchlists(user_id)
+        watchlist_map = {w.id: w for w in watchlists}
+
+        # Update sort_order for each watchlist
+        for item in items:
+            if item.id in watchlist_map:
+                watchlist_map[item.id].sort_order = item.sort_order
+
+        await self.db.flush()
+        # Return updated list
+        return await self.get_watchlists(user_id)
+
+    async def reorder_items(
+        self, user_id: str, watchlist_id: str, items: list[ReorderItemRequest]
+    ) -> Watchlist | None:
+        """Reorder items within a watchlist."""
+        watchlist = await self.get_watchlist(user_id, watchlist_id)
+        if watchlist is None:
+            return None
+
+        item_map = {i.id: i for i in watchlist.items}
+
+        # Update sort_order for each item
+        for item in items:
+            if item.id in item_map:
+                item_map[item.id].sort_order = item.sort_order
+
+        await self.db.flush()
+        await self.db.refresh(watchlist)
+        return watchlist

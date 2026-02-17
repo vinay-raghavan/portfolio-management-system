@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Star } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Plus, Trash2, Star, GripVertical } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +26,60 @@ import type { Watchlist } from '@/types';
 interface WatchlistListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
+}
+
+interface SortableWatchlistItemProps {
+  watchlist: Watchlist;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function SortableWatchlistItem({ watchlist, selectedId, onSelect, onDelete }: SortableWatchlistItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: watchlist.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors',
+        selectedId === watchlist.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+      )}
+      onClick={() => onSelect(watchlist.id)}
+    >
+      <div className="flex items-center gap-2">
+        <button
+          className={cn('cursor-grab touch-none', selectedId === watchlist.id ? 'text-primary-foreground/70' : 'text-muted-foreground')}
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div>
+          <div className="font-medium text-sm">{watchlist.name}</div>
+          <div className={cn('text-xs', selectedId === watchlist.id ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+            {watchlist.items_count} symbols
+          </div>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn('h-8 w-8 p-0', selectedId === watchlist.id && 'hover:bg-primary-foreground/10')}
+        onClick={(e) => { e.stopPropagation(); onDelete(watchlist.id); }}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
 }
 
 export function WatchlistList({ selectedId, onSelect }: WatchlistListProps) {
@@ -62,7 +119,34 @@ export function WatchlistList({ selectedId, onSelect }: WatchlistListProps) {
     },
   });
 
+  const reorderMutation = useMutation({
+    mutationFn: (items: { id: string; sort_order: number }[]) => watchlistApi.reorderWatchlists(items),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchlists'] });
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { detail?: string } } };
+      addNotification({ type: 'error', title: 'Error', message: err.response?.data?.detail || 'Failed to reorder watchlists' });
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   const watchlists = data?.watchlists ?? [];
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = watchlists.findIndex((w) => w.id === active.id);
+      const newIndex = watchlists.findIndex((w) => w.id === over.id);
+      const reordered = arrayMove(watchlists, oldIndex, newIndex);
+      const items = reordered.map((w, index) => ({ id: w.id, sort_order: index }));
+      reorderMutation.mutate(items);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -129,33 +213,21 @@ export function WatchlistList({ selectedId, onSelect }: WatchlistListProps) {
             No watchlists yet. Create one to get started.
           </p>
         ) : (
-          <div className="space-y-1">
-            {watchlists.map((watchlist: Watchlist) => (
-              <div
-                key={watchlist.id}
-                className={cn(
-                  'flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors',
-                  selectedId === watchlist.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                )}
-                onClick={() => onSelect(watchlist.id)}
-              >
-                <div>
-                  <div className="font-medium text-sm">{watchlist.name}</div>
-                  <div className={cn('text-xs', selectedId === watchlist.id ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                    {watchlist.items_count} symbols
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn('h-8 w-8 p-0', selectedId === watchlist.id && 'hover:bg-primary-foreground/10')}
-                  onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(watchlist.id); }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={watchlists.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-1">
+                {watchlists.map((watchlist: Watchlist) => (
+                  <SortableWatchlistItem
+                    key={watchlist.id}
+                    watchlist={watchlist}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                    onDelete={(id) => deleteMutation.mutate(id)}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </CardContent>
     </Card>

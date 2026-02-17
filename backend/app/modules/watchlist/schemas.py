@@ -19,6 +19,7 @@ class WatchlistItemResponse(BaseModel):
     id: str
     symbol: str
     notes: str | None
+    sort_order: int = 0
     added_at: datetime
     # Enriched with market data
     current_price: Decimal | None = None
@@ -48,6 +49,7 @@ class WatchlistResponse(BaseModel):
     id: str
     name: str
     description: str | None
+    sort_order: int = 0
     created_at: datetime
     updated_at: datetime
     items: list[WatchlistItemResponse] = []
@@ -60,3 +62,22 @@ class WatchlistListResponse(BaseModel):
     """Schema for list of watchlists."""
 
     watchlists: list[WatchlistResponse]
+
+
+class ReorderItemRequest(BaseModel):
+    """Schema for reorder request item."""
+
+    id: str
+    sort_order: int
+
+
+class ReorderWatchlistsRequest(BaseModel):
+    """Schema for reordering watchlists."""
+
+    items: list[ReorderItemRequest]
+
+
+class ReorderWatchlistItemsRequest(BaseModel):
+    """Schema for reordering items within a watchlist."""
+
+    items: list[ReorderItemRequest]

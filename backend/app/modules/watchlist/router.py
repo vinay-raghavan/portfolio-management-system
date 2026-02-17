@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.watchlist.schemas import (
+    ReorderWatchlistItemsRequest,
+    ReorderWatchlistsRequest,
     WatchlistCreate,
     WatchlistItemCreate,
     WatchlistItemResponse,
@@ -28,6 +30,7 @@ async def get_watchlists(db: DbSession, current_user: CurrentUser) -> WatchlistL
                 id=w.id,
                 name=w.name,
                 description=w.description,
+                sort_order=w.sort_order,
                 created_at=w.created_at,
                 updated_at=w.updated_at,
                 items=[WatchlistItemResponse.model_validate(i) for i in w.items],
@@ -50,6 +53,7 @@ async def create_watchlist(
         id=watchlist.id,
         name=watchlist.name,
         description=watchlist.description,
+        sort_order=watchlist.sort_order,
         created_at=watchlist.created_at,
         updated_at=watchlist.updated_at,
         items=[],
@@ -75,6 +79,7 @@ async def get_watchlist(
         id=watchlist.id,
         name=watchlist.name,
         description=watchlist.description,
+        sort_order=watchlist.sort_order,
         created_at=watchlist.created_at,
         updated_at=watchlist.updated_at,
         items=[WatchlistItemResponse.model_validate(i) for i in watchlist.items],
@@ -100,6 +105,7 @@ async def update_watchlist(
         id=watchlist.id,
         name=watchlist.name,
         description=watchlist.description,
+        sort_order=watchlist.sort_order,
         created_at=watchlist.created_at,
         updated_at=watchlist.updated_at,
         items=[WatchlistItemResponse.model_validate(i) for i in watchlist.items],
@@ -154,3 +160,57 @@ async def remove_watchlist_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Item not found in watchlist",
         )
+
+
+@router.put("/reorder", response_model=WatchlistListResponse)
+async def reorder_watchlists(
+    data: ReorderWatchlistsRequest, db: DbSession, current_user: CurrentUser
+) -> WatchlistListResponse:
+    """Reorder watchlists for the current user."""
+    service = WatchlistService(db)
+    watchlists = await service.reorder_watchlists(current_user.id, data.items)
+
+    return WatchlistListResponse(
+        watchlists=[
+            WatchlistResponse(
+                id=w.id,
+                name=w.name,
+                description=w.description,
+                sort_order=w.sort_order,
+                created_at=w.created_at,
+                updated_at=w.updated_at,
+                items=[WatchlistItemResponse.model_validate(i) for i in w.items],
+                items_count=len(w.items),
+            )
+            for w in watchlists
+        ]
+    )
+
+
+@router.put("/{watchlist_id}/items/reorder", response_model=WatchlistResponse)
+async def reorder_watchlist_items(
+    watchlist_id: str,
+    data: ReorderWatchlistItemsRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> WatchlistResponse:
+    """Reorder items within a watchlist."""
+    service = WatchlistService(db)
+    watchlist = await service.reorder_items(current_user.id, watchlist_id, data.items)
+
+    if watchlist is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Watchlist not found",
+        )
+
+    return WatchlistResponse(
+        id=watchlist.id,
+        name=watchlist.name,
+        description=watchlist.description,
+        sort_order=watchlist.sort_order,
+        created_at=watchlist.created_at,
+        updated_at=watchlist.updated_at,
+        items=[WatchlistItemResponse.model_validate(i) for i in watchlist.items],
+        items_count=len(watchlist.items),
+    )
