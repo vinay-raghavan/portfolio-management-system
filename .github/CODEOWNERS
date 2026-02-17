@@ -1,0 +1,19 @@
+# Code Owners for Portfolio Management System
+# These owners will be requested for review when someone opens a pull request
+
+# Default owners for everything in the repo
+* @vinay-raghavan
+
+# Backend
+/backend/ @vinay-raghavan
+/shared/ @vinay-raghavan
+/trading-engine/ @vinay-raghavan
+/worker/ @vinay-raghavan
+
+# Frontend
+/frontend/ @vinay-raghavan
+
+# Infrastructure
+/docker-compose.yml @vinay-raghavan
+/.github/ @vinay-raghavan
+
