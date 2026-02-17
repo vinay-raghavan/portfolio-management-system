@@ -33,6 +33,12 @@ from shared.strategies.dsl.schemas import (
     DSLRules,
     DSLStrategyDefinition,
 )
+from shared.strategies.dsl.validator import (
+    DSLValidator,
+    ValidationError,
+    ValidationResult,
+    validate_dsl_strategy,
+)
 
 __all__ = [
     # Operators
@@ -52,6 +58,11 @@ __all__ = [
     "DSLParser",
     "NodeType",
     "parse_condition",
+    # Validator
+    "DSLValidator",
+    "ValidationError",
+    "ValidationResult",
+    "validate_dsl_strategy",
     # Schemas
     "DSLAction",
     "DSLCondition",
