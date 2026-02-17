@@ -17,6 +17,7 @@ import {
   type MouseEventParams,
 } from 'lightweight-charts';
 import { useDrawingStore, type Drawing, type DrawingPoint } from '@/store';
+import { useChartTheme } from '@/hooks';
 
 interface ChartData {
   time: string | number; // string for daily "YYYY-MM-DD", number for Unix timestamp (seconds)
@@ -39,7 +40,6 @@ interface CandlestickChartProps {
   indicators?: Indicator[];
   showVolume?: boolean;
   height?: number;
-  theme?: 'light' | 'dark';
   symbol?: string;
   enableDrawing?: boolean;
 }
@@ -49,7 +49,6 @@ export function CandlestickChart({
   indicators = [],
   showVolume = true,
   height = 400,
-  theme = 'dark',
   symbol = '',
   enableDrawing = false,
 }: CandlestickChartProps) {
@@ -73,31 +72,32 @@ export function CandlestickChart({
     clearCurrentDrawing,
   } = useDrawingStore();
 
-  const isDark = theme === 'dark';
+  // Get theme-aware chart colors
+  const { colors, isDark } = useChartTheme();
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create chart
+    // Create chart with theme-aware colors
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: isDark ? '#1a1a2e' : '#ffffff' },
-        textColor: isDark ? '#d1d5db' : '#374151',
+        background: { type: ColorType.Solid, color: colors.background },
+        textColor: colors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#2d2d44' : '#e5e7eb' },
-        horzLines: { color: isDark ? '#2d2d44' : '#e5e7eb' },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
       },
       rightPriceScale: {
-        borderColor: isDark ? '#2d2d44' : '#e5e7eb',
+        borderColor: colors.border,
       },
       timeScale: {
-        borderColor: isDark ? '#2d2d44' : '#e5e7eb',
+        borderColor: colors.border,
         timeVisible: true,
         secondsVisible: false,
       },
@@ -105,21 +105,21 @@ export function CandlestickChart({
 
     chartRef.current = chart;
 
-    // Create candlestick series using v5 API
+    // Create candlestick series with theme-aware colors
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: colors.profit,
+      downColor: colors.loss,
+      borderUpColor: colors.profit,
+      borderDownColor: colors.loss,
+      wickUpColor: colors.profit,
+      wickDownColor: colors.loss,
     });
     candleSeriesRef.current = candleSeries;
 
-    // Create volume series
+    // Create volume series with theme-aware color
     if (showVolume) {
       const volumeSeries = chart.addSeries(HistogramSeries, {
-        color: '#6366f1',
+        color: colors.volume,
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
       });
@@ -142,9 +142,9 @@ export function CandlestickChart({
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [height, isDark, showVolume]);
+  }, [height, colors, showVolume]);
 
-  // Update data
+  // Update data with theme-aware volume colors
   useEffect(() => {
     if (!candleSeriesRef.current || data.length === 0) return;
 
@@ -162,14 +162,14 @@ export function CandlestickChart({
       const volumeData: HistogramData<Time>[] = data.map((d) => ({
         time: d.time as Time,
         value: d.volume,
-        color: d.close >= d.open ? '#22c55e50' : '#ef444450',
+        color: d.close >= d.open ? `${colors.profit}50` : `${colors.loss}50`,
       }));
       volumeSeriesRef.current.setData(volumeData);
     }
 
     // Fit content
     chartRef.current?.timeScale().fitContent();
-  }, [data]);
+  }, [data, colors.profit, colors.loss]);
 
   // Update indicators
   useEffect(() => {

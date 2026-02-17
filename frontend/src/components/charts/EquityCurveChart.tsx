@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useMemo } from 'react';
 import { createChart, IChartApi, ISeriesApi, Time, AreaSeries } from 'lightweight-charts';
-import { useTheme } from 'next-themes';
+import { useChartTheme } from '@/hooks';
 
 interface EquityPoint {
   date: string;
@@ -23,9 +23,9 @@ export function EquityCurveChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
-  const { theme } = useTheme();
 
-  const isDark = theme === 'dark';
+  // Get theme-aware chart colors
+  const { colors, isDark } = useChartTheme();
 
   const chartData = useMemo(() => {
     return data.map((point) => ({
@@ -42,17 +42,17 @@ export function EquityCurveChart({
       height,
       layout: {
         background: { color: 'transparent' },
-        textColor: isDark ? '#a1a1aa' : '#71717a',
+        textColor: colors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       rightPriceScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: colors.border,
       },
       timeScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: colors.border,
         timeVisible: true,
       },
       crosshair: {
@@ -67,9 +67,9 @@ export function EquityCurveChart({
     const isPositive = lastEquity >= initialCapital;
 
     const series = chart.addSeries(AreaSeries, {
-      lineColor: isPositive ? '#22c55e' : '#ef4444',
-      topColor: isPositive ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)',
-      bottomColor: isPositive ? 'rgba(34, 197, 94, 0.0)' : 'rgba(239, 68, 68, 0.0)',
+      lineColor: isPositive ? colors.profit : colors.loss,
+      topColor: isPositive ? colors.profitArea : colors.lossArea,
+      bottomColor: 'transparent',
       lineWidth: 2,
       priceFormat: {
         type: 'price',
@@ -105,7 +105,7 @@ export function EquityCurveChart({
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [chartData, height, isDark, initialCapital, data]);
+  }, [chartData, height, colors, isDark, initialCapital, data]);
 
   // Update chart colors when theme changes
   useEffect(() => {
@@ -114,20 +114,20 @@ export function EquityCurveChart({
     chartRef.current.applyOptions({
       layout: {
         background: { color: 'transparent' },
-        textColor: isDark ? '#a1a1aa' : '#71717a',
+        textColor: colors.text,
       },
       grid: {
-        vertLines: { color: isDark ? '#27272a' : '#e4e4e7' },
-        horzLines: { color: isDark ? '#27272a' : '#e4e4e7' },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       rightPriceScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: colors.border,
       },
       timeScale: {
-        borderColor: isDark ? '#27272a' : '#e4e4e7',
+        borderColor: colors.border,
       },
     });
-  }, [isDark]);
+  }, [colors]);
 
   return (
     <div className="w-full">

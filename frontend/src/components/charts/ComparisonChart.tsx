@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { marketDataApi } from '@/lib/api';
 import { useUIStore, type ComparisonGroup } from '@/store';
+import { useChartTheme } from '@/hooks';
 import { cn } from '@/lib/utils';
 
 // Symbol colors for comparison
@@ -72,6 +73,9 @@ export function ComparisonChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesMapRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+
+  // Get theme-aware chart colors
+  const { colors } = useChartTheme();
 
   const [symbols, setSymbols] = useState<ComparisonSymbol[]>(() =>
     initialSymbols.slice(0, 8).map((s, i) => ({
@@ -170,17 +174,17 @@ export function ComparisonChart({
     setSymbols((prev) => prev.map((s) => (s.symbol === symbol ? { ...s, visible: !s.visible } : s)));
   }, []);
 
-  // Initialize chart (continued in next edit...)
+  // Initialize chart with theme-aware colors
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text },
+      grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#374151' },
-      timeScale: { borderColor: '#374151', timeVisible: true },
+      rightPriceScale: { borderColor: colors.border },
+      timeScale: { borderColor: colors.border, timeVisible: true },
     });
     chartRef.current = chart;
     const handleResize = () => {
@@ -188,7 +192,7 @@ export function ComparisonChart({
     };
     window.addEventListener('resize', handleResize);
     return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
-  }, [height]);
+  }, [height, colors]);
 
   // Update series data when queries change
   useEffect(() => {
