@@ -5,6 +5,18 @@ rule-based trading strategies using a YAML/JSON-based DSL without
 requiring full Python access.
 """
 
+from shared.strategies.dsl.operators import (
+    ALL_ARITHMETIC_OPS,
+    ALL_COMPARISON_OPS,
+    ALL_LOGICAL_OPS,
+    DSL_FUNCTIONS,
+    DSL_VARIABLES,
+    ArithmeticOperator,
+    ComparisonOperator,
+    DSLFunctionDef,
+    DSLFunctionParam,
+    LogicalOperator,
+)
 from shared.strategies.dsl.schemas import (
     DSLAction,
     DSLCondition,
@@ -16,6 +28,18 @@ from shared.strategies.dsl.schemas import (
 )
 
 __all__ = [
+    # Operators
+    "ArithmeticOperator",
+    "ComparisonOperator",
+    "LogicalOperator",
+    "DSLFunctionDef",
+    "DSLFunctionParam",
+    "DSL_FUNCTIONS",
+    "DSL_VARIABLES",
+    "ALL_COMPARISON_OPS",
+    "ALL_LOGICAL_OPS",
+    "ALL_ARITHMETIC_OPS",
+    # Schemas
     "DSLAction",
     "DSLCondition",
     "DSLEntryRule",
