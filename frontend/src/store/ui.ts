@@ -24,6 +24,20 @@ export type MarketIndex = typeof AVAILABLE_INDICES[number];
 // Default selected indices
 const DEFAULT_SELECTED_INDICES = ['^NSEI', '^NSEBANK', '^BSESN', '^NSMIDCP'];
 
+// Comparison groups for chart comparison feature
+export interface ComparisonGroup {
+  id: string;
+  name: string;
+  symbols: string[];
+  indexComparison?: string | null;
+}
+
+const DEFAULT_COMPARISON_GROUPS: ComparisonGroup[] = [
+  { id: 'banking', name: 'Banking', symbols: ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK'], indexComparison: 'NIFTYBANK' },
+  { id: 'it', name: 'IT Sector', symbols: ['TCS', 'INFY', 'WIPRO', 'HCLTECH'], indexComparison: 'NIFTY50' },
+  { id: 'auto', name: 'Auto', symbols: ['MARUTI', 'TATAMOTORS', 'M&M', 'BAJAJ-AUTO'], indexComparison: 'NIFTY50' },
+];
+
 interface UIState {
   // Selected symbol for charts and analysis
   selectedSymbol: string | null;
@@ -44,6 +58,9 @@ interface UIState {
   // Market indices preferences
   selectedMarketIndices: string[];
 
+  // Comparison groups for chart comparison
+  comparisonGroups: ComparisonGroup[];
+
   // Actions
   setSelectedSymbol: (symbol: string | null) => void;
   toggleSidebar: () => void;
@@ -54,6 +71,9 @@ interface UIState {
   toggleChartIndicator: (indicator: string) => void;
   toggleMarketIndex: (symbol: string) => void;
   setMarketIndices: (symbols: string[]) => void;
+  addComparisonGroup: (group: ComparisonGroup) => void;
+  updateComparisonGroup: (id: string, updates: Partial<ComparisonGroup>) => void;
+  deleteComparisonGroup: (id: string) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -66,6 +86,7 @@ export const useUIStore = create<UIState>()(
       chartInterval: '1d',
       chartIndicators: ['sma_20', 'sma_50'],
       selectedMarketIndices: DEFAULT_SELECTED_INDICES,
+      comparisonGroups: DEFAULT_COMPARISON_GROUPS,
 
       setSelectedSymbol: (symbol) => {
         set({ selectedSymbol: symbol });
@@ -112,6 +133,26 @@ export const useUIStore = create<UIState>()(
       setMarketIndices: (symbols) => {
         set({ selectedMarketIndices: symbols });
       },
+
+      addComparisonGroup: (group) => {
+        set((state) => ({
+          comparisonGroups: [...state.comparisonGroups, group],
+        }));
+      },
+
+      updateComparisonGroup: (id, updates) => {
+        set((state) => ({
+          comparisonGroups: state.comparisonGroups.map((g) =>
+            g.id === id ? { ...g, ...updates } : g
+          ),
+        }));
+      },
+
+      deleteComparisonGroup: (id) => {
+        set((state) => ({
+          comparisonGroups: state.comparisonGroups.filter((g) => g.id !== id),
+        }));
+      },
     }),
     {
       name: 'ui-storage',
@@ -122,6 +163,7 @@ export const useUIStore = create<UIState>()(
         chartInterval: state.chartInterval,
         chartIndicators: state.chartIndicators,
         selectedMarketIndices: state.selectedMarketIndices,
+        comparisonGroups: state.comparisonGroups,
       }),
     }
   )
