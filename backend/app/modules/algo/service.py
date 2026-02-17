@@ -1218,3 +1218,105 @@ class AlgoService:
         logger.info(f"Created composite strategy '{name}' (id={strategy.id}) for user {user_id}")
 
         return strategy
+
+    async def create_dsl_strategy(
+        self,
+        user_id: str,
+        name: str,
+        description: str | None,
+        definition: dict,
+        strategy_config: dict,
+    ) -> UserStrategy:
+        """Create and register a DSL-based custom strategy.
+
+        Args:
+            user_id: User creating the strategy
+            name: User-friendly name for the DSL strategy
+            description: Optional description
+            definition: DSL strategy definition with rules, indicators, etc.
+            strategy_config: Full strategy configuration for execution settings
+
+        Returns:
+            Created UserStrategy record
+        """
+        from shared.strategies.dsl import (
+            DSLStrategy,
+            DSLStrategyDefinition,
+            validate_dsl_strategy,
+        )
+        from shared.strategies.registry import StrategyRegistry
+
+        # Validate the DSL definition
+        try:
+            dsl_definition = DSLStrategyDefinition(**definition)
+            validation_result = validate_dsl_strategy(dsl_definition)
+            if not validation_result.valid:
+                error_msgs = [e.message for e in validation_result.errors]
+                raise ValueError(f"Invalid DSL definition: {'; '.join(error_msgs)}")
+        except Exception as e:
+            raise ValueError(f"Failed to parse DSL definition: {e}") from e
+
+        # Create a unique strategy name for registry
+        dsl_strategy_name = f"dsl_{name.lower().replace(' ', '_')}"
+
+        # Create and register the DSL strategy
+        dsl_strategy = DSLStrategy(dsl_definition)
+        dsl_strategy.name = dsl_strategy_name
+
+        # Register dynamically
+        StrategyRegistry._strategies[dsl_strategy_name] = type(
+            dsl_strategy_name,
+            (DSLStrategy,),
+            {"name": dsl_strategy_name, "_definition": dsl_definition},
+        )
+
+        logger.info(f"Registered DSL strategy: {dsl_strategy_name}")
+
+        # Store the DSL definition in strategy_params
+        strategy_params = {
+            "type": "dsl",
+            "definition": definition,
+        }
+
+        # Create the UserStrategy record
+        strategy = UserStrategy(
+            user_id=user_id,
+            name=name,
+            description=description,
+            strategy_name=dsl_strategy_name,
+            strategy_params=strategy_params,
+            universe_id=strategy_config.get("universe_id"),
+            custom_symbols=strategy_config.get("symbols"),
+            schedule_type=strategy_config.get("schedule_type", "market_open"),
+            interval_seconds=strategy_config.get("interval_seconds"),
+            cron_expression=strategy_config.get("cron_expression"),
+            position_sizing_method=strategy_config.get(
+                "position_sizing_method", "percent_of_portfolio"
+            ),
+            portfolio_percent=Decimal(str(strategy_config.get("position_size_value", "5.00"))),
+            max_position_value=(
+                Decimal(str(strategy_config["max_position_value"]))
+                if strategy_config.get("max_position_value")
+                else None
+            ),
+            max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
+            is_paper_trading=strategy_config.get("is_paper_trading", True),
+            product_type=strategy_config.get("product_type", "delivery"),
+            default_trailing_stop_enabled=strategy_config.get(
+                "default_trailing_stop_enabled", False
+            ),
+            default_trailing_stop_pct=(
+                Decimal(str(strategy_config["default_trailing_stop_pct"]))
+                if strategy_config.get("default_trailing_stop_pct")
+                else None
+            ),
+            default_profit_booking_rules=strategy_config.get("default_profit_booking_rules"),
+        )
+
+        self.db.add(strategy)
+        await self.db.flush()
+
+        logger.info(f"Created DSL strategy '{name}' (id={strategy.id}) for user {user_id}")
+
+        return strategy
