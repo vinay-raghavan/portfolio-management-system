@@ -114,9 +114,7 @@ class BrokerService:
         if credential:
             credential.last_used_at = datetime.now(UTC)
 
-    async def check_fyers_token_health(
-        self, user_id: str
-    ) -> tuple[bool, str]:
+    async def check_fyers_token_health(self, user_id: str) -> tuple[bool, str]:
         """Check if Fyers access token is still valid.
 
         Returns:

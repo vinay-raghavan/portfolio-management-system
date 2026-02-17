@@ -30,6 +30,18 @@ dependencies = [
     # Shared package
     "portfolio-shared",
     "cryptography>=46.0.5",
+    # Security: override transitive deps to fix vulnerabilities
+    # Note: aiohttp/requests cannot be upgraded due to fyers-apiv3 (via shared) pinning exact versions
+    "protobuf>=6.0.0",
+    "urllib3>=2.6.3",
+]
+
+[tool.uv]
+# Force override fyers-apiv3's pinned dependencies to fix security vulnerabilities
+override-dependencies = [
+    "aiohttp>=3.11.0",
+    "requests>=2.32.0",
+    "setuptools>=78.1.1",
 ]
 
 [tool.uv.sources]
