@@ -46,6 +46,7 @@ import { backtestApi, BacktestResult, BacktestListItem } from '@/lib/api';
 import { formatPercent, safeToFixed, cn } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart';
+import { BrandedSpinner, SkeletonTable, ProgressIndicator } from '@/components/shared';
 
 export default function BacktestPage() {
   const { format: formatPrice } = useCurrency();
@@ -310,9 +311,7 @@ export default function BacktestPage() {
         </CardHeader>
         <CardContent>
           {backtestsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
+            <SkeletonTable rows={3} columns={6} />
           ) : !backtests || backtests.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No backtests yet. Run your first backtest above.

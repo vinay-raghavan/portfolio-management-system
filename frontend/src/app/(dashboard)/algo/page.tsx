@@ -56,6 +56,7 @@ import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, DSLStrategyBuilder } from '@/components/algo';
 import { FundsSummary } from '@/components/dashboard';
+import { BrandedSpinner } from '@/components/shared';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
@@ -452,7 +453,7 @@ export default function AlgoTradingPage() {
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              <BrandedSpinner size="lg" label="Loading strategies..." />
             </div>
           ) : strategies?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">

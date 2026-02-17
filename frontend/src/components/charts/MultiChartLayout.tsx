@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CandlestickChart } from './CandlestickChart';
+import { BrandedSpinner } from '@/components/shared';
 import { marketDataApi } from '@/lib/api';
 import { calculateSMA, calculateEMA, calculateBollingerBands } from '@/lib/indicators';
 import { cn } from '@/lib/utils';
@@ -196,7 +197,7 @@ function ChartPanel({ panel, onUpdate, isMaximized, onToggleMaximize, height }: 
       <div className="p-2">
         {isLoading ? (
           <div className="flex items-center justify-center" style={{ height }}>
-            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+            <BrandedSpinner size="md" />
           </div>
         ) : chartData.length === 0 ? (
           <div className="flex items-center justify-center text-muted-foreground text-sm" style={{ height }}>
