@@ -2359,79 +2359,79 @@ Faster repeat orders for active traders.
   - Template button executes immediately
   - Optional confirmation
 
-#### 1.12.11 Branded Loading States
+#### 1.12.11 Branded Loading States ✅
 Visual polish for professional appearance.
 
 **Tasks:**
-- [ ] Create branded loading spinner
+- [x] Create branded loading spinner
   - App logo animation
   - Consistent with brand colors
-- [ ] Full-page loading state for initial load
-- [ ] Skeleton screens for all data-loading components
+- [x] Full-page loading state for initial load
+- [x] Skeleton screens for all data-loading components
   - Dashboard cards
   - Tables
   - Charts
-- [ ] Progress indicators for long operations
+- [x] Progress indicators for long operations
   - Backtest progress
   - Bulk operations
 
-#### 1.12.12 Drag-and-Drop Reordering
+#### 1.12.12 Drag-and-Drop Reordering ✅
 Customization for watchlists and portfolios.
 
 **Tasks:**
-- [ ] Watchlist symbol reordering
+- [x] Watchlist symbol reordering
   - Drag symbols to reorder
   - Persist order to backend
-- [ ] Watchlist list reordering
+- [x] Watchlist list reordering
   - Reorder watchlists in sidebar
 - [ ] Dashboard widget reordering (future)
   - Drag widgets to rearrange
   - Resize widgets
 
-#### 1.12.13 Chart Comparison & Overlay
+#### 1.12.13 Chart Comparison & Overlay ✅
 Enhanced technical analysis capabilities.
 
 **Tasks:**
-- [ ] Symbol comparison overlay
+- [x] Symbol comparison overlay
   - Add multiple symbols to same chart
   - Normalized/percentage view
   - Toggle symbols on/off
-- [ ] Index comparison
+- [x] Index comparison
   - Compare stock to Nifty 50
   - Relative strength display
-- [ ] Custom comparison groups
+- [x] Custom comparison groups
   - Save groups of symbols
   - Quick switch between comparisons
 
-#### 1.12.14 Theme-Aware Charts
+#### 1.12.14 Theme-Aware Charts ✅
 Visual consistency between app theme and charts.
 
 **Tasks:**
-- [ ] Dynamic chart colors based on theme
+- [x] Dynamic chart colors based on theme
   - Read CSS variables for colors
   - Apply to chart background, grid, text
-- [ ] Profit/loss colors match app theme
+- [x] Profit/loss colors match app theme
   - Use `--profit` and `--loss` variables
-- [ ] Indicator colors theme-aware
+- [x] Indicator colors theme-aware
   - Configurable indicator palette
-- [ ] Chart theme persistence
+- [x] Chart theme persistence
   - Save chart theme preference
 
-#### 1.12.15 Backtest Results Comparison
+#### 1.12.15 Backtest Results Comparison ✅
 Better strategy evaluation through comparison.
 
 **Tasks:**
-- [ ] Save backtest results to database
+- [x] Save backtest results to database
   - Store results with timestamp
   - Tag results with notes
-- [ ] Backtest history list
+- [x] Backtest history list
   - View past backtest results
   - Filter by strategy, symbol, date
-- [ ] Side-by-side comparison view
+- [x] Side-by-side comparison view
   - Compare 2-4 backtests
   - Metrics comparison table
   - Overlaid equity curves
-- [ ] Export backtest results
+- [x] Export backtest results
   - CSV export
   - PDF report generation
 
