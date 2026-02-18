@@ -1,6 +1,6 @@
 # Portfolio Management System
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.2.1)
+[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.2.2)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A personal automated financial portfolio management system with algorithmic trading, paper trading, technical/fundamental analysis, and real-time market data for Indian markets (NSE/BSE).

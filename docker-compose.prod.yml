@@ -9,7 +9,7 @@
 #   docker pull ghcr.io/vinay-raghavan/portfolio-migrations:latest
 #
 # Or use a specific version:
-#   VERSION=v1.2.1 docker-compose -f docker-compose.prod.yml up -d
+#   VERSION=v1.2.2 docker-compose -f docker-compose.prod.yml up -d
 
 services:
   db:
@@ -49,7 +49,7 @@ services:
       - portfolio-net
 
   migrations:
-    image: ghcr.io/vinay-raghavan/portfolio-migrations:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-migrations:${VERSION:-v1.2.2}
     container_name: portfolio-migrations
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
@@ -63,7 +63,7 @@ services:
     restart: "no"
 
   api:
-    image: ghcr.io/vinay-raghavan/portfolio-api:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-api:${VERSION:-v1.2.2}
     container_name: portfolio-api
     restart: unless-stopped
     environment:
@@ -89,7 +89,7 @@ services:
       - portfolio-net
 
   trading-engine:
-    image: ghcr.io/vinay-raghavan/portfolio-trading-engine:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-trading-engine:${VERSION:-v1.2.2}
     container_name: portfolio-trading-engine
     restart: unless-stopped
     environment:
@@ -118,7 +118,7 @@ services:
           memory: 2G
 
   web:
-    image: ghcr.io/vinay-raghavan/portfolio-web:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-web:${VERSION:-v1.2.2}
     container_name: portfolio-web
     restart: unless-stopped
     environment:
@@ -131,7 +131,7 @@ services:
       - portfolio-net
 
   worker:
-    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.2}
     container_name: portfolio-worker
     restart: unless-stopped
     environment:
@@ -148,7 +148,7 @@ services:
       - portfolio-net
 
   beat:
-    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.1}
+    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.2}
     container_name: portfolio-beat
     restart: unless-stopped
     # Chainguard image has ENTRYPOINT [/usr/bin/python], so we omit "python" from CMD
