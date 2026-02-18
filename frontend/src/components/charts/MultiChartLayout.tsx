@@ -18,7 +18,8 @@ type LayoutType = '1x1' | '2x1' | '2x2' | '3x2';
 interface ChartPanelState {
   id: string;
   symbol: string;
-  interval: string;
+  period: string;
+  candleInterval: string;
   indicators: string[];
 }
 
@@ -34,18 +35,29 @@ const LAYOUTS: { type: LayoutType; icon: React.ElementType; label: string; panel
   { type: '3x2', icon: Grid3x3, label: '6 Charts', panels: 6 },
 ];
 
-const TIMEFRAMES = [
-  { value: '1d', label: '1D', period: '1d', interval: '5m' },
-  { value: '5d', label: '5D', period: '5d', interval: '15m' },
-  { value: '1m', label: '1M', period: '1mo', interval: '1d' },
-  { value: '3m', label: '3M', period: '3mo', interval: '1d' },
-  { value: '1y', label: '1Y', period: '1y', interval: '1d' },
+// Chart period options (how much history to show)
+const PERIODS = [
+  { value: '1d', label: '1D', period: '1d' },
+  { value: '5d', label: '5D', period: '5d' },
+  { value: '1mo', label: '1M', period: '1mo' },
+  { value: '3mo', label: '3M', period: '3mo' },
+  { value: '1y', label: '1Y', period: '1y' },
+];
+
+// Candle interval options (size of each candle)
+const INTERVALS = [
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '30m', label: '30m' },
+  { value: '1h', label: '1h' },
+  { value: '1d', label: '1D' },
+  { value: '1wk', label: '1W' },
 ];
 
 const DEFAULT_SYMBOLS = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META'];
 
 function createPanelState(id: string, symbol: string): ChartPanelState {
-  return { id, symbol, interval: '1m', indicators: ['sma_20'] };
+  return { id, symbol, period: '3mo', candleInterval: '1d', indicators: ['sma_20'] };
 }
 
 export function MultiChartLayout({ defaultSymbols = DEFAULT_SYMBOLS, className }: MultiChartLayoutProps) {
@@ -121,11 +133,9 @@ interface ChartPanelProps {
 function ChartPanel({ panel, onUpdate, isMaximized, onToggleMaximize, height }: ChartPanelProps) {
   const [symbolInput, setSymbolInput] = useState(panel.symbol);
 
-  const timeframe = TIMEFRAMES.find((t) => t.value === panel.interval) || TIMEFRAMES[2];
-
   const { data: historyData, isLoading } = useQuery({
-    queryKey: ['history', panel.symbol, timeframe.period, timeframe.interval],
-    queryFn: () => marketDataApi.getHistory(panel.symbol, timeframe.period, timeframe.interval).then((res) => res.data),
+    queryKey: ['history', panel.symbol, panel.period, panel.candleInterval],
+    queryFn: () => marketDataApi.getHistory(panel.symbol, panel.period, panel.candleInterval).then((res) => res.data),
     enabled: !!panel.symbol,
   });
 
@@ -177,13 +187,25 @@ function ChartPanel({ panel, onUpdate, isMaximized, onToggleMaximize, height }: 
           className="h-7 w-24 text-xs font-medium"
           placeholder="Symbol"
         />
-        <Select value={panel.interval} onValueChange={(v) => onUpdate({ interval: v })}>
-          <SelectTrigger className="h-7 w-20 text-xs">
-            <SelectValue />
+        {/* Period selector (how much history) */}
+        <Select value={panel.period} onValueChange={(v) => onUpdate({ period: v })}>
+          <SelectTrigger className="h-7 w-16 text-xs">
+            <SelectValue placeholder="Period" />
           </SelectTrigger>
           <SelectContent>
-            {TIMEFRAMES.map((tf) => (
-              <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>
+            {PERIODS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* Candle interval selector (size of each candle) */}
+        <Select value={panel.candleInterval} onValueChange={(v) => onUpdate({ candleInterval: v })}>
+          <SelectTrigger className="h-7 w-16 text-xs">
+            <SelectValue placeholder="Interval" />
+          </SelectTrigger>
+          <SelectContent>
+            {INTERVALS.map((i) => (
+              <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>

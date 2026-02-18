@@ -1,7 +1,7 @@
 """Add sort_order to watchlists and watchlist_items
 
 Revision ID: a1b2c3d4e5f6
-Revises: 20260212_0900_add_research_data_provider_setting
+Revises: research_provider_001
 Create Date: 2026-02-17 10:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
-down_revision = "20260212_0900_add_research_data_provider_setting"
+down_revision = "research_provider_001"
 branch_labels = None
 depends_on = None
 

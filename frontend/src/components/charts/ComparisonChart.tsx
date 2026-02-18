@@ -59,10 +59,11 @@ const TIMEFRAMES = [
   { value: '2Y', label: '2 Years', period: '2y', interval: '1wk' },
 ];
 
+// Yahoo Finance index symbols for Indian indices
 const INDEX_SYMBOLS = [
-  { value: 'NIFTY50', label: 'NIFTY 50' },
-  { value: 'NIFTYBANK', label: 'Bank NIFTY' },
-  { value: 'SENSEX', label: 'Sensex' },
+  { value: '^NSEI', label: 'NIFTY 50' },
+  { value: '^NSEBANK', label: 'Bank NIFTY' },
+  { value: '^BSESN', label: 'Sensex' },
 ];
 
 export function ComparisonChart({
@@ -296,12 +297,12 @@ export function ComparisonChart({
           <Button size="sm" onClick={addSymbol} disabled={symbols.length >= 8}>
             <Plus className="h-4 w-4 mr-1" /> Add
           </Button>
-          <Select value={indexComparison || ''} onValueChange={(v) => setIndexComparison(v || null)}>
+          <Select value={indexComparison || 'none'} onValueChange={(v) => setIndexComparison(v === 'none' ? null : v)}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Compare Index" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
+              <SelectItem value="none">None</SelectItem>
               {INDEX_SYMBOLS.map((idx) => (
                 <SelectItem key={idx.value} value={idx.value}>{idx.label}</SelectItem>
               ))}
