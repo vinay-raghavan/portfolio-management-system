@@ -1,0 +1,2 @@
+export { BacktestComparison } from './BacktestComparison';
+

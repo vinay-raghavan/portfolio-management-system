@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # Security - JWT Signing
     # Used for signing JWT tokens. Changing invalidates all active sessions.
-    SECRET_KEY: str = "change-this-in-production-use-a-real-secret-key"
+    SECRET_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     ALGORITHM: str = "HS256"
 
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Used for encrypting broker credentials at rest.
     # MUST be different from SECRET_KEY in production!
     # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
-    ENCRYPTION_KEY: str = "change-this-encryption-key-in-production"
+    ENCRYPTION_KEY: str = ""
     # Number of PBKDF2 iterations (OWASP 2023 recommends 600,000 for SHA-256)
     ENCRYPTION_ITERATIONS: int = 600_000
 
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     PAPER_TRADING_INITIAL_BALANCE: float = 1000000.0  # ₹10 Lakh default
 
     # Internal API Key (for worker/service-to-service calls)
-    INTERNAL_API_KEY: str = "internal-worker-key"
+    INTERNAL_API_KEY: str = ""
 
     # Angel One Credentials (for Phase 2)
     ANGEL_API_KEY: str = ""

@@ -159,9 +159,7 @@ async def disconnect_broker(
 
 
 @router.get("/fyers/health", response_model=BrokerHealthResponse)
-async def check_fyers_health(
-    db: DbSession, current_user: CurrentUser
-) -> BrokerHealthResponse:
+async def check_fyers_health(db: DbSession, current_user: CurrentUser) -> BrokerHealthResponse:
     """Check if Fyers access token is valid.
 
     Performs a live API call to verify the token is working.

@@ -1,6 +1,7 @@
 """Market data service using provider abstraction."""
 
 import logging
+import tempfile
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -58,6 +59,7 @@ async def _get_provider_for_setting(
                 return FyersDataProvider(
                     access_token=access_token,
                     client_id=cred.client_id,
+                    log_path=tempfile.gettempdir(),  # Use system temp dir (Chainguard runs as non-root)
                 )
         logger.warning(
             f"Fyers selected but not connected for user {user_id[:8]}, falling back to default"

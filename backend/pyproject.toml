@@ -28,6 +28,16 @@ dependencies = [
     "fyers-apiv3>=3.1.10",
     "pyasn1>=0.6.2",
     "urllib3>=2.6.3",
+    # Security: override transitive deps to fix vulnerabilities
+    # Note: aiohttp/requests cannot be upgraded due to fyers-apiv3 pinning exact versions
+    "protobuf>=6.0.0",
+]
+
+[tool.uv]
+# Force override fyers-apiv3's pinned dependencies to fix security vulnerabilities
+override-dependencies = [
+    "aiohttp>=3.11.0",
+    "requests>=2.32.0",
 ]
 
 [tool.uv.sources]

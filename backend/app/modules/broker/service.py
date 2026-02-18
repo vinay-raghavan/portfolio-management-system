@@ -1,6 +1,7 @@
 """Broker integration service layer."""
 
 import logging
+import tempfile
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -114,9 +115,7 @@ class BrokerService:
         if credential:
             credential.last_used_at = datetime.now(UTC)
 
-    async def check_fyers_token_health(
-        self, user_id: str
-    ) -> tuple[bool, str]:
+    async def check_fyers_token_health(self, user_id: str) -> tuple[bool, str]:
         """Check if Fyers access token is still valid.
 
         Returns:
@@ -136,7 +135,7 @@ class BrokerService:
                 client_id=credential.client_id,
                 is_async=False,
                 token=credential.access_token,  # Decrypted via property
-                log_path="",
+                log_path=tempfile.gettempdir(),  # Use system temp dir (Chainguard runs as non-root)
             )
 
             # Test token by calling get_profile

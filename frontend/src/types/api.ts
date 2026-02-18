@@ -353,6 +353,7 @@ export interface WatchlistItem {
   id: string;
   symbol: string;
   notes: string | null;
+  sort_order: number;
   added_at: string;
   current_price: number | null;
   change: number | null;
@@ -363,6 +364,7 @@ export interface Watchlist {
   id: string;
   name: string;
   description: string | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
   items: WatchlistItem[];

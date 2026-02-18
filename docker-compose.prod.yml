@@ -1,5 +1,17 @@
+# Production docker-compose using GHCR images
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+#
+# Pull latest images first:
+#   docker pull ghcr.io/vinay-raghavan/portfolio-api:latest
+#   docker pull ghcr.io/vinay-raghavan/portfolio-trading-engine:latest
+#   docker pull ghcr.io/vinay-raghavan/portfolio-web:latest
+#   docker pull ghcr.io/vinay-raghavan/portfolio-worker:latest
+#   docker pull ghcr.io/vinay-raghavan/portfolio-migrations:latest
+#
+# Or use a specific version:
+#   VERSION=v1.2.2 docker-compose -f docker-compose.prod.yml up -d
+
 services:
-  # PostgreSQL with TimescaleDB
   db:
     image: timescale/timescaledb:latest-pg16
     container_name: portfolio-db
@@ -20,7 +32,6 @@ services:
     networks:
       - portfolio-net
 
-  # Redis for caching and Celery broker
   redis:
     image: redis:7-alpine
     container_name: portfolio-redis
@@ -37,16 +48,13 @@ services:
     networks:
       - portfolio-net
 
-  # Database Migrations
   migrations:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-migrations:${VERSION:-v1.2.2}
     container_name: portfolio-migrations
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
-    command: ["uv", "run", "alembic", "upgrade", "head"]
+    # Chainguard image has ENTRYPOINT [/usr/bin/python], so we omit "python" from CMD
+    command: ["-m", "alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -54,12 +62,8 @@ services:
       - portfolio-net
     restart: "no"
 
-  # Backend API
   api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-api:${VERSION:-v1.2.2}
     container_name: portfolio-api
     restart: unless-stopped
     environment:
@@ -81,20 +85,11 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - portfolio-net
 
-  # Trading Engine - Strategy Execution Service
   trading-engine:
-    build:
-      context: .
-      dockerfile: trading-engine/Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-trading-engine:${VERSION:-v1.2.2}
     container_name: portfolio-trading-engine
     restart: unless-stopped
     environment:
@@ -114,11 +109,6 @@ services:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
     networks:
       - portfolio-net
     deploy:
@@ -127,12 +117,8 @@ services:
           cpus: '2'
           memory: 2G
 
-  # Frontend
   web:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-web:${VERSION:-v1.2.2}
     container_name: portfolio-web
     restart: unless-stopped
     environment:
@@ -144,12 +130,8 @@ services:
     networks:
       - portfolio-net
 
-  # Celery Worker
   worker:
-    build:
-      context: .
-      dockerfile: worker/Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.2}
     container_name: portfolio-worker
     restart: unless-stopped
     environment:
@@ -162,26 +144,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      trading-engine:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A worker.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     networks:
       - portfolio-net
 
-  # Celery Beat (scheduler)
   beat:
-    build:
-      context: .
-      dockerfile: worker/Dockerfile
-      target: dev
+    image: ghcr.io/vinay-raghavan/portfolio-worker:${VERSION:-v1.2.2}
     container_name: portfolio-beat
     restart: unless-stopped
-    command: ["uv", "run", "celery", "-A", "worker.celery_app", "beat", "--loglevel=info"]
+    # Chainguard image has ENTRYPOINT [/usr/bin/python], so we omit "python" from CMD
+    command: ["-m", "celery", "-A", "worker.celery_app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/portfolio
       REDIS_URL: redis://redis:6379/0
@@ -190,12 +161,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     networks:
       - portfolio-net
 
