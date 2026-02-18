@@ -1,6 +1,6 @@
 # Portfolio Management System
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.2.1)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A personal automated financial portfolio management system with algorithmic trading, paper trading, technical/fundamental analysis, and real-time market data for Indian markets (NSE/BSE).
@@ -139,6 +139,40 @@ portfolio-management-system/
 
 ## 🚀 Quick Start
 
+### Option 1: Use Pre-built Images (Recommended)
+
+Pre-built hardened images are available on GitHub Container Registry (GHCR). These use [Chainguard](https://chainguard.dev) distroless base images for enhanced security.
+
+```bash
+# Prerequisites: Docker/Podman, Docker Compose
+
+# Clone the repository
+git clone https://github.com/vinay-raghavan/portfolio-management-system.git
+cd portfolio-management-system
+
+# Copy environment file
+cp .env.example .env
+# Edit .env with your settings
+
+# Start with production images from GHCR
+docker-compose -f docker-compose.prod.yml up -d
+
+# Access the UI
+open http://localhost:3001  # Frontend
+open http://localhost:8010  # Backend API docs
+```
+
+Available images:
+| Image | Description |
+|-------|-------------|
+| `ghcr.io/vinay-raghavan/portfolio-api:latest` | Backend API (FastAPI) |
+| `ghcr.io/vinay-raghavan/portfolio-trading-engine:latest` | Trading Engine |
+| `ghcr.io/vinay-raghavan/portfolio-worker:latest` | Celery Worker |
+| `ghcr.io/vinay-raghavan/portfolio-web:latest` | Frontend (Next.js) |
+| `ghcr.io/vinay-raghavan/portfolio-migrations:latest` | Database migrations |
+
+### Option 2: Build Locally (Development)
+
 ```bash
 # Prerequisites: Docker/Podman, Docker Compose, Python 3.13+
 
@@ -150,19 +184,19 @@ cd portfolio-management-system
 cp .env.example .env
 # Edit .env with your settings
 
-# Start all containers (use podman-compose if using Podman)
-docker-compose up -d
+# Build and start all containers
+docker-compose up -d --build
 
 # Access the UI
 open http://localhost:3001  # Frontend
-open http://localhost:8010  # Backend API
+open http://localhost:8010  # Backend API docs
 ```
 
 ## 🛠️ Development
 
 ```bash
 # Start in development mode (with hot reload)
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+docker-compose up -d
 
 # Run backend tests
 cd backend && uv run pytest
@@ -178,6 +212,23 @@ docker-compose logs -f api trading-engine
 
 # Stop all containers
 docker-compose down
+```
+
+### Building Production Images Locally
+
+Each service supports multi-stage builds with `dev` and `prod` targets:
+
+```bash
+# Build hardened production image (Chainguard base)
+docker build --target prod -t my-api:prod -f backend/Dockerfile .
+
+# Build development image (with shell for debugging)
+docker build --target dev -t my-api:dev -f backend/Dockerfile .
+
+# Frontend requires API URL at build time
+docker build --target prod \
+  --build-arg NEXT_PUBLIC_API_URL="http://localhost:8010/api/v1" \
+  -t my-frontend:prod -f frontend/Dockerfile frontend/
 ```
 
 ## 🔧 Shared Package
