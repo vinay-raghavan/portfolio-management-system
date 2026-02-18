@@ -9,21 +9,18 @@ import {
   TrendingUp,
   TrendingDown,
   Newspaper,
-  BarChart3,
   RefreshCw,
-  ArrowRight,
   Zap,
 } from 'lucide-react';
 import { researchApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import Link from 'next/link';
 
 interface DigestWidgetProps {
   className?: string;
 }
 
 export function DigestWidget({ className }: DigestWidgetProps) {
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['research-digest-latest'],
     queryFn: () => researchApi.getLatestDigest(),
     staleTime: 5 * 60 * 1000,
@@ -86,8 +83,8 @@ export function DigestWidget({ className }: DigestWidgetProps) {
             <Newspaper className="h-5 w-5" />
             Daily Digest
           </CardTitle>
-          <Button variant="ghost" size="icon" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
           </Button>
         </CardHeader>
         <CardContent>
@@ -109,8 +106,8 @@ export function DigestWidget({ className }: DigestWidgetProps) {
             {new Date(digest.digest_date).toLocaleDateString()}
           </Badge>
         </CardTitle>
-        <Button variant="ghost" size="icon" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
+        <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isFetching}>
+          <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -195,15 +192,6 @@ export function DigestWidget({ className }: DigestWidgetProps) {
           </div>
         )}
 
-        {/* View Full Digest Link */}
-        <div className="pt-2">
-          <Link href="/research" className="w-full">
-            <Button variant="outline" className="w-full" size="sm">
-              View Full Research
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
-        </div>
       </CardContent>
     </Card>
   );
