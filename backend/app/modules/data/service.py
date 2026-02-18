@@ -58,6 +58,7 @@ async def _get_provider_for_setting(
                 return FyersDataProvider(
                     access_token=access_token,
                     client_id=cred.client_id,
+                    log_path="/tmp",  # Use /tmp for Chainguard containers (no write to /app)
                 )
         logger.warning(
             f"Fyers selected but not connected for user {user_id[:8]}, falling back to default"

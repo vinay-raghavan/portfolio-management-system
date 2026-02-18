@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: Builder - Compile dependencies with build tools
 # =============================================================================
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Install build tools for packages with C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,12 +28,14 @@ RUN uv sync --no-dev --no-install-project
 COPY trading-engine/ .
 
 # Install the project
-RUN uv sync --no-dev
+# Remove asyncio backport package that shadows stdlib (pulled in by fyers-apiv3)
+RUN uv sync --no-dev && \
+    rm -rf /app/.venv/lib/python*/site-packages/asyncio* || true
 
 # =============================================================================
 # Stage 2a: Dev - For local development with shell access
 # =============================================================================
-FROM python:3.13-slim AS dev
+FROM python:3.14-slim AS dev
 
 WORKDIR /app
 
@@ -72,12 +74,15 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/engine /app/engine
 COPY --from=builder /shared /shared
 
-# Set environment variables
+# Set environment variables for venv activation
+ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/.venv/lib/python3.14/site-packages:/app:/shared"
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8001
 
 # Note: No HEALTHCHECK in Chainguard (no curl/shell) - use orchestrator health checks
-CMD ["python", "-m", "uvicorn", "engine.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Chainguard has ENTRYPOINT [/usr/bin/python], so CMD args are passed to python
+CMD ["-m", "uvicorn", "engine.main:app", "--host", "0.0.0.0", "--port", "8001"]
 

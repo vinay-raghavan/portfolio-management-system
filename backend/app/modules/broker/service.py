@@ -134,7 +134,7 @@ class BrokerService:
                 client_id=credential.client_id,
                 is_async=False,
                 token=credential.access_token,  # Decrypted via property
-                log_path="",
+                log_path="/tmp",  # Use /tmp for Chainguard containers (no write to /app)
             )
 
             # Test token by calling get_profile
