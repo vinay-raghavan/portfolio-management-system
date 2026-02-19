@@ -365,3 +365,79 @@ class BalanceHistoryResponse(BaseModel):
     entries: list[BalanceHistoryEntry]
     start_date: datetime
     end_date: datetime
+
+
+# ============== Capital Gains Schemas ==============
+
+
+class TaxType(str, Enum):
+    """Tax classification for capital gains."""
+
+    STCG = "STCG"  # Short Term Capital Gains (≤365 days)
+    LTCG = "LTCG"  # Long Term Capital Gains (>365 days)
+    SPECULATIVE = "SPECULATIVE"  # Intraday (same day)
+
+
+class RealizedGainResponse(BaseModel):
+    """Schema for a single realized gain record."""
+
+    id: str
+    symbol: str
+    quantity: Decimal
+    cost_basis: Decimal
+    sale_proceeds: Decimal
+    fees: Decimal
+    gain_loss: Decimal
+    gain_loss_pct: Decimal
+    purchase_date: datetime
+    sale_date: datetime
+    holding_days: int
+    is_long_term: bool
+    tax_type: str
+    financial_year: str
+    cost_lot_id: str | None = None
+    buy_trade_id: str | None = None
+    sell_trade_id: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RealizedGainsListResponse(BaseModel):
+    """Schema for paginated realized gains list."""
+
+    gains: list[RealizedGainResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class GainsSummaryResponse(BaseModel):
+    """Schema for capital gains summary."""
+
+    total_gains: Decimal
+    total_losses: Decimal
+    net_gain_loss: Decimal
+    stcg: Decimal
+    ltcg: Decimal
+    speculative: Decimal
+    stcg_count: int
+    ltcg_count: int
+    speculative_count: int
+    financial_year: str | None = None
+
+
+class GainsBySymbolResponse(BaseModel):
+    """Schema for gains aggregated by symbol."""
+
+    symbol: str
+    total_gain: Decimal
+    total_quantity: Decimal
+    trade_count: int
+
+
+class GainsBySymbolListResponse(BaseModel):
+    """Schema for list of gains by symbol."""
+
+    gains: list[GainsBySymbolResponse]
+    financial_year: str | None = None

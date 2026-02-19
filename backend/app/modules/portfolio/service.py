@@ -1,8 +1,11 @@
 """Portfolio service layer."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +23,9 @@ from app.modules.portfolio.schemas import (
     TrailingStopConfig,
     TrailingStopUpdate,
 )
+
+if TYPE_CHECKING:
+    from app.modules.portfolio.gains_service import CapitalGainsService
 
 
 class PortfolioService:
@@ -396,6 +402,8 @@ class PortfolioService:
         quantity: Decimal,
         sell_price: Decimal,
         portfolio_id: str | None = None,
+        sell_trade_id: str | None = None,
+        gains_service: CapitalGainsService | None = None,
     ) -> Decimal:
         """Consume cost lots in FIFO order and calculate realized P&L.
 
@@ -405,6 +413,8 @@ class PortfolioService:
             quantity: Quantity to sell
             sell_price: Sale price per share
             portfolio_id: Optional portfolio ID
+            sell_trade_id: Optional reference to the sell trade
+            gains_service: Optional CapitalGainsService to record capital gains
 
         Returns:
             Realized profit/loss from this sale
@@ -412,6 +422,7 @@ class PortfolioService:
         lots = await self.get_cost_lots(user_id, symbol.upper(), portfolio_id)
         remaining_to_sell = quantity
         realized_pnl = Decimal("0")
+        sale_date = datetime.now(UTC)
 
         for lot in lots:
             if remaining_to_sell <= 0:
@@ -424,6 +435,23 @@ class PortfolioService:
             cost_basis = take_qty * lot.purchase_price
             sale_value = take_qty * sell_price
             realized_pnl += sale_value - cost_basis
+
+            # Record realized gain if gains_service is provided
+            if gains_service is not None:
+                await gains_service.record_realized_gain(
+                    user_id=user_id,
+                    symbol=symbol.upper(),
+                    quantity=take_qty,
+                    cost_basis=cost_basis,
+                    sale_proceeds=sale_value,
+                    purchase_date=lot.purchased_at,
+                    sale_date=sale_date,
+                    fees=Decimal("0"),  # Fees tracked separately via ledger
+                    cost_lot_id=lot.id,
+                    buy_trade_id=lot.trade_id,
+                    sell_trade_id=sell_trade_id,
+                    portfolio_id=portfolio_id,
+                )
 
             # Update the lot
             lot.remaining_quantity -= take_qty
@@ -462,6 +490,7 @@ class PortfolioService:
         price: Decimal,
         trade_id: str | None = None,
         portfolio_id: str | None = None,
+        gains_service: CapitalGainsService | None = None,
     ) -> tuple[Position, Decimal]:
         """Update position using FIFO cost tracking.
 
@@ -473,6 +502,7 @@ class PortfolioService:
             price: Trade price
             trade_id: Optional trade ID for lot tracking
             portfolio_id: Optional portfolio ID
+            gains_service: Optional CapitalGainsService to record capital gains
 
         Returns:
             Tuple of (updated position, realized P&L for sells)
@@ -484,9 +514,15 @@ class PortfolioService:
             # Add a new cost lot
             await self.add_cost_lot(user_id, symbol, quantity, price, trade_id, portfolio_id)
         else:  # SELL
-            # Consume lots in FIFO order
+            # Consume lots in FIFO order and optionally record capital gains
             realized_pnl = await self.consume_cost_lots_fifo(
-                user_id, symbol, quantity, price, portfolio_id
+                user_id,
+                symbol,
+                quantity,
+                price,
+                portfolio_id,
+                sell_trade_id=trade_id,
+                gains_service=gains_service,
             )
 
         # Calculate new position from remaining lots
