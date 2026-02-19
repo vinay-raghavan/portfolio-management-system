@@ -1,6 +1,7 @@
 """Trading service layer with broker provider abstraction."""
 
 import logging
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from shared.providers.schemas import ProductType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.broker.logging_service import BrokerLoggingService
 from app.modules.portfolio.models import Trade
 from app.modules.portfolio.service import PortfolioService
 from app.modules.trading.models import Order, OrderStatus, OrderTemplate
@@ -74,6 +76,7 @@ class TradingService:
         self.portfolio_service = PortfolioService(db)
         self.funds_provider = DatabaseFundsProvider(db)
         self.validator = OrderValidator(db)
+        self.logging_service = BrokerLoggingService(db)
         self._broker = broker
         self._skip_validation = skip_validation
 
@@ -227,8 +230,60 @@ class TradingService:
             take_profit=order_data.take_profit,
         )
 
-        # Execute via broker
-        response = await self.broker.place_order(user_id, provider_order)
+        # Prepare request data for logging
+        request_data = {
+            "symbol": provider_order.symbol,
+            "side": provider_order.side.value,
+            "order_type": provider_order.order_type.value,
+            "quantity": provider_order.quantity,
+            "price": str(provider_order.price) if provider_order.price else None,
+        }
+
+        # Execute via broker with timing and logging
+        start_time = time.perf_counter()
+        error_message = None
+        is_success = False
+        response_data = None
+
+        try:
+            response = await self.broker.place_order(user_id, provider_order)
+            is_success = response.status != ProviderOrderStatus.REJECTED
+
+            # Capture response data for logging
+            response_data = {
+                "order_id": response.order_id,
+                "status": response.status.value,
+                "filled_quantity": response.filled_quantity,
+                "filled_price": str(response.filled_price) if response.filled_price else None,
+                "message": response.message,
+            }
+
+        except Exception as e:
+            error_message = str(e)
+            raise
+
+        finally:
+            # Calculate latency and log the API call
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            try:
+                await self.logging_service.log_complete(
+                    user_id=user_id,
+                    broker_type=self.broker.name,
+                    endpoint="place_order",
+                    method="POST",
+                    action="place_order",
+                    status_code=200 if is_success else 400,
+                    is_success=is_success,
+                    latency_ms=latency_ms,
+                    request_data=request_data,
+                    response_data=response_data,
+                    error_message=error_message,
+                    reference_type="order",
+                    reference_id=str(order.id),
+                )
+            except Exception as log_err:
+                # Don't fail the order due to logging errors
+                logger.warning(f"Failed to log broker API call: {log_err}")
 
         # Update order with response
         if response.status == ProviderOrderStatus.FILLED:

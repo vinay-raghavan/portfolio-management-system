@@ -193,6 +193,8 @@ main                           # Production-ready code
 | 1 | 8-9 | `phase-1/ux-improvements` | UX enhancements, Accessibility, Trading workflow |
 | 2 | 9-10 | `phase-2/angelone` | Angel One API integration |
 | 2 | 8-9 | `phase-2/live-safety` | Live trading safety features |
+| 2 | 10-11 | `phase-2/reporting-ledger` | Transaction ledger, gains tracking, API logging |
+| 2 | 11-12 | `phase-2/reports-frontend` | Reports UI: statement, gains, API logs, activity |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
@@ -2720,6 +2722,32 @@ flowchart TB
         AlertsActive[All Alerts Active]
     end
 
+    subgraph ReportingSystem["📊 Reporting & Ledger"]
+        subgraph Ledger["💰 Transaction Ledger"]
+            TxnHistory[Cash Flow History]
+            RunningBalance[Running Balances]
+            Statement[Account Statement]
+        end
+
+        subgraph CapGains["📈 Capital Gains"]
+            STCG[Short-Term Gains]
+            LTCG[Long-Term Gains]
+            TaxReport[Tax Reports]
+        end
+
+        subgraph APILogs["🔍 API Logging"]
+            BrokerLogs[Broker API Logs]
+            Latency[Latency Tracking]
+            ErrorLogs[Error Logs]
+        end
+
+        subgraph Activity["📋 Activity Log"]
+            UserActions[User Actions]
+            SystemEvents[System Events]
+            AuditTrail[Audit Trail]
+        end
+    end
+
     subgraph LiveTrading["🚀 Live Trading"]
         RealMoney[Real Money Trades]
         RealPnL[Real P&L]
@@ -2729,12 +2757,14 @@ flowchart TB
     Phase1Complete --> ConfigChange
     ConfigChange --> AngelOne
     AngelOne --> SafetyLayer
-    SafetyLayer --> LiveTrading
+    SafetyLayer --> ReportingSystem
+    ReportingSystem --> LiveTrading
 
     style Phase1Complete fill:#e8f5e9,stroke:#4caf50
     style ConfigChange fill:#fff3e0,stroke:#ff9800
     style AngelOne fill:#e3f2fd,stroke:#1976d2
     style SafetyLayer fill:#ffebee,stroke:#c62828
+    style ReportingSystem fill:#e8eaf6,stroke:#3f51b5
     style LiveTrading fill:#f3e5f5,stroke:#9c27b0
 ```
 
@@ -2845,6 +2875,468 @@ flowchart TB
 - [ ] Log all API calls to broker
 - [ ] Record order placement source (manual/algo)
 - [ ] Daily reconciliation with broker
+
+### 2.4 Reporting & Ledger System ✅
+> 🌿 **Branch:** `phase-2/reporting-ledger`
+
+**Status**: Complete - Full reporting infrastructure with transaction ledger, capital gains tracking, broker API logging, and activity feed.
+
+#### 2.4.1 Transaction Ledger ✅
+Full ledger/statement view of all cash flow activity with running balances.
+
+**Database Model: `TransactionLedger`**
+```python
+class TransactionType(str, Enum):
+    DEPOSIT = "DEPOSIT"           # Cash added to account
+    WITHDRAWAL = "WITHDRAWAL"     # Cash withdrawn
+    BUY = "BUY"                   # Cash used to buy securities
+    SELL = "SELL"                 # Cash received from selling
+    FEE = "FEE"                   # Trading fees, brokerage
+    DIVIDEND = "DIVIDEND"         # Dividend received
+    INTEREST = "INTEREST"         # Interest earned/paid
+    ADJUSTMENT = "ADJUSTMENT"     # Manual adjustments
+    TRANSFER_IN = "TRANSFER_IN"   # Transfer from another portfolio
+    TRANSFER_OUT = "TRANSFER_OUT" # Transfer to another portfolio
+
+class TransactionLedger(Base):
+    __tablename__ = "transaction_ledger"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    portfolio_id: UUID | None (FK portfolios.id)
+
+    # Transaction details
+    transaction_type: TransactionType
+    amount: Decimal(18,4)         # Positive for credits, negative for debits
+
+    # Running balances after this transaction
+    running_cash_balance: Decimal(18,4)
+    running_margin_used: Decimal(18,4)
+    running_total_balance: Decimal(18,4)  # cash + margin available
+
+    # Reference to source entity
+    reference_type: str | None    # "trade", "order", "manual", "dividend"
+    reference_id: UUID | None     # ID of the source entity
+
+    # Descriptive info
+    symbol: str | None            # For trade-related transactions
+    description: str              # Human-readable description
+    metadata: JSON | None         # Additional context (fees breakdown, etc.)
+
+    # Timestamps
+    transaction_date: DateTime    # When the transaction occurred
+    created_at: DateTime
+```
+
+**Tasks:**
+- [x] Create `TransactionLedger` model in `backend/app/modules/portfolio/models.py`
+- [x] Create Alembic migration for new table
+- [x] Create `LedgerService` with methods:
+  - `record_transaction()` - Record any transaction with auto-calculated running balance
+  - `get_ledger()` - Paginated ledger with filters (date range, type, symbol)
+  - `get_statement()` - Generate statement for date range
+  - `get_balance_history()` - Balance over time for charts
+- [x] Integrate with existing services:
+  - `FundsService.add_cash()` → record DEPOSIT
+  - `FundsService.deduct_cash()` → record WITHDRAWAL
+  - `TradingService.execute_market_order()` → record BUY/SELL
+  - Trade fees → record FEE
+- [x] API endpoints:
+  - `GET /portfolio/ledger` - Paginated ledger
+  - `GET /portfolio/ledger/statement` - Statement PDF/CSV export
+  - `GET /portfolio/ledger/balance-history` - Balance over time
+
+#### 2.4.2 Capital Gains Tracking ✅
+Track realized gains with short-term vs long-term classification for tax reporting.
+
+**Database Model: `RealizedGain`**
+```python
+class RealizedGain(Base):
+    __tablename__ = "realized_gains"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    portfolio_id: UUID | None (FK portfolios.id)
+
+    # Security info
+    symbol: str
+
+    # Lot details
+    quantity: Decimal(18,8)
+    cost_basis: Decimal(18,4)      # Total cost of shares sold
+    sale_proceeds: Decimal(18,4)   # Total sale proceeds
+    fees: Decimal(18,4)            # Total fees (buy + sell)
+
+    # Calculated gain/loss
+    gain_loss: Decimal(18,4)       # sale_proceeds - cost_basis - fees
+    gain_loss_pct: Decimal(10,4)   # Percentage gain/loss
+
+    # Holding period
+    purchase_date: DateTime
+    sale_date: DateTime
+    holding_days: Integer
+    is_long_term: Boolean          # True if holding_days > 365
+
+    # Tax classification (India-specific)
+    tax_type: str                  # "STCG", "LTCG", "SPECULATIVE" (intraday)
+
+    # References
+    cost_lot_id: UUID | None (FK cost_lots.id)
+    buy_trade_id: UUID | None (FK trades.id)
+    sell_trade_id: UUID | None (FK trades.id)
+
+    # Financial year
+    financial_year: str            # "2024-25" format
+
+    created_at: DateTime
+```
+
+**Tasks:**
+- [x] Create `RealizedGain` model in `backend/app/modules/portfolio/models.py`
+- [x] Create Alembic migration for new table
+- [x] Modify `PortfolioService.consume_cost_lots_fifo()` to:
+  - Create `RealizedGain` record for each lot consumed
+  - Calculate holding period and classify as short/long term
+  - Determine financial year
+- [x] Create `CapitalGainsService` with methods:
+  - `get_realized_gains()` - List all gains with filters
+  - `get_gains_summary()` - Summary by type (STCG/LTCG)
+  - `get_tax_report()` - Tax-ready report by financial year
+  - `export_gains_csv()` - Export for tax filing
+- [x] API endpoints:
+  - `GET /portfolio/gains` - Paginated realized gains
+  - `GET /portfolio/gains/summary` - Aggregated summary
+  - `GET /portfolio/gains/tax-report/{financial_year}` - Tax report
+  - `GET /portfolio/gains/export` - CSV export
+
+#### 2.4.3 Broker API Logging ✅
+Log all broker API interactions for debugging and audit purposes.
+
+**Database Model: `BrokerAPILog`**
+```python
+class BrokerAPILog(Base):
+    __tablename__ = "broker_api_logs"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+
+    # Broker info
+    broker_type: str              # "fyers", "angelone", "paper", etc.
+
+    # Request details
+    endpoint: str                 # API endpoint called
+    method: str                   # "GET", "POST", "PUT", "DELETE"
+    request_data: JSON | None     # Request payload (sensitive data masked)
+
+    # Response details
+    status_code: Integer | None   # HTTP status code
+    response_data: JSON | None    # Response payload (sensitive data masked)
+    is_success: Boolean
+    error_message: str | None     # Error message if failed
+
+    # Performance
+    latency_ms: Integer           # Response time in milliseconds
+
+    # Context
+    action: str                   # "place_order", "cancel_order", "get_positions", etc.
+    reference_type: str | None    # "order", "position", etc.
+    reference_id: UUID | None     # ID of related entity
+
+    # Timestamps
+    request_at: DateTime
+    response_at: DateTime | None
+
+    # Indexes for efficient querying
+    __table_args__ = (
+        Index("ix_broker_api_logs_user_date", "user_id", "request_at"),
+        Index("ix_broker_api_logs_broker_action", "broker_type", "action"),
+    )
+```
+
+**Tasks:**
+- [x] Create `BrokerAPILog` model in `backend/app/modules/broker/models.py`
+- [x] Create Alembic migration for new table
+- [x] Create `BrokerLoggingService` with methods:
+  - `log_request()` - Log outgoing request
+  - `log_response()` - Update with response
+  - `get_api_logs()` - Paginated logs with filters
+  - `get_api_stats()` - Success rates, avg latency by broker
+- [x] Create broker logging decorator/middleware:
+  ```python
+  @log_broker_api
+  async def place_order(self, user_id: str, order: OrderRequest) -> OrderResponse:
+      ...
+  ```
+- [x] Update broker implementations to use logging:
+  - `FyersBroker` - Wrap all API calls
+  - `PaperBroker` - Log simulated calls
+  - Future brokers - Apply decorator
+- [x] Mask sensitive data before logging (access tokens, secrets)
+- [x] API endpoints:
+  - `GET /brokers/logs` - Paginated API logs
+  - `GET /brokers/logs/stats` - API statistics
+  - `GET /brokers/logs/{log_id}` - Single log detail
+
+#### 2.4.4 Activity Log ✅
+User-facing activity feed showing all significant actions.
+
+**Database Model: `ActivityLog`**
+```python
+class ActivityType(str, Enum):
+    # Auth
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    PASSWORD_CHANGE = "PASSWORD_CHANGE"
+
+    # Trading
+    ORDER_PLACED = "ORDER_PLACED"
+    ORDER_FILLED = "ORDER_FILLED"
+    ORDER_CANCELLED = "ORDER_CANCELLED"
+    ORDER_REJECTED = "ORDER_REJECTED"
+    ORDER_MODIFIED = "ORDER_MODIFIED"
+
+    # Portfolio
+    DEPOSIT = "DEPOSIT"
+    WITHDRAWAL = "WITHDRAWAL"
+    POSITION_OPENED = "POSITION_OPENED"
+    POSITION_CLOSED = "POSITION_CLOSED"
+
+    # Algo
+    STRATEGY_CREATED = "STRATEGY_CREATED"
+    STRATEGY_STARTED = "STRATEGY_STARTED"
+    STRATEGY_STOPPED = "STRATEGY_STOPPED"
+    STRATEGY_DELETED = "STRATEGY_DELETED"
+    KILL_SWITCH_ACTIVATED = "KILL_SWITCH_ACTIVATED"
+    CIRCUIT_BREAKER_TRIGGERED = "CIRCUIT_BREAKER_TRIGGERED"
+
+    # Risk
+    RISK_LIMIT_BREACHED = "RISK_LIMIT_BREACHED"
+    DAILY_LOSS_LIMIT_HIT = "DAILY_LOSS_LIMIT_HIT"
+
+    # Broker
+    BROKER_CONNECTED = "BROKER_CONNECTED"
+    BROKER_DISCONNECTED = "BROKER_DISCONNECTED"
+    BROKER_ERROR = "BROKER_ERROR"
+
+    # Settings
+    SETTINGS_UPDATED = "SETTINGS_UPDATED"
+    WATCHLIST_UPDATED = "WATCHLIST_UPDATED"
+    ALERT_CREATED = "ALERT_CREATED"
+    ALERT_TRIGGERED = "ALERT_TRIGGERED"
+
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+
+    # Activity details
+    activity_type: ActivityType
+    category: str                 # "auth", "trading", "portfolio", "algo", "risk", "broker", "settings"
+    title: str                    # Short title (e.g., "Order Placed")
+    description: str              # Detailed description
+
+    # Entity reference
+    entity_type: str | None       # "order", "position", "strategy", etc.
+    entity_id: UUID | None        # ID of related entity
+
+    # Additional context
+    metadata: JSON | None         # Extra data (symbol, quantity, price, etc.)
+
+    # Severity/importance
+    severity: str                 # "info", "warning", "error", "critical"
+    is_read: Boolean              # For notification badge
+
+    # Client info
+    ip_address: str | None
+    user_agent: str | None
+
+    # Timestamps
+    created_at: DateTime
+
+    # Indexes
+    __table_args__ = (
+        Index("ix_activity_logs_user_date", "user_id", "created_at"),
+        Index("ix_activity_logs_user_unread", "user_id", "is_read"),
+        Index("ix_activity_logs_category", "user_id", "category"),
+    )
+```
+
+**Tasks:**
+- [x] Create `ActivityLog` model in `backend/app/modules/activity/models.py`
+- [x] Create new `activity` module structure:
+  - `backend/app/modules/activity/__init__.py`
+  - `backend/app/modules/activity/models.py`
+  - `backend/app/modules/activity/schemas.py`
+  - `backend/app/modules/activity/service.py`
+  - `backend/app/modules/activity/router.py`
+- [x] Create Alembic migration for new table
+- [x] Create `ActivityService` with methods:
+  - `log_activity()` - Record an activity
+  - `get_activities()` - Paginated activity feed
+  - `get_unread_count()` - Count of unread activities
+  - `mark_as_read()` - Mark activities as read
+  - `get_activities_by_entity()` - Activities for specific entity
+- [x] Create helper for easy logging:
+  ```python
+  await activity_service.log_activity(
+      user_id=user_id,
+      activity_type=ActivityType.ORDER_PLACED,
+      title="Order Placed",
+      description=f"Buy 10 RELIANCE @ ₹2,500",
+      entity_type="order",
+      entity_id=order.id,
+      metadata={"symbol": "RELIANCE", "quantity": 10, "price": 2500},
+  )
+  ```
+- [x] Integrate with existing services:
+  - `AuthService` - Login/logout events
+  - `TradingService` - Order events
+  - `AlgoService` - Strategy events
+  - `RiskService` - Risk breach events
+  - `BrokerService` - Connection events
+- [x] API endpoints:
+  - `GET /activity` - Paginated activity feed
+  - `GET /activity/unread-count` - Unread count
+  - `POST /activity/mark-read` - Mark as read
+  - `GET /activity/entity/{type}/{id}` - Activities for entity
+
+### 2.5 Reports Frontend
+> 🌿 **Branch:** `phase-2/reports-frontend`
+
+New "Reports" section in the frontend sidebar with comprehensive reporting pages.
+
+#### 2.5.1 Frontend Navigation Update
+Add Reports section to the main sidebar.
+
+**Tasks:**
+- [ ] Update `frontend/src/components/Sidebar.tsx`:
+  - Add "Reports" section with icon (📊 or FileBarChart)
+  - Sub-items: Statement, Gains Report, API Logs, Activity
+- [ ] Create Reports layout `frontend/src/app/(dashboard)/reports/layout.tsx`
+- [ ] Add routes:
+  - `/reports` - Overview/landing page
+  - `/reports/statement` - Account statement
+  - `/reports/gains` - Capital gains report
+  - `/reports/api-logs` - Broker API logs
+  - `/reports/activity` - Activity feed
+
+#### 2.5.2 Account Statement Page
+Ledger view with filtering and export.
+
+**Page: `/reports/statement`**
+
+**Features:**
+- Date range picker (default: last 30 days)
+- Filter by transaction type (multi-select)
+- Filter by symbol
+- Running balance column
+- Export to CSV/PDF
+- Summary cards: Total In, Total Out, Net Change
+
+**Tasks:**
+- [ ] Create `frontend/src/app/(dashboard)/reports/statement/page.tsx`
+- [ ] Create components:
+  - `StatementTable` - Main ledger table with pagination
+  - `StatementFilters` - Date range, type, symbol filters
+  - `StatementSummary` - Summary cards
+  - `StatementExport` - Export buttons
+- [ ] Add API functions in `frontend/src/lib/api.ts`:
+  - `reportsApi.getLedger()`
+  - `reportsApi.exportStatement()`
+- [ ] Add types in `frontend/src/types/index.ts`
+
+#### 2.5.3 Capital Gains Report Page
+Tax-focused gains report with short/long term breakdown.
+
+**Page: `/reports/gains`**
+
+**Features:**
+- Financial year selector
+- Summary: Total Gains, STCG, LTCG
+- Gains by symbol
+- Holding period breakdown chart
+- Export for tax filing (CSV with required columns)
+
+**Tasks:**
+- [ ] Create `frontend/src/app/(dashboard)/reports/gains/page.tsx`
+- [ ] Create components:
+  - `GainsSummaryCards` - STCG/LTCG/Total
+  - `GainsTable` - Detailed gains with lot info
+  - `GainsBySymbol` - Aggregated view
+  - `HoldingPeriodChart` - Distribution visualization
+  - `TaxExport` - Export for ITR filing
+- [ ] Add API functions:
+  - `reportsApi.getRealizedGains()`
+  - `reportsApi.getGainsSummary()`
+  - `reportsApi.exportGainsCSV()`
+
+#### 2.5.4 Broker API Logs Page
+Debug view for broker API interactions.
+
+**Page: `/reports/api-logs`**
+
+**Features:**
+- Filter by broker, action, status, date range
+- Expandable rows showing request/response
+- Latency indicator (color-coded)
+- Success/failure stats
+- Auto-refresh toggle
+
+**Tasks:**
+- [ ] Create `frontend/src/app/(dashboard)/reports/api-logs/page.tsx`
+- [ ] Create components:
+  - `APILogsTable` - Main table with expandable rows
+  - `APILogsFilters` - Broker, action, status, date filters
+  - `APIStatsCards` - Success rate, avg latency
+  - `RequestResponseViewer` - JSON viewer for details
+- [ ] Add API functions:
+  - `reportsApi.getAPILogs()`
+  - `reportsApi.getAPIStats()`
+
+#### 2.5.5 Activity Feed Page
+Timeline of all user activities.
+
+**Page: `/reports/activity`**
+
+**Features:**
+- Timeline view with icons by activity type
+- Filter by category (trading, algo, risk, etc.)
+- Filter by date range
+- Click to navigate to related entity
+- Mark all as read
+- Real-time updates via WebSocket (optional)
+
+**Tasks:**
+- [ ] Create `frontend/src/app/(dashboard)/reports/activity/page.tsx`
+- [ ] Create components:
+  - `ActivityTimeline` - Timeline component
+  - `ActivityFilters` - Category, date filters
+  - `ActivityItem` - Individual activity card
+- [ ] Add API functions:
+  - `reportsApi.getActivities()`
+  - `reportsApi.markAsRead()`
+  - `reportsApi.getUnreadCount()`
+- [ ] Integrate with notification bell (existing)
+
+#### 2.5.6 Reports Overview Page
+Landing page with summary of all reports.
+
+**Page: `/reports`**
+
+**Features:**
+- Quick stats cards (Today's P&L, Month's Gains, API Health)
+- Recent activity preview
+- Quick links to detailed reports
+- Account balance chart (last 30 days)
+
+**Tasks:**
+- [ ] Create `frontend/src/app/(dashboard)/reports/page.tsx`
+- [ ] Create components:
+  - `ReportsOverview` - Main layout
+  - `QuickStats` - Key metrics
+  - `RecentActivity` - Last 5 activities
+  - `BalanceChart` - Line chart of balance history
 
 ---
 
@@ -3266,7 +3758,9 @@ portfolio-management-system/
 │   │   │       └── factory.py
 │   │   ├── modules/
 │   │   │   ├── auth/
-│   │   │   ├── portfolio/
+│   │   │   ├── portfolio/          # Includes ledger + gains (Phase 2)
+│   │   │   │   ├── ledger_service.py   # Transaction ledger
+│   │   │   │   └── gains_service.py    # Capital gains tracking
 │   │   │   ├── trading/
 │   │   │   ├── analysis/
 │   │   │   ├── data/
@@ -3275,6 +3769,14 @@ portfolio-management-system/
 │   │   │   ├── backtest/           # Backtesting framework
 │   │   │   ├── risk/               # Risk management
 │   │   │   ├── alerts/             # Alerts & notifications
+│   │   │   ├── broker/             # Includes API logging (Phase 2)
+│   │   │   │   └── logging_service.py  # Broker API logs
+│   │   │   ├── activity/           # 📋 ACTIVITY LOG (Phase 2)
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── models.py       # ActivityLog model
+│   │   │   │   ├── schemas.py
+│   │   │   │   ├── service.py      # ActivityService
+│   │   │   │   └── router.py       # GET /activity endpoints
 │   │   │   └── algo/               # 🤖 ALGO TRADING ENGINE
 │   │   │       ├── __init__.py
 │   │   │       ├── strategies/     # Strategy implementations
@@ -3310,6 +3812,12 @@ portfolio-management-system/
 │   │   │   │   ├── performance/    # Strategy performance
 │   │   │   │   └── signals/        # Signal feed
 │   │   │   ├── backtest/           # Backtesting UI
+│   │   │   ├── reports/            # 📊 REPORTS UI (Phase 2)
+│   │   │   │   ├── page.tsx        # Reports overview
+│   │   │   │   ├── statement/      # Account statement/ledger
+│   │   │   │   ├── gains/          # Capital gains report
+│   │   │   │   ├── api-logs/       # Broker API logs
+│   │   │   │   └── activity/       # Activity feed
 │   │   │   └── settings/
 │   │   ├── components/
 │   │   │   ├── ui/
@@ -3317,6 +3825,11 @@ portfolio-management-system/
 │   │   │   ├── trading/
 │   │   │   ├── portfolio/
 │   │   │   ├── algo/               # Algo-specific components
+│   │   │   ├── reports/            # 📊 REPORTS COMPONENTS (Phase 2)
+│   │   │   │   ├── StatementTable.tsx
+│   │   │   │   ├── GainsSummary.tsx
+│   │   │   │   ├── APILogsTable.tsx
+│   │   │   │   └── ActivityTimeline.tsx
 │   │   │   └── notifications/      # 📢 NOTIFICATION COMPONENTS
 │   │   │       ├── NotificationBell.tsx
 │   │   │       ├── NotificationCenter.tsx

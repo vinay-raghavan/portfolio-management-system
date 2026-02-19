@@ -3,9 +3,10 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.modules.broker.logging_service import BrokerLoggingService
 from app.modules.broker.schemas import (
     BrokerAuthUrlResponse,
     BrokerCallbackRequest,
@@ -16,6 +17,11 @@ from app.modules.broker.schemas import (
     BrokerDisconnectResponse,
     BrokerHealthResponse,
     BrokerListResponse,
+    BrokerLogDetailResponse,
+    BrokerLogListResponse,
+    BrokerLogResponse,
+    BrokerLogStatsListResponse,
+    BrokerLogStatsResponse,
     BrokerType,
 )
 from app.modules.broker.service import BrokerService
@@ -275,3 +281,109 @@ async def fyers_oauth_callback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OAuth callback failed: {str(e)}",
         )
+
+
+# ============================================================================
+# Broker API Logs endpoints
+# ============================================================================
+
+
+@router.get("/logs", response_model=BrokerLogListResponse)
+async def get_broker_logs(
+    db: DbSession,
+    current_user: CurrentUser,
+    broker_type: str | None = Query(None, description="Filter by broker type"),
+    action: str | None = Query(None, description="Filter by action"),
+    is_success: bool | None = Query(None, description="Filter by success status"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+) -> BrokerLogListResponse:
+    """Get paginated broker API logs for the current user.
+
+    Returns logs of all API calls made to brokers on behalf of this user.
+    Useful for debugging broker integration issues.
+    """
+    logging_service = BrokerLoggingService(db)
+    logs, total = await logging_service.get_api_logs(
+        user_id=current_user.id,
+        broker_type=broker_type,
+        action=action,
+        is_success=is_success,
+        page=page,
+        page_size=page_size,
+    )
+
+    total_pages = (total + page_size - 1) // page_size
+
+    return BrokerLogListResponse(
+        logs=[BrokerLogResponse.model_validate(log) for log in logs],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.get("/logs/stats", response_model=BrokerLogStatsListResponse)
+async def get_broker_log_stats(
+    db: DbSession,
+    current_user: CurrentUser,
+    broker_type: str | None = Query(None, description="Filter by broker type"),
+) -> BrokerLogStatsListResponse:
+    """Get broker API call statistics.
+
+    Returns success rates, average latency, and other metrics
+    grouped by broker type and action.
+    """
+    logging_service = BrokerLoggingService(db)
+    stats = await logging_service.get_api_stats(
+        user_id=current_user.id,
+        broker_type=broker_type,
+    )
+
+    return BrokerLogStatsListResponse(
+        stats=[
+            BrokerLogStatsResponse(
+                broker_type=s["broker_type"],
+                action=s.get("action"),
+                total_calls=s["total_calls"],
+                success_count=s["success_count"],
+                failure_count=s["failure_count"],
+                success_rate=s["success_rate"],
+                avg_latency_ms=s.get("avg_latency_ms"),
+                min_latency_ms=s.get("min_latency_ms"),
+                max_latency_ms=s.get("max_latency_ms"),
+            )
+            for s in stats
+        ]
+    )
+
+
+@router.get("/logs/{log_id}", response_model=BrokerLogDetailResponse)
+async def get_broker_log_detail(
+    log_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> BrokerLogDetailResponse:
+    """Get detailed broker API log entry including request/response data.
+
+    This endpoint returns the full request and response payloads
+    (with sensitive data masked).
+    """
+    logging_service = BrokerLoggingService(db)
+    log = await logging_service.get_log_by_id(log_id)
+
+    if not log:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Log entry {log_id} not found",
+        )
+
+    # Ensure user can only access their own logs
+    if log.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this log entry",
+        )
+
+    return BrokerLogDetailResponse.model_validate(log)

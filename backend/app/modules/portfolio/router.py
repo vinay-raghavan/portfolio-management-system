@@ -1,14 +1,26 @@
 """Portfolio API routes."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.portfolio.funds_service import FundsService
+from app.modules.portfolio.gains_service import CapitalGainsService
+from app.modules.portfolio.ledger_service import LedgerService
+from app.modules.portfolio.models import TaxType
 from app.modules.portfolio.schemas import (
+    BalanceHistoryResponse,
     FundsDepositRequest,
     FundsResetRequest,
     FundsResponse,
     FundsWithdrawRequest,
+    GainsBySymbolListResponse,
+    GainsBySymbolResponse,
+    GainsSummaryResponse,
+    LedgerResponse,
+    LedgerStatementRequest,
+    LedgerStatementResponse,
     PortfolioCreate,
     PortfolioDetailResponse,
     PortfolioInfo,
@@ -16,10 +28,13 @@ from app.modules.portfolio.schemas import (
     PortfolioResponse,
     PortfolioUpdate,
     ProfitBookingRules,
+    RealizedGainResponse,
+    RealizedGainsListResponse,
     TradeHistoryResponse,
     TradeResponse,
     TrailingStopConfig,
     TrailingStopUpdate,
+    TransactionType,
 )
 from app.modules.portfolio.service import PortfolioService
 
@@ -370,4 +385,182 @@ async def reset_funds(
         available_cash=funds.available_cash,
         total_balance=funds.total_balance,
         available_margin=funds.available_margin,
+    )
+
+
+# ============== Ledger Endpoints ==============
+
+
+@router.get("/ledger", response_model=LedgerResponse)
+async def get_ledger(
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    transaction_type: TransactionType | None = Query(None, description="Filter by type"),
+    symbol: str | None = Query(None, description="Filter by symbol"),
+    start_date: datetime | None = Query(None, description="Start date filter"),
+    end_date: datetime | None = Query(None, description="End date filter"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> LedgerResponse:
+    """Get paginated transaction ledger.
+
+    Returns a list of all transactions with running balances.
+    Supports filtering by transaction type, symbol, date range, and portfolio.
+    """
+    service = LedgerService(db)
+
+    # Build transaction_types list if single type provided
+    transaction_types = [transaction_type] if transaction_type else None
+
+    return await service.get_ledger(
+        user_id=current_user.id,
+        page=page,
+        page_size=page_size,
+        transaction_types=transaction_types,
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
+    )
+
+
+@router.post("/ledger/statement", response_model=LedgerStatementResponse)
+async def get_ledger_statement(
+    db: DbSession,
+    current_user: CurrentUser,
+    request: LedgerStatementRequest,
+) -> LedgerStatementResponse:
+    """Generate account statement for a date range.
+
+    Returns a detailed statement with summary and all transactions
+    for the specified period. Useful for monthly/yearly statements.
+    """
+    service = LedgerService(db)
+
+    return await service.get_statement(
+        user_id=current_user.id,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        transaction_types=request.transaction_types,
+        symbol=request.symbol,
+        portfolio_id=request.portfolio_id,
+    )
+
+
+@router.get("/ledger/balance-history", response_model=BalanceHistoryResponse)
+async def get_balance_history(
+    db: DbSession,
+    current_user: CurrentUser,
+    start_date: datetime = Query(..., description="Start date for history"),
+    end_date: datetime = Query(..., description="End date for history"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> BalanceHistoryResponse:
+    """Get balance history over time.
+
+    Returns daily closing balances for the date range.
+    Useful for displaying balance charts and graphs.
+    """
+    service = LedgerService(db)
+
+    return await service.get_balance_history(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
+    )
+
+
+# ============== Capital Gains Endpoints ==============
+
+
+@router.get("/gains", response_model=RealizedGainsListResponse)
+async def get_realized_gains(
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    symbol: str | None = Query(None, description="Filter by symbol"),
+    tax_type: TaxType | None = Query(None, description="Filter by tax type"),
+    start_date: datetime | None = Query(None, description="Sale date start"),
+    end_date: datetime | None = Query(None, description="Sale date end"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> RealizedGainsListResponse:
+    """Get paginated realized capital gains.
+
+    Returns a list of realized gains from closed positions with holding period
+    and tax classification (STCG/LTCG/SPECULATIVE).
+    """
+    service = CapitalGainsService(db)
+
+    gains, total = await service.get_realized_gains(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        symbol=symbol,
+        tax_type=tax_type,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
+        page=page,
+        page_size=page_size,
+    )
+
+    return RealizedGainsListResponse(
+        gains=[RealizedGainResponse.model_validate(g) for g in gains],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/gains/summary", response_model=GainsSummaryResponse)
+async def get_gains_summary(
+    db: DbSession,
+    current_user: CurrentUser,
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> GainsSummaryResponse:
+    """Get capital gains summary.
+
+    Returns aggregated totals by tax type (STCG/LTCG/SPECULATIVE).
+    Useful for tax reporting and dashboard displays.
+    """
+    service = CapitalGainsService(db)
+
+    summary = await service.get_gains_summary(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        portfolio_id=portfolio_id,
+    )
+
+    return GainsSummaryResponse(
+        **summary,
+        financial_year=financial_year,
+    )
+
+
+@router.get("/gains/by-symbol", response_model=GainsBySymbolListResponse)
+async def get_gains_by_symbol(
+    db: DbSession,
+    current_user: CurrentUser,
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> GainsBySymbolListResponse:
+    """Get capital gains aggregated by symbol.
+
+    Returns total gains/losses for each symbol traded during the period.
+    Useful for identifying best/worst performing stocks.
+    """
+    service = CapitalGainsService(db)
+
+    gains_by_symbol = await service.get_gains_by_symbol(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        portfolio_id=portfolio_id,
+    )
+
+    return GainsBySymbolListResponse(
+        gains=[GainsBySymbolResponse(**g) for g in gains_by_symbol],
+        financial_year=financial_year,
     )

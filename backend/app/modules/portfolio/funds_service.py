@@ -1,14 +1,21 @@
 """Service for managing user funds and balances."""
 
+from __future__ import annotations
+
 import logging
+from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.modules.portfolio.models import UserFunds
+from app.modules.portfolio.models import TransactionType, UserFunds
 from app.modules.portfolio.schemas import FundsSummary
+
+if TYPE_CHECKING:
+    from app.modules.portfolio.ledger_service import LedgerService
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +26,24 @@ class FundsService:
     Handles fund initialization, balance updates, and queries.
     """
 
-    def __init__(self, db: AsyncSession):
-        """Initialize with database session."""
+    def __init__(self, db: AsyncSession, ledger_service: LedgerService | None = None):
+        """Initialize with database session.
+
+        Args:
+            db: Database session
+            ledger_service: Optional ledger service for transaction recording
+        """
         self.db = db
+        self._ledger_service = ledger_service
+
+    @property
+    def ledger_service(self) -> LedgerService | None:
+        """Get ledger service, creating lazily if needed."""
+        return self._ledger_service
+
+    def set_ledger_service(self, ledger_service: LedgerService) -> None:
+        """Set the ledger service for transaction recording."""
+        self._ledger_service = ledger_service
 
     async def get_funds(self, user_id: str) -> UserFunds | None:
         """Get funds for a user.
@@ -101,6 +123,16 @@ class FundsService:
         await self.db.flush()
         await self.db.refresh(funds)
 
+        # Record in ledger if service is available
+        if self._ledger_service:
+            await self._ledger_service.record_transaction(
+                user_id=user_id,
+                transaction_type=TransactionType.DEPOSIT,
+                amount=amount,  # Positive for credit
+                description=f"Cash deposit: {reason}",
+                transaction_date=datetime.now(),
+            )
+
         logger.info(f"Added {amount} to user {user_id} funds. Reason: {reason}")
         return funds
 
@@ -134,6 +166,16 @@ class FundsService:
 
         await self.db.flush()
         await self.db.refresh(funds)
+
+        # Record in ledger if service is available
+        if self._ledger_service:
+            await self._ledger_service.record_transaction(
+                user_id=user_id,
+                transaction_type=TransactionType.WITHDRAWAL,
+                amount=-amount,  # Negative for debit
+                description=f"Cash withdrawal: {reason}",
+                transaction_date=datetime.now(),
+            )
 
         logger.info(f"Deducted {amount} from user {user_id} funds. Reason: {reason}")
         return funds
@@ -201,6 +243,8 @@ class FundsService:
         quantity: Decimal,
         price: Decimal,
         fees: Decimal = Decimal("0"),
+        symbol: str | None = None,
+        trade_id: str | None = None,
     ) -> UserFunds:
         """Process funds settlement after a trade execution.
 
@@ -213,6 +257,8 @@ class FundsService:
             quantity: Trade quantity
             price: Execution price
             fees: Trading fees
+            symbol: Symbol being traded (for ledger)
+            trade_id: Trade ID for reference (for ledger)
 
         Returns:
             Updated UserFunds model
@@ -237,6 +283,59 @@ class FundsService:
 
         await self.db.flush()
         await self.db.refresh(funds)
+
+        # Record in ledger if service is available
+        if self._ledger_service:
+            now = datetime.now()
+            tx_type = TransactionType.BUY if side.upper() == "BUY" else TransactionType.SELL
+
+            if side.upper() == "BUY":
+                # Record BUY (debit) and FEE separately for clarity
+                await self._ledger_service.record_transaction(
+                    user_id=user_id,
+                    transaction_type=tx_type,
+                    amount=-trade_value,  # Negative for debit
+                    description=f"Buy {quantity} {symbol or 'shares'} @ {price}",
+                    transaction_date=now,
+                    reference_type="trade",
+                    reference_id=trade_id,
+                    symbol=symbol,
+                    extra_data={"quantity": str(quantity), "price": str(price)},
+                )
+                if fees > 0:
+                    await self._ledger_service.record_transaction(
+                        user_id=user_id,
+                        transaction_type=TransactionType.FEE,
+                        amount=-fees,  # Negative for debit
+                        description=f"Trading fees for {symbol or 'trade'}",
+                        transaction_date=now,
+                        reference_type="trade",
+                        reference_id=trade_id,
+                        symbol=symbol,
+                    )
+            else:  # SELL
+                await self._ledger_service.record_transaction(
+                    user_id=user_id,
+                    transaction_type=tx_type,
+                    amount=trade_value,  # Positive for credit
+                    description=f"Sell {quantity} {symbol or 'shares'} @ {price}",
+                    transaction_date=now,
+                    reference_type="trade",
+                    reference_id=trade_id,
+                    symbol=symbol,
+                    extra_data={"quantity": str(quantity), "price": str(price)},
+                )
+                if fees > 0:
+                    await self._ledger_service.record_transaction(
+                        user_id=user_id,
+                        transaction_type=TransactionType.FEE,
+                        amount=-fees,  # Negative for debit
+                        description=f"Trading fees for {symbol or 'trade'}",
+                        transaction_date=now,
+                        reference_type="trade",
+                        reference_id=trade_id,
+                        symbol=symbol,
+                    )
 
         return funds
 

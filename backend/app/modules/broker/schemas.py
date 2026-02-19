@@ -101,3 +101,65 @@ class BrokerHealthResponse(BaseModel):
     token_valid: bool
     message: str
     last_checked_at: datetime
+
+
+# ============================================================================
+# Broker API Logs Schemas
+# ============================================================================
+
+
+class BrokerLogResponse(BaseModel):
+    """Schema for a single broker API log entry."""
+
+    id: str
+    broker_type: str
+    endpoint: str
+    method: str
+    action: str
+    status_code: int | None = None
+    is_success: bool
+    error_message: str | None = None
+    latency_ms: int | None = None
+    reference_type: str | None = None
+    reference_id: str | None = None
+    request_at: datetime
+    response_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class BrokerLogDetailResponse(BrokerLogResponse):
+    """Schema for broker API log with full request/response data."""
+
+    request_data: dict | None = None
+    response_data: dict | None = None
+
+
+class BrokerLogListResponse(BaseModel):
+    """Schema for paginated broker API logs."""
+
+    logs: list[BrokerLogResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class BrokerLogStatsResponse(BaseModel):
+    """Schema for broker API statistics."""
+
+    broker_type: str
+    action: str | None = None
+    total_calls: int
+    success_count: int
+    failure_count: int
+    success_rate: float
+    avg_latency_ms: float | None = None
+    min_latency_ms: int | None = None
+    max_latency_ms: int | None = None
+
+
+class BrokerLogStatsListResponse(BaseModel):
+    """Schema for list of broker API statistics."""
+
+    stats: list[BrokerLogStatsResponse]
