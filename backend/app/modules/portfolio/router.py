@@ -1,14 +1,21 @@
 """Portfolio API routes."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.portfolio.funds_service import FundsService
+from app.modules.portfolio.ledger_service import LedgerService
 from app.modules.portfolio.schemas import (
+    BalanceHistoryResponse,
     FundsDepositRequest,
     FundsResetRequest,
     FundsResponse,
     FundsWithdrawRequest,
+    LedgerResponse,
+    LedgerStatementRequest,
+    LedgerStatementResponse,
     PortfolioCreate,
     PortfolioDetailResponse,
     PortfolioInfo,
@@ -20,6 +27,7 @@ from app.modules.portfolio.schemas import (
     TradeResponse,
     TrailingStopConfig,
     TrailingStopUpdate,
+    TransactionType,
 )
 from app.modules.portfolio.service import PortfolioService
 
@@ -370,4 +378,87 @@ async def reset_funds(
         available_cash=funds.available_cash,
         total_balance=funds.total_balance,
         available_margin=funds.available_margin,
+    )
+
+
+# ============== Ledger Endpoints ==============
+
+
+@router.get("/ledger", response_model=LedgerResponse)
+async def get_ledger(
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    transaction_type: TransactionType | None = Query(None, description="Filter by type"),
+    symbol: str | None = Query(None, description="Filter by symbol"),
+    start_date: datetime | None = Query(None, description="Start date filter"),
+    end_date: datetime | None = Query(None, description="End date filter"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> LedgerResponse:
+    """Get paginated transaction ledger.
+
+    Returns a list of all transactions with running balances.
+    Supports filtering by transaction type, symbol, date range, and portfolio.
+    """
+    service = LedgerService(db)
+
+    # Build transaction_types list if single type provided
+    transaction_types = [transaction_type] if transaction_type else None
+
+    return await service.get_ledger(
+        user_id=current_user.id,
+        page=page,
+        page_size=page_size,
+        transaction_types=transaction_types,
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
+    )
+
+
+@router.post("/ledger/statement", response_model=LedgerStatementResponse)
+async def get_ledger_statement(
+    db: DbSession,
+    current_user: CurrentUser,
+    request: LedgerStatementRequest,
+) -> LedgerStatementResponse:
+    """Generate account statement for a date range.
+
+    Returns a detailed statement with summary and all transactions
+    for the specified period. Useful for monthly/yearly statements.
+    """
+    service = LedgerService(db)
+
+    return await service.get_statement(
+        user_id=current_user.id,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        transaction_types=request.transaction_types,
+        symbol=request.symbol,
+        portfolio_id=request.portfolio_id,
+    )
+
+
+@router.get("/ledger/balance-history", response_model=BalanceHistoryResponse)
+async def get_balance_history(
+    db: DbSession,
+    current_user: CurrentUser,
+    start_date: datetime = Query(..., description="Start date for history"),
+    end_date: datetime = Query(..., description="End date for history"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> BalanceHistoryResponse:
+    """Get balance history over time.
+
+    Returns daily closing balances for the date range.
+    Useful for displaying balance charts and graphs.
+    """
+    service = LedgerService(db)
+
+    return await service.get_balance_history(
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
     )
