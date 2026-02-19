@@ -336,27 +336,50 @@ async def get_broker_log_stats(
     grouped by broker type and action.
     """
     logging_service = BrokerLoggingService(db)
-    stats = await logging_service.get_api_stats(
+    stats_result = await logging_service.get_api_stats(
         user_id=current_user.id,
         broker_type=broker_type,
     )
 
-    return BrokerLogStatsListResponse(
-        stats=[
+    # Transform the service response to match the API schema
+    stats_list = []
+    for broker_data in stats_result.get("brokers", []):
+        # Add a summary stat for the broker
+        total_calls = broker_data["total_calls"]
+        success_count = broker_data["successful_calls"]
+        failure_count = total_calls - success_count
+        stats_list.append(
             BrokerLogStatsResponse(
-                broker_type=s["broker_type"],
-                action=s.get("action"),
-                total_calls=s["total_calls"],
-                success_count=s["success_count"],
-                failure_count=s["failure_count"],
-                success_rate=s["success_rate"],
-                avg_latency_ms=s.get("avg_latency_ms"),
-                min_latency_ms=s.get("min_latency_ms"),
-                max_latency_ms=s.get("max_latency_ms"),
+                broker_type=broker_data["broker_type"],
+                action=None,  # Summary for all actions
+                total_calls=total_calls,
+                success_count=success_count,
+                failure_count=failure_count,
+                success_rate=broker_data["success_rate"],
+                avg_latency_ms=None,  # Not available at broker level
+                min_latency_ms=None,
+                max_latency_ms=None,
             )
-            for s in stats
-        ]
-    )
+        )
+        # Add individual action stats
+        for action_data in broker_data.get("actions", []):
+            action_total = action_data["total_calls"]
+            action_success = action_data["successful_calls"]
+            stats_list.append(
+                BrokerLogStatsResponse(
+                    broker_type=broker_data["broker_type"],
+                    action=action_data["action"],
+                    total_calls=action_total,
+                    success_count=action_success,
+                    failure_count=action_total - action_success,
+                    success_rate=action_data["success_rate"],
+                    avg_latency_ms=action_data.get("avg_latency_ms"),
+                    min_latency_ms=action_data.get("min_latency_ms"),
+                    max_latency_ms=action_data.get("max_latency_ms"),
+                )
+            )
+
+    return BrokerLogStatsListResponse(stats=stats_list)
 
 
 @router.get("/logs/{log_id}", response_model=BrokerLogDetailResponse)
