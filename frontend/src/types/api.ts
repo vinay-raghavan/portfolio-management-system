@@ -1456,3 +1456,250 @@ export interface StrategyTypeDetailResponse {
   default_timeframe: string;
   parameters: StrategyParameterSchema[];
 }
+
+// ============================================================================
+// Reports & Ledger Types
+// ============================================================================
+
+// Transaction types enum
+export type TransactionType =
+  | 'DEPOSIT'
+  | 'WITHDRAWAL'
+  | 'BUY'
+  | 'SELL'
+  | 'DIVIDEND'
+  | 'INTEREST'
+  | 'FEE'
+  | 'TAX'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'ADJUSTMENT';
+
+// Ledger Entry
+export interface LedgerEntry {
+  id: string;
+  transaction_type: TransactionType;
+  amount: number;
+  running_cash_balance: number;
+  running_margin_used: number;
+  running_total_balance: number;
+  reference_type: string | null;
+  reference_id: string | null;
+  symbol: string | null;
+  description: string;
+  extra_data: Record<string, unknown> | null;
+  transaction_date: string;
+  created_at: string;
+}
+
+export interface LedgerResponse {
+  entries: LedgerEntry[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  total_in: number;
+  total_out: number;
+}
+
+export interface LedgerStatementSummary {
+  period_start: string;
+  period_end: string;
+  opening_balance: number;
+  closing_balance: number;
+  total_deposits: number;
+  total_withdrawals: number;
+  total_buys: number;
+  total_sells: number;
+  total_fees: number;
+  total_dividends: number;
+  net_change: number;
+}
+
+export interface LedgerStatementResponse {
+  summary: LedgerStatementSummary;
+  entries: LedgerEntry[];
+}
+
+// Capital Gains
+export type TaxType = 'STCG' | 'LTCG' | 'SPECULATIVE';
+
+export interface RealizedGain {
+  id: string;
+  symbol: string;
+  quantity: number;
+  cost_basis: number;
+  sale_proceeds: number;
+  fees: number;
+  gain_loss: number;
+  gain_loss_pct: number;
+  purchase_date: string;
+  sale_date: string;
+  holding_days: number;
+  is_long_term: boolean;
+  tax_type: TaxType;
+  financial_year: string;
+  cost_lot_id: string | null;
+  buy_trade_id: string | null;
+  sell_trade_id: string | null;
+  created_at: string;
+}
+
+export interface RealizedGainsListResponse {
+  gains: RealizedGain[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface GainsSummary {
+  total_gains: number;
+  total_losses: number;
+  net_gain_loss: number;
+  stcg: number;
+  ltcg: number;
+  speculative: number;
+  stcg_count: number;
+  ltcg_count: number;
+  speculative_count: number;
+  financial_year: string | null;
+}
+
+export interface GainsBySymbol {
+  symbol: string;
+  total_gain: number;
+  total_quantity: number;
+  trade_count: number;
+}
+
+export interface GainsBySymbolListResponse {
+  gains: GainsBySymbol[];
+  financial_year: string | null;
+}
+
+// Broker API Logs
+export interface BrokerLog {
+  id: string;
+  broker_type: string;
+  endpoint: string;
+  method: string;
+  action: string;
+  status_code: number | null;
+  is_success: boolean;
+  error_message: string | null;
+  latency_ms: number | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  request_at: string;
+  response_at: string | null;
+}
+
+export interface BrokerLogDetail extends BrokerLog {
+  request_data: Record<string, unknown> | null;
+  response_data: Record<string, unknown> | null;
+}
+
+export interface BrokerLogListResponse {
+  logs: BrokerLog[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface BrokerLogStats {
+  broker_type: string;
+  action: string | null;
+  total_calls: number;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
+  avg_latency_ms: number | null;
+  min_latency_ms: number | null;
+  max_latency_ms: number | null;
+}
+
+export interface BrokerLogStatsListResponse {
+  stats: BrokerLogStats[];
+}
+
+// Activity Log
+export type ActivityType =
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'PASSWORD_CHANGED'
+  | 'ORDER_PLACED'
+  | 'ORDER_EXECUTED'
+  | 'ORDER_CANCELLED'
+  | 'ORDER_REJECTED'
+  | 'TRADE_COMPLETED'
+  | 'POSITION_OPENED'
+  | 'POSITION_CLOSED'
+  | 'DEPOSIT'
+  | 'WITHDRAWAL'
+  | 'DIVIDEND_RECEIVED'
+  | 'STRATEGY_CREATED'
+  | 'STRATEGY_STARTED'
+  | 'STRATEGY_STOPPED'
+  | 'STRATEGY_DELETED'
+  | 'KILL_SWITCH_ACTIVATED'
+  | 'CIRCUIT_BREAKER_TRIGGERED'
+  | 'RISK_LIMIT_BREACHED'
+  | 'RISK_LIMIT_UPDATED'
+  | 'MARGIN_CALL'
+  | 'BROKER_CONNECTED'
+  | 'BROKER_DISCONNECTED'
+  | 'BROKER_ERROR'
+  | 'SETTINGS_UPDATED'
+  | 'WATCHLIST_UPDATED'
+  | 'ALERT_CREATED'
+  | 'ALERT_TRIGGERED';
+
+export type ActivityCategory =
+  | 'auth'
+  | 'trading'
+  | 'portfolio'
+  | 'algo'
+  | 'risk'
+  | 'broker'
+  | 'settings';
+
+export type ActivitySeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  activity_type: ActivityType;
+  category: ActivityCategory;
+  title: string;
+  description: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  extra_data: Record<string, unknown> | null;
+  severity: ActivitySeverity;
+  is_read: boolean;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
+export interface ActivityLogListResponse {
+  activities: ActivityLog[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  unread_count: number;
+}
+
+export interface ActivityUnreadCountResponse {
+  unread_count: number;
+}
+
+export interface ActivityMarkReadRequest {
+  activity_ids?: string[];
+  mark_all?: boolean;
+}
+
+export interface ActivityMarkReadResponse {
+  marked_count: number;
+}
