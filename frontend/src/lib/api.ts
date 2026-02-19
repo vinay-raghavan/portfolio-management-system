@@ -41,6 +41,21 @@ import type {
   Instrument,
   Alert,
   AlertCreate,
+  // Reports types
+  LedgerResponse,
+  LedgerStatementResponse,
+  RealizedGainsListResponse,
+  GainsSummary,
+  GainsBySymbolListResponse,
+  BrokerLogListResponse,
+  BrokerLogDetail,
+  BrokerLogStatsListResponse,
+  ActivityLogListResponse,
+  ActivityUnreadCountResponse,
+  ActivityMarkReadRequest,
+  ActivityMarkReadResponse,
+  TransactionType,
+  TaxType,
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
@@ -1049,4 +1064,99 @@ export const researchApi = {
     api.get<UniverseResearchResponse>(`/research/universe/${encodeURIComponent(universe)}`, {
       params: filters,
     }),
+};
+
+// Reports API
+export const reportsApi = {
+  // Transaction Ledger
+  getLedger: (params?: {
+    page?: number;
+    page_size?: number;
+    transaction_type?: TransactionType;
+    symbol?: string;
+    start_date?: string;
+    end_date?: string;
+    portfolio_id?: string;
+  }) =>
+    api.get<LedgerResponse>('/portfolio/ledger', { params }),
+
+  getStatement: (params: {
+    start_date: string;
+    end_date: string;
+    transaction_types?: TransactionType[];
+    symbol?: string;
+    portfolio_id?: string;
+  }) =>
+    api.post<LedgerStatementResponse>('/portfolio/ledger/statement', params),
+
+  getBalanceHistory: (params: {
+    start_date: string;
+    end_date: string;
+    portfolio_id?: string;
+  }) =>
+    api.get<{ balances: Array<{ date: string; balance: number }> }>('/portfolio/ledger/balance-history', { params }),
+
+  // Capital Gains
+  getRealizedGains: (params?: {
+    page?: number;
+    page_size?: number;
+    financial_year?: string;
+    symbol?: string;
+    tax_type?: TaxType;
+    start_date?: string;
+    end_date?: string;
+    portfolio_id?: string;
+  }) =>
+    api.get<RealizedGainsListResponse>('/portfolio/gains', { params }),
+
+  getGainsSummary: (params?: {
+    financial_year?: string;
+    portfolio_id?: string;
+  }) =>
+    api.get<GainsSummary>('/portfolio/gains/summary', { params }),
+
+  getGainsBySymbol: (params?: {
+    financial_year?: string;
+    portfolio_id?: string;
+  }) =>
+    api.get<GainsBySymbolListResponse>('/portfolio/gains/by-symbol', { params }),
+
+  // Broker API Logs
+  getAPILogs: (params?: {
+    broker_type?: string;
+    action?: string;
+    is_success?: boolean;
+    page?: number;
+    page_size?: number;
+  }) =>
+    api.get<BrokerLogListResponse>('/brokers/logs', { params }),
+
+  getAPILogDetail: (logId: string) =>
+    api.get<BrokerLogDetail>(`/brokers/logs/${logId}`),
+
+  getAPIStats: (params?: { broker_type?: string }) =>
+    api.get<BrokerLogStatsListResponse>('/brokers/logs/stats', { params }),
+
+  // Activity Feed
+  getActivities: (params?: {
+    category?: string;
+    activity_type?: string;
+    severity?: string;
+    is_read?: boolean;
+    page?: number;
+    page_size?: number;
+  }) =>
+    api.get<ActivityLogListResponse>('/activity', { params }),
+
+  getUnreadCount: () =>
+    api.get<ActivityUnreadCountResponse>('/activity/unread-count'),
+
+  markAsRead: (request: ActivityMarkReadRequest) =>
+    api.post<ActivityMarkReadResponse>('/activity/mark-read', request),
+
+  getActivitiesByEntity: (entityType: string, entityId: string, params?: {
+    page?: number;
+    page_size?: number;
+  }) =>
+    api.get<ActivityLogListResponse>(`/activity/entity/${entityType}/${entityId}`, { params }),
 };
