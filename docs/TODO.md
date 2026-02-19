@@ -2876,12 +2876,12 @@ flowchart TB
 - [ ] Record order placement source (manual/algo)
 - [ ] Daily reconciliation with broker
 
-### 2.4 Reporting & Ledger System
+### 2.4 Reporting & Ledger System ✅
 > 🌿 **Branch:** `phase-2/reporting-ledger`
 
-A comprehensive reporting infrastructure for transaction tracking, capital gains, and audit logging.
+**Status**: Complete - Full reporting infrastructure with transaction ledger, capital gains tracking, broker API logging, and activity feed.
 
-#### 2.4.1 Transaction Ledger
+#### 2.4.1 Transaction Ledger ✅
 Full ledger/statement view of all cash flow activity with running balances.
 
 **Database Model: `TransactionLedger`**
@@ -2929,24 +2929,24 @@ class TransactionLedger(Base):
 ```
 
 **Tasks:**
-- [ ] Create `TransactionLedger` model in `backend/app/modules/portfolio/models.py`
-- [ ] Create Alembic migration for new table
-- [ ] Create `LedgerService` with methods:
+- [x] Create `TransactionLedger` model in `backend/app/modules/portfolio/models.py`
+- [x] Create Alembic migration for new table
+- [x] Create `LedgerService` with methods:
   - `record_transaction()` - Record any transaction with auto-calculated running balance
   - `get_ledger()` - Paginated ledger with filters (date range, type, symbol)
   - `get_statement()` - Generate statement for date range
   - `get_balance_history()` - Balance over time for charts
-- [ ] Integrate with existing services:
+- [x] Integrate with existing services:
   - `FundsService.add_cash()` → record DEPOSIT
   - `FundsService.deduct_cash()` → record WITHDRAWAL
   - `TradingService.execute_market_order()` → record BUY/SELL
   - Trade fees → record FEE
-- [ ] API endpoints:
+- [x] API endpoints:
   - `GET /portfolio/ledger` - Paginated ledger
   - `GET /portfolio/ledger/statement` - Statement PDF/CSV export
   - `GET /portfolio/ledger/balance-history` - Balance over time
 
-#### 2.4.2 Capital Gains Tracking
+#### 2.4.2 Capital Gains Tracking ✅
 Track realized gains with short-term vs long-term classification for tax reporting.
 
 **Database Model: `RealizedGain`**
@@ -2992,24 +2992,24 @@ class RealizedGain(Base):
 ```
 
 **Tasks:**
-- [ ] Create `RealizedGain` model in `backend/app/modules/portfolio/models.py`
-- [ ] Create Alembic migration for new table
-- [ ] Modify `PortfolioService.consume_cost_lots_fifo()` to:
+- [x] Create `RealizedGain` model in `backend/app/modules/portfolio/models.py`
+- [x] Create Alembic migration for new table
+- [x] Modify `PortfolioService.consume_cost_lots_fifo()` to:
   - Create `RealizedGain` record for each lot consumed
   - Calculate holding period and classify as short/long term
   - Determine financial year
-- [ ] Create `CapitalGainsService` with methods:
+- [x] Create `CapitalGainsService` with methods:
   - `get_realized_gains()` - List all gains with filters
   - `get_gains_summary()` - Summary by type (STCG/LTCG)
   - `get_tax_report()` - Tax-ready report by financial year
   - `export_gains_csv()` - Export for tax filing
-- [ ] API endpoints:
+- [x] API endpoints:
   - `GET /portfolio/gains` - Paginated realized gains
   - `GET /portfolio/gains/summary` - Aggregated summary
   - `GET /portfolio/gains/tax-report/{financial_year}` - Tax report
   - `GET /portfolio/gains/export` - CSV export
 
-#### 2.4.3 Broker API Logging
+#### 2.4.3 Broker API Logging ✅
 Log all broker API interactions for debugging and audit purposes.
 
 **Database Model: `BrokerAPILog`**
@@ -3054,30 +3054,30 @@ class BrokerAPILog(Base):
 ```
 
 **Tasks:**
-- [ ] Create `BrokerAPILog` model in `backend/app/modules/broker/models.py`
-- [ ] Create Alembic migration for new table
-- [ ] Create `BrokerLoggingService` with methods:
+- [x] Create `BrokerAPILog` model in `backend/app/modules/broker/models.py`
+- [x] Create Alembic migration for new table
+- [x] Create `BrokerLoggingService` with methods:
   - `log_request()` - Log outgoing request
   - `log_response()` - Update with response
   - `get_api_logs()` - Paginated logs with filters
   - `get_api_stats()` - Success rates, avg latency by broker
-- [ ] Create broker logging decorator/middleware:
+- [x] Create broker logging decorator/middleware:
   ```python
   @log_broker_api
   async def place_order(self, user_id: str, order: OrderRequest) -> OrderResponse:
       ...
   ```
-- [ ] Update broker implementations to use logging:
+- [x] Update broker implementations to use logging:
   - `FyersBroker` - Wrap all API calls
   - `PaperBroker` - Log simulated calls
   - Future brokers - Apply decorator
-- [ ] Mask sensitive data before logging (access tokens, secrets)
-- [ ] API endpoints:
+- [x] Mask sensitive data before logging (access tokens, secrets)
+- [x] API endpoints:
   - `GET /brokers/logs` - Paginated API logs
   - `GET /brokers/logs/stats` - API statistics
   - `GET /brokers/logs/{log_id}` - Single log detail
 
-#### 2.4.4 Activity Log
+#### 2.4.4 Activity Log ✅
 User-facing activity feed showing all significant actions.
 
 **Database Model: `ActivityLog`**
@@ -3163,21 +3163,21 @@ class ActivityLog(Base):
 ```
 
 **Tasks:**
-- [ ] Create `ActivityLog` model in `backend/app/modules/activity/models.py`
-- [ ] Create new `activity` module structure:
+- [x] Create `ActivityLog` model in `backend/app/modules/activity/models.py`
+- [x] Create new `activity` module structure:
   - `backend/app/modules/activity/__init__.py`
   - `backend/app/modules/activity/models.py`
   - `backend/app/modules/activity/schemas.py`
   - `backend/app/modules/activity/service.py`
   - `backend/app/modules/activity/router.py`
-- [ ] Create Alembic migration for new table
-- [ ] Create `ActivityService` with methods:
+- [x] Create Alembic migration for new table
+- [x] Create `ActivityService` with methods:
   - `log_activity()` - Record an activity
   - `get_activities()` - Paginated activity feed
   - `get_unread_count()` - Count of unread activities
   - `mark_as_read()` - Mark activities as read
   - `get_activities_by_entity()` - Activities for specific entity
-- [ ] Create helper for easy logging:
+- [x] Create helper for easy logging:
   ```python
   await activity_service.log_activity(
       user_id=user_id,
@@ -3189,13 +3189,13 @@ class ActivityLog(Base):
       metadata={"symbol": "RELIANCE", "quantity": 10, "price": 2500},
   )
   ```
-- [ ] Integrate with existing services:
+- [x] Integrate with existing services:
   - `AuthService` - Login/logout events
   - `TradingService` - Order events
   - `AlgoService` - Strategy events
   - `RiskService` - Risk breach events
   - `BrokerService` - Connection events
-- [ ] API endpoints:
+- [x] API endpoints:
   - `GET /activity` - Paginated activity feed
   - `GET /activity/unread-count` - Unread count
   - `POST /activity/mark-read` - Mark as read
