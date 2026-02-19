@@ -6,13 +6,18 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.modules.portfolio.funds_service import FundsService
+from app.modules.portfolio.gains_service import CapitalGainsService
 from app.modules.portfolio.ledger_service import LedgerService
+from app.modules.portfolio.models import TaxType
 from app.modules.portfolio.schemas import (
     BalanceHistoryResponse,
     FundsDepositRequest,
     FundsResetRequest,
     FundsResponse,
     FundsWithdrawRequest,
+    GainsBySymbolListResponse,
+    GainsBySymbolResponse,
+    GainsSummaryResponse,
     LedgerResponse,
     LedgerStatementRequest,
     LedgerStatementResponse,
@@ -23,6 +28,8 @@ from app.modules.portfolio.schemas import (
     PortfolioResponse,
     PortfolioUpdate,
     ProfitBookingRules,
+    RealizedGainResponse,
+    RealizedGainsListResponse,
     TradeHistoryResponse,
     TradeResponse,
     TrailingStopConfig,
@@ -461,4 +468,99 @@ async def get_balance_history(
         start_date=start_date,
         end_date=end_date,
         portfolio_id=portfolio_id,
+    )
+
+
+# ============== Capital Gains Endpoints ==============
+
+
+@router.get("/gains", response_model=RealizedGainsListResponse)
+async def get_realized_gains(
+    db: DbSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    symbol: str | None = Query(None, description="Filter by symbol"),
+    tax_type: TaxType | None = Query(None, description="Filter by tax type"),
+    start_date: datetime | None = Query(None, description="Sale date start"),
+    end_date: datetime | None = Query(None, description="Sale date end"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> RealizedGainsListResponse:
+    """Get paginated realized capital gains.
+
+    Returns a list of realized gains from closed positions with holding period
+    and tax classification (STCG/LTCG/SPECULATIVE).
+    """
+    service = CapitalGainsService(db)
+
+    gains, total = await service.get_realized_gains(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        symbol=symbol,
+        tax_type=tax_type,
+        start_date=start_date,
+        end_date=end_date,
+        portfolio_id=portfolio_id,
+        page=page,
+        page_size=page_size,
+    )
+
+    return RealizedGainsListResponse(
+        gains=[RealizedGainResponse.model_validate(g) for g in gains],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/gains/summary", response_model=GainsSummaryResponse)
+async def get_gains_summary(
+    db: DbSession,
+    current_user: CurrentUser,
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> GainsSummaryResponse:
+    """Get capital gains summary.
+
+    Returns aggregated totals by tax type (STCG/LTCG/SPECULATIVE).
+    Useful for tax reporting and dashboard displays.
+    """
+    service = CapitalGainsService(db)
+
+    summary = await service.get_gains_summary(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        portfolio_id=portfolio_id,
+    )
+
+    return GainsSummaryResponse(
+        **summary,
+        financial_year=financial_year,
+    )
+
+
+@router.get("/gains/by-symbol", response_model=GainsBySymbolListResponse)
+async def get_gains_by_symbol(
+    db: DbSession,
+    current_user: CurrentUser,
+    financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
+    portfolio_id: str | None = Query(None, description="Filter by portfolio"),
+) -> GainsBySymbolListResponse:
+    """Get capital gains aggregated by symbol.
+
+    Returns total gains/losses for each symbol traded during the period.
+    Useful for identifying best/worst performing stocks.
+    """
+    service = CapitalGainsService(db)
+
+    gains_by_symbol = await service.get_gains_by_symbol(
+        user_id=current_user.id,
+        financial_year=financial_year,
+        portfolio_id=portfolio_id,
+    )
+
+    return GainsBySymbolListResponse(
+        gains=[GainsBySymbolResponse(**g) for g in gains_by_symbol],
+        financial_year=financial_year,
     )
