@@ -33,9 +33,9 @@ export interface ComparisonGroup {
 }
 
 const DEFAULT_COMPARISON_GROUPS: ComparisonGroup[] = [
-  { id: 'banking', name: 'Banking', symbols: ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK'], indexComparison: 'NIFTYBANK' },
-  { id: 'it', name: 'IT Sector', symbols: ['TCS', 'INFY', 'WIPRO', 'HCLTECH'], indexComparison: 'NIFTY50' },
-  { id: 'auto', name: 'Auto', symbols: ['MARUTI', 'TATAMOTORS', 'M&M', 'BAJAJ-AUTO'], indexComparison: 'NIFTY50' },
+  { id: 'banking', name: 'Banking', symbols: ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK'], indexComparison: '^NSEBANK' },
+  { id: 'it', name: 'IT Sector', symbols: ['TCS', 'INFY', 'WIPRO', 'HCLTECH'], indexComparison: '^NSEI' },
+  { id: 'auto', name: 'Auto', symbols: ['MARUTI', 'TATAMOTORS', 'M&M', 'BAJAJ-AUTO'], indexComparison: '^NSEI' },
 ];
 
 interface UIState {
