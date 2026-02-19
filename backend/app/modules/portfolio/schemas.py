@@ -266,3 +266,102 @@ class TradeHistoryResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+# ============== Ledger Schemas ==============
+
+
+class TransactionType(str, Enum):
+    """Type of transaction for the ledger."""
+
+    DEPOSIT = "DEPOSIT"
+    WITHDRAWAL = "WITHDRAWAL"
+    BUY = "BUY"
+    SELL = "SELL"
+    FEE = "FEE"
+    DIVIDEND = "DIVIDEND"
+    INTEREST = "INTEREST"
+    ADJUSTMENT = "ADJUSTMENT"
+    TRANSFER_IN = "TRANSFER_IN"
+    TRANSFER_OUT = "TRANSFER_OUT"
+
+
+class LedgerEntryResponse(BaseModel):
+    """Schema for a single ledger entry."""
+
+    id: str
+    transaction_type: str
+    amount: Decimal
+    running_cash_balance: Decimal
+    running_margin_used: Decimal
+    running_total_balance: Decimal
+    reference_type: str | None = None
+    reference_id: str | None = None
+    symbol: str | None = None
+    description: str
+    metadata: dict | None = None
+    transaction_date: datetime
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LedgerResponse(BaseModel):
+    """Schema for paginated ledger response."""
+
+    entries: list[LedgerEntryResponse]
+    total_count: int
+    page: int
+    page_size: int
+    total_in: Decimal  # Sum of credits
+    total_out: Decimal  # Sum of debits (absolute value)
+
+
+class LedgerStatementRequest(BaseModel):
+    """Schema for requesting account statement."""
+
+    start_date: datetime
+    end_date: datetime
+    transaction_types: list[TransactionType] | None = None
+    symbol: str | None = None
+    portfolio_id: str | None = None
+
+
+class LedgerStatementSummary(BaseModel):
+    """Schema for statement summary."""
+
+    period_start: datetime
+    period_end: datetime
+    opening_balance: Decimal
+    closing_balance: Decimal
+    total_deposits: Decimal
+    total_withdrawals: Decimal
+    total_buys: Decimal
+    total_sells: Decimal
+    total_fees: Decimal
+    total_dividends: Decimal
+    net_change: Decimal
+
+
+class LedgerStatementResponse(BaseModel):
+    """Schema for full account statement."""
+
+    summary: LedgerStatementSummary
+    entries: list[LedgerEntryResponse]
+
+
+class BalanceHistoryEntry(BaseModel):
+    """Schema for a single balance history point."""
+
+    date: datetime
+    cash_balance: Decimal
+    margin_used: Decimal
+    total_balance: Decimal
+
+
+class BalanceHistoryResponse(BaseModel):
+    """Schema for balance history response."""
+
+    entries: list[BalanceHistoryEntry]
+    start_date: datetime
+    end_date: datetime
