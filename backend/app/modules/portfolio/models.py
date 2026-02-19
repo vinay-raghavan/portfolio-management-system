@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Numeric, String
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -18,6 +18,21 @@ class ProductType(str, Enum):
 
     DELIVERY = "DELIVERY"  # CNC - Cash and Carry (overnight holding)
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
+
+
+class TransactionType(str, Enum):
+    """Type of transaction for the ledger."""
+
+    DEPOSIT = "DEPOSIT"  # Cash added to account
+    WITHDRAWAL = "WITHDRAWAL"  # Cash withdrawn
+    BUY = "BUY"  # Cash used to buy securities
+    SELL = "SELL"  # Cash received from selling
+    FEE = "FEE"  # Trading fees, brokerage
+    DIVIDEND = "DIVIDEND"  # Dividend received
+    INTEREST = "INTEREST"  # Interest earned/paid
+    ADJUSTMENT = "ADJUSTMENT"  # Manual adjustments
+    TRANSFER_IN = "TRANSFER_IN"  # Transfer from another portfolio
+    TRANSFER_OUT = "TRANSFER_OUT"  # Transfer to another portfolio
 
 
 class Portfolio(Base):
@@ -320,3 +335,70 @@ class CostLot(Base):
 
     def __repr__(self) -> str:
         return f"<CostLot {self.symbol}: {self.remaining_quantity}/{self.original_quantity} @ {self.purchase_price}>"
+
+
+class TransactionLedger(Base):
+    """Transaction ledger for tracking all cash flow activity.
+
+    Records every transaction with running balances for account statement generation.
+    Positive amounts are credits, negative amounts are debits.
+    """
+
+    __tablename__ = "transaction_ledger"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Transaction details
+    transaction_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # Positive for credits, negative for debits
+
+    # Running balances after this transaction
+    running_cash_balance: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    running_margin_used: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    running_total_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # cash + collateral - margin_used
+
+    # Reference to source entity
+    reference_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # "trade", "order", "manual", "dividend"
+    reference_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+
+    # Descriptive info
+    symbol: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # For trade-related transactions
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True
+    )  # Additional context (fees breakdown, etc.)
+
+    # Timestamps
+    transaction_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )  # When the transaction occurred
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_txn_ledger_user_date", "user_id", "transaction_date"),
+        Index("ix_txn_ledger_user_type", "user_id", "transaction_type"),
+        Index("ix_txn_ledger_user_symbol", "user_id", "symbol"),
+        Index("ix_txn_ledger_portfolio_date", "portfolio_id", "transaction_date"),
+        Index("ix_txn_ledger_reference", "reference_type", "reference_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TransactionLedger {self.transaction_type}: {self.amount} ({self.description[:30]}...)>"
