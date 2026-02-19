@@ -8,7 +8,17 @@ from datetime import datetime
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -123,3 +133,58 @@ class BrokerCredential(Base):
     def masked_secret_key(self) -> str:
         """Get masked secret key for display (never expose full value)."""
         return "*" * 12  # Never show any part of secret key
+
+
+class BrokerAPILog(Base):
+    """Log of all broker API interactions for debugging and audit.
+
+    Records request/response details, latency, and outcome for each API call.
+    Sensitive data (tokens, secrets) is masked before logging.
+    """
+
+    __tablename__ = "broker_api_logs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Broker info
+    broker_type: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Request details
+    endpoint: Mapped[str] = mapped_column(String(500), nullable=False)
+    method: Mapped[str] = mapped_column(String(10), nullable=False)  # GET, POST, etc.
+    request_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Response details
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Performance
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Context
+    action: Mapped[str] = mapped_column(String(100), nullable=False)  # place_order, cancel, etc.
+    reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # order, position
+    reference_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    # Timestamps
+    request_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_broker_api_logs_user_date", "user_id", "request_at"),
+        Index("ix_broker_api_logs_broker_action", "broker_type", "action"),
+        Index("ix_broker_api_logs_reference", "reference_type", "reference_id"),
+    )
+
+    def __repr__(self) -> str:
+        status = "OK" if self.is_success else "FAIL"
+        return f"<BrokerAPILog {self.broker_type}.{self.action} [{status}]>"
