@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.portfolio.models import TransactionLedger, TransactionType, UserFunds
@@ -143,13 +143,11 @@ class LedgerService:
 
         # Calculate totals (credits and debits)
         totals_query = select(
+            func.sum(case((TransactionLedger.amount > 0, TransactionLedger.amount), else_=0)).label(
+                "total_in"
+            ),
             func.sum(
-                func.case((TransactionLedger.amount > 0, TransactionLedger.amount), else_=0)
-            ).label("total_in"),
-            func.sum(
-                func.case(
-                    (TransactionLedger.amount < 0, func.abs(TransactionLedger.amount)), else_=0
-                )
+                case((TransactionLedger.amount < 0, func.abs(TransactionLedger.amount)), else_=0)
             ).label("total_out"),
         ).where(and_(*conditions))
         totals_result = await self.db.execute(totals_query)
