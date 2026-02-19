@@ -9,6 +9,7 @@ Create Date: 2026-02-19 12:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
@@ -23,10 +24,10 @@ def upgrade() -> None:
     """Create broker_api_logs table with indexes."""
     op.create_table(
         "broker_api_logs",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", UUID(as_uuid=False), primary_key=True),
         sa.Column(
             "user_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -46,7 +47,7 @@ def upgrade() -> None:
         # Context
         sa.Column("action", sa.String(100), nullable=False),
         sa.Column("reference_type", sa.String(50), nullable=True),
-        sa.Column("reference_id", sa.String(36), nullable=True),
+        sa.Column("reference_id", UUID(as_uuid=False), nullable=True),
         # Timestamps
         sa.Column("request_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("response_at", sa.DateTime(timezone=True), nullable=True),
