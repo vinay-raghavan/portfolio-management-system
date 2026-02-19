@@ -382,7 +382,7 @@ class TransactionLedger(Base):
         String(20), nullable=True
     )  # For trade-related transactions
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata: Mapped[dict | None] = mapped_column(
+    extra_data: Mapped[dict | None] = mapped_column(
         JSON, nullable=True
     )  # Additional context (fees breakdown, etc.)
 

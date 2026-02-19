@@ -300,7 +300,7 @@ class FundsService:
                     reference_type="trade",
                     reference_id=trade_id,
                     symbol=symbol,
-                    metadata={"quantity": str(quantity), "price": str(price)},
+                    extra_data={"quantity": str(quantity), "price": str(price)},
                 )
                 if fees > 0:
                     await self._ledger_service.record_transaction(
@@ -323,7 +323,7 @@ class FundsService:
                     reference_type="trade",
                     reference_id=trade_id,
                     symbol=symbol,
-                    metadata={"quantity": str(quantity), "price": str(price)},
+                    extra_data={"quantity": str(quantity), "price": str(price)},
                 )
                 if fees > 0:
                     await self._ledger_service.record_transaction(

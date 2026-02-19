@@ -48,7 +48,7 @@ def upgrade() -> None:
         # Descriptive info
         sa.Column("symbol", sa.String(20), nullable=True),
         sa.Column("description", sa.Text(), nullable=False),
-        sa.Column("metadata", sa.JSON(), nullable=True),
+        sa.Column("extra_data", sa.JSON(), nullable=True),
         # Timestamps
         sa.Column("transaction_date", sa.DateTime(timezone=True), nullable=False),
         sa.Column(

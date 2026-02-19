@@ -299,7 +299,7 @@ class LedgerEntryResponse(BaseModel):
     reference_id: str | None = None
     symbol: str | None = None
     description: str
-    metadata: dict | None = None
+    extra_data: dict | None = None
     transaction_date: datetime
     created_at: datetime
 

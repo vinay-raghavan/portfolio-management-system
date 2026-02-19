@@ -42,7 +42,7 @@ class LedgerService:
         reference_type: str | None = None,
         reference_id: str | None = None,
         symbol: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        extra_data: dict[str, Any] | None = None,
     ) -> TransactionLedger:
         """Record a transaction in the ledger.
 
@@ -58,7 +58,7 @@ class LedgerService:
             reference_type: Type of source entity (e.g., "trade", "order")
             reference_id: ID of the source entity
             symbol: Symbol for trade-related transactions
-            metadata: Additional context data
+            extra_data: Additional context data
 
         Returns:
             Created TransactionLedger entry
@@ -81,7 +81,7 @@ class LedgerService:
             reference_id=reference_id,
             symbol=symbol,
             description=description,
-            metadata=metadata,
+            extra_data=extra_data,
             transaction_date=transaction_date,
         )
 
