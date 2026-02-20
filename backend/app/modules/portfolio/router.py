@@ -451,6 +451,7 @@ async def get_ledger_statement(
 @router.get("/ledger/balance-history", response_model=BalanceHistoryResponse)
 async def get_balance_history(
     db: DbSession,
+    redis: RedisClient,
     current_user: CurrentUser,
     start_date: datetime = Query(..., description="Start date for history"),
     end_date: datetime = Query(..., description="End date for history"),
@@ -461,7 +462,7 @@ async def get_balance_history(
     Returns daily closing balances for the date range.
     Useful for displaying balance charts and graphs.
     """
-    service = LedgerService(db)
+    service = LedgerService(db, redis)
 
     return await service.get_balance_history(
         user_id=current_user.id,
