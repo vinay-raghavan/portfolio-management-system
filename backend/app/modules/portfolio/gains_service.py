@@ -149,6 +149,9 @@ class CapitalGainsService:
         await self.db.flush()
         await self.db.refresh(gain)
 
+        # Invalidate cache for this user
+        await self.invalidate_gains_cache(user_id)
+
         return gain
 
     async def get_realized_gains(

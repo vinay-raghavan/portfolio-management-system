@@ -9,7 +9,13 @@ from redis.asyncio import Redis
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
+from app.core.cache import (
+    CacheCategory,
+    generate_cache_key,
+    get_cached,
+    invalidate_pattern,
+    set_cached,
+)
 from app.modules.portfolio.models import TransactionLedger, TransactionType, UserFunds
 from app.modules.portfolio.schemas import (
     BalanceHistoryEntry,
@@ -91,6 +97,9 @@ class LedgerService:
         self.db.add(entry)
         await self.db.flush()
         await self.db.refresh(entry)
+
+        # Invalidate cache for this user
+        await self.invalidate_ledger_cache(user_id)
 
         logger.info(
             f"Recorded {transaction_type.value} transaction for user {user_id}: "
@@ -381,3 +390,11 @@ class LedgerService:
         """Get user funds for running balance calculation."""
         result = await self.db.execute(select(UserFunds).where(UserFunds.user_id == user_id))
         return result.scalar_one_or_none()
+
+    async def invalidate_ledger_cache(self, user_id: str) -> None:
+        """Invalidate all ledger caches for a user.
+
+        Should be called when new transactions are recorded.
+        """
+        if self.redis:
+            await invalidate_pattern(self.redis, f"ledger:balance_history:{user_id}")
