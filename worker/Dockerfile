@@ -48,7 +48,7 @@ COPY --from=builder /shared /shared
 COPY worker/pyproject.toml worker/README.md ./
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD celery -A worker.celery_app inspect ping -d celery@$HOSTNAME || exit 1
+    CMD uv run celery -A worker.celery_app inspect ping -d celery@$HOSTNAME || exit 1
 
 CMD ["uv", "run", "celery", "-A", "worker.celery_app", "worker", "--loglevel=info"]
 

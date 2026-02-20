@@ -34,9 +34,10 @@ services:
       - /app/.venv
     environment:
       DEBUG: "true"
+      LOG_LEVEL: DEBUG
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/portfolio
       REDIS_URL: redis://redis:6379
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
 
   # Frontend - development mode with hot reload
   web:
@@ -55,10 +56,10 @@ services:
   worker:
     volumes:
       - ./worker:/app
-    command: celery -A worker.celery_app worker --loglevel=debug
+    command: ["uv", "run", "celery", "-A", "worker.celery_app", "worker", "--loglevel=debug"]
 
   # Celery Beat
   beat:
     volumes:
       - ./worker:/app
-    command: celery -A worker.celery_app beat --loglevel=debug
+    command: ["uv", "run", "celery", "-A", "worker.celery_app", "beat", "--loglevel=debug"]
