@@ -4,12 +4,14 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from redis.asyncio import Redis
 from shared.providers.data.base import DataProvider
 from shared.providers.data.yahoo import YahooDataProvider
 from shared.providers.schemas import FundamentalData
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 from app.modules.screener.filters import FundamentalCriteria, FundamentalFilter
 from app.modules.screener.models import DailyRecommendation
 
@@ -30,11 +32,19 @@ class RecommendationService:
         self,
         db: AsyncSession,
         provider: DataProvider | None = None,
+        redis: Redis | None = None,
     ):
-        """Initialize recommendation service."""
+        """Initialize recommendation service.
+
+        Args:
+            db: Database session for queries.
+            provider: Data provider for market data.
+            redis: Redis client for caching. If None, caching is disabled.
+        """
         self.db = db
         self.provider = provider or YahooDataProvider()
         self.fundamental_filter = FundamentalFilter()
+        self.redis = redis
 
     async def get_recommendations(
         self,
@@ -55,6 +65,19 @@ class RecommendationService:
         if date is None:
             date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
+        date_str = date.strftime("%Y-%m-%d")
+        category_key = category or "all"
+
+        # Try to get from cache (1hr TTL - daily recommendations don't change often)
+        if self.redis:
+            cache_key = generate_cache_key(
+                "recommendations", "daily", date_str, category_key, str(limit)
+            )
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                # Reconstruct DailyRecommendation objects from cached data
+                return [DailyRecommendation(**item) for item in cached]
+
         query = select(DailyRecommendation).where(
             DailyRecommendation.date >= date,
             DailyRecommendation.date < date.replace(hour=23, minute=59, second=59),
@@ -65,7 +88,35 @@ class RecommendationService:
 
         query = query.order_by(DailyRecommendation.score.desc()).limit(limit)
         result = await self.db.execute(query)
-        return list(result.scalars().all())
+        recommendations = list(result.scalars().all())
+
+        # Cache the result (1hr TTL - uses FUNDAMENTALS category)
+        if self.redis and recommendations:
+            cache_data = [
+                {
+                    "id": str(r.id),
+                    "date": r.date.isoformat(),
+                    "category": r.category,
+                    "symbol": r.symbol,
+                    "rank": r.rank,
+                    "score": r.score,
+                    "price_at_rec": r.price_at_rec,
+                    "price_1d": r.price_1d,
+                    "price_1w": r.price_1w,
+                    "price_1m": r.price_1m,
+                    "return_1d": r.return_1d,
+                    "return_1w": r.return_1w,
+                    "return_1m": r.return_1m,
+                    "filter_scores": r.filter_scores,
+                    "reasons": r.reasons,
+                    "extra_data": r.extra_data,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in recommendations
+            ]
+            await set_cached(self.redis, cache_key, cache_data, CacheCategory.FUNDAMENTALS)
+
+        return recommendations
 
     def calculate_fundamental_score(self, fundamentals: FundamentalData) -> tuple[float, list[str]]:
         """Calculate fundamental quality score.

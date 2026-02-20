@@ -766,6 +766,7 @@ async def generate_digest(
 @router.get("/recommendations", response_model=RecommendationsResponse)
 async def get_recommendations(
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     category: str | None = Query(
         None, description="Filter by category: quality, value, growth, dividend"
@@ -786,7 +787,7 @@ async def get_recommendations(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = RecommendationService(db, provider=provider)
+    service = RecommendationService(db, provider=provider, redis=redis)
 
     # Get NIFTY50 stocks for recommendations (can be expanded)
     symbols = PREDEFINED_UNIVERSES.get("NIFTY50", {}).get("symbols", [])[:20]
@@ -859,6 +860,7 @@ async def get_recommendations(
 async def get_universe_research(
     universe_name: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     max_pe: float | None = Query(None, description="Maximum P/E ratio"),
     min_roe: float | None = Query(None, description="Minimum ROE %"),
@@ -880,7 +882,7 @@ async def get_universe_research(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = RecommendationService(db, provider=provider)
+    service = RecommendationService(db, provider=provider, redis=redis)
 
     # Resolve universe
     universe_upper = universe_name.upper().replace(" ", "")
