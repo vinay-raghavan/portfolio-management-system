@@ -1,12 +1,23 @@
 """Service for tracking and reporting capital gains."""
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from redis.asyncio import Redis
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import (
+    CacheCategory,
+    generate_cache_key,
+    get_cached,
+    invalidate_pattern,
+    set_cached,
+)
 from app.modules.portfolio.models import RealizedGain, TaxType
+
+logger = logging.getLogger(__name__)
 
 
 def get_financial_year(date: datetime) -> str:
@@ -56,9 +67,10 @@ def determine_tax_type(purchase_date: datetime, sale_date: datetime) -> TaxType:
 class CapitalGainsService:
     """Service for tracking realized capital gains/losses."""
 
-    def __init__(self, db: AsyncSession):
-        """Initialize with database session."""
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
+        """Initialize with database session and optional Redis client."""
         self.db = db
+        self.redis = redis
 
     async def record_realized_gain(
         self,
@@ -216,6 +228,16 @@ class CapitalGainsService:
         Returns:
             Dict with total gains, STCG, LTCG, speculative breakdown
         """
+        # Try cache first
+        cache_key = generate_cache_key(
+            "gains:summary", user_id, fy=financial_year, portfolio=portfolio_id
+        )
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
         conditions = [RealizedGain.user_id == user_id]
 
         if financial_year:
@@ -272,6 +294,10 @@ class CapitalGainsService:
 
         summary["net_gain_loss"] = summary["stcg"] + summary["ltcg"] + summary["speculative"]
 
+        # Cache result
+        if self.redis:
+            await set_cached(self.redis, cache_key, summary, CacheCategory.DB_AGGREGATION)
+
         return summary
 
     async def get_gains_by_symbol(
@@ -285,6 +311,16 @@ class CapitalGainsService:
         Returns:
             List of dicts with symbol, total_gain, trade_count, etc.
         """
+        # Try cache first
+        cache_key = generate_cache_key(
+            "gains:by_symbol", user_id, fy=financial_year, portfolio=portfolio_id
+        )
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
         conditions = [RealizedGain.user_id == user_id]
 
         if financial_year:
@@ -307,7 +343,7 @@ class CapitalGainsService:
         result = await self.db.execute(query)
         rows = result.all()
 
-        return [
+        gains_list = [
             {
                 "symbol": row.symbol,
                 "total_gain": row.total_gain or Decimal("0"),
@@ -316,3 +352,18 @@ class CapitalGainsService:
             }
             for row in rows
         ]
+
+        # Cache result
+        if self.redis:
+            await set_cached(self.redis, cache_key, gains_list, CacheCategory.DB_AGGREGATION)
+
+        return gains_list
+
+    async def invalidate_gains_cache(self, user_id: str) -> None:
+        """Invalidate all gains caches for a user.
+
+        Should be called when new realized gains are recorded.
+        """
+        if self.redis:
+            await invalidate_pattern(self.redis, f"gains:summary:{user_id}")
+            await invalidate_pattern(self.redis, f"gains:by_symbol:{user_id}")

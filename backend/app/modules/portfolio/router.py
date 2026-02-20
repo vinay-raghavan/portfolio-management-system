@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, RedisClient
 from app.modules.portfolio.funds_service import FundsService
 from app.modules.portfolio.gains_service import CapitalGainsService
 from app.modules.portfolio.ledger_service import LedgerService
@@ -517,6 +517,7 @@ async def get_realized_gains(
 @router.get("/gains/summary", response_model=GainsSummaryResponse)
 async def get_gains_summary(
     db: DbSession,
+    redis: RedisClient,
     current_user: CurrentUser,
     financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
     portfolio_id: str | None = Query(None, description="Filter by portfolio"),
@@ -526,7 +527,7 @@ async def get_gains_summary(
     Returns aggregated totals by tax type (STCG/LTCG/SPECULATIVE).
     Useful for tax reporting and dashboard displays.
     """
-    service = CapitalGainsService(db)
+    service = CapitalGainsService(db, redis)
 
     summary = await service.get_gains_summary(
         user_id=current_user.id,
@@ -543,6 +544,7 @@ async def get_gains_summary(
 @router.get("/gains/by-symbol", response_model=GainsBySymbolListResponse)
 async def get_gains_by_symbol(
     db: DbSession,
+    redis: RedisClient,
     current_user: CurrentUser,
     financial_year: str | None = Query(None, description="Filter by FY (e.g., 2024-25)"),
     portfolio_id: str | None = Query(None, description="Filter by portfolio"),
@@ -552,7 +554,7 @@ async def get_gains_by_symbol(
     Returns total gains/losses for each symbol traded during the period.
     Useful for identifying best/worst performing stocks.
     """
-    service = CapitalGainsService(db)
+    service = CapitalGainsService(db, redis)
 
     gains_by_symbol = await service.get_gains_by_symbol(
         user_id=current_user.id,
