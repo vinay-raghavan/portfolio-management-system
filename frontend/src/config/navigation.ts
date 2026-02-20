@@ -12,6 +12,11 @@ import {
   Search,
   TrendingUp,
   Microscope,
+  FileBarChart,
+  Receipt,
+  TrendingDown,
+  Activity,
+  FileText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -54,6 +59,17 @@ export const navigationGroups: NavGroup[] = [
       { name: 'Watchlist', href: '/watchlist', icon: Star, shortcut: 'G W' },
       { name: 'Algo Trading', href: '/algo', icon: Bot, shortcut: 'G T' },
       { name: 'Backtest', href: '/backtest', icon: FlaskConical, shortcut: 'G B' },
+    ],
+  },
+  {
+    name: 'Reports',
+    icon: FileBarChart,
+    items: [
+      { name: 'Overview', href: '/reports', icon: FileBarChart, shortcut: 'G X' },
+      { name: 'Statement', href: '/reports/statement', icon: Receipt, shortcut: 'G L' },
+      { name: 'Capital Gains', href: '/reports/gains', icon: TrendingDown, shortcut: 'G G' },
+      { name: 'API Logs', href: '/reports/api-logs', icon: FileText, shortcut: 'G I' },
+      { name: 'Activity', href: '/reports/activity', icon: Activity, shortcut: 'G Y' },
     ],
   },
 ];

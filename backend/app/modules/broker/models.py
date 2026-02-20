@@ -171,7 +171,7 @@ class BrokerAPILog(Base):
     # Context
     action: Mapped[str] = mapped_column(String(100), nullable=False)  # place_order, cancel, etc.
     reference_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # order, position
-    reference_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
 
     # Timestamps
     request_at: Mapped[datetime] = mapped_column(

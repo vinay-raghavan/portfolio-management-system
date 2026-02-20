@@ -3201,27 +3201,27 @@ class ActivityLog(Base):
   - `POST /activity/mark-read` - Mark as read
   - `GET /activity/entity/{type}/{id}` - Activities for entity
 
-### 2.5 Reports Frontend
+### 2.5 Reports Frontend ✅
 > 🌿 **Branch:** `phase-2/reports-frontend`
+> **Status:** ✅ Complete (2026-02-19)
 
 New "Reports" section in the frontend sidebar with comprehensive reporting pages.
 
-#### 2.5.1 Frontend Navigation Update
+#### 2.5.1 Frontend Navigation Update ✅
 Add Reports section to the main sidebar.
 
 **Tasks:**
-- [ ] Update `frontend/src/components/Sidebar.tsx`:
-  - Add "Reports" section with icon (📊 or FileBarChart)
+- [x] Update `frontend/src/config/navigation.ts`:
+  - Add "Reports" section with FileBarChart icon
   - Sub-items: Statement, Gains Report, API Logs, Activity
-- [ ] Create Reports layout `frontend/src/app/(dashboard)/reports/layout.tsx`
-- [ ] Add routes:
+- [x] Add routes:
   - `/reports` - Overview/landing page
   - `/reports/statement` - Account statement
   - `/reports/gains` - Capital gains report
   - `/reports/api-logs` - Broker API logs
   - `/reports/activity` - Activity feed
 
-#### 2.5.2 Account Statement Page
+#### 2.5.2 Account Statement Page ✅
 Ledger view with filtering and export.
 
 **Page: `/reports/statement`**
@@ -3235,18 +3235,13 @@ Ledger view with filtering and export.
 - Summary cards: Total In, Total Out, Net Change
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/reports/statement/page.tsx`
-- [ ] Create components:
-  - `StatementTable` - Main ledger table with pagination
-  - `StatementFilters` - Date range, type, symbol filters
-  - `StatementSummary` - Summary cards
-  - `StatementExport` - Export buttons
-- [ ] Add API functions in `frontend/src/lib/api.ts`:
+- [x] Create `frontend/src/app/(dashboard)/reports/statement/page.tsx`
+- [x] Add API functions in `frontend/src/lib/api.ts`:
   - `reportsApi.getLedger()`
   - `reportsApi.exportStatement()`
-- [ ] Add types in `frontend/src/types/index.ts`
+- [x] Add types in `frontend/src/types/api.ts`
 
-#### 2.5.3 Capital Gains Report Page
+#### 2.5.3 Capital Gains Report Page ✅
 Tax-focused gains report with short/long term breakdown.
 
 **Page: `/reports/gains`**
@@ -3259,19 +3254,13 @@ Tax-focused gains report with short/long term breakdown.
 - Export for tax filing (CSV with required columns)
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/reports/gains/page.tsx`
-- [ ] Create components:
-  - `GainsSummaryCards` - STCG/LTCG/Total
-  - `GainsTable` - Detailed gains with lot info
-  - `GainsBySymbol` - Aggregated view
-  - `HoldingPeriodChart` - Distribution visualization
-  - `TaxExport` - Export for ITR filing
-- [ ] Add API functions:
+- [x] Create `frontend/src/app/(dashboard)/reports/gains/page.tsx`
+- [x] Add API functions:
   - `reportsApi.getRealizedGains()`
   - `reportsApi.getGainsSummary()`
   - `reportsApi.exportGainsCSV()`
 
-#### 2.5.4 Broker API Logs Page
+#### 2.5.4 Broker API Logs Page ✅
 Debug view for broker API interactions.
 
 **Page: `/reports/api-logs`**
@@ -3284,17 +3273,12 @@ Debug view for broker API interactions.
 - Auto-refresh toggle
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/reports/api-logs/page.tsx`
-- [ ] Create components:
-  - `APILogsTable` - Main table with expandable rows
-  - `APILogsFilters` - Broker, action, status, date filters
-  - `APIStatsCards` - Success rate, avg latency
-  - `RequestResponseViewer` - JSON viewer for details
-- [ ] Add API functions:
+- [x] Create `frontend/src/app/(dashboard)/reports/api-logs/page.tsx`
+- [x] Add API functions:
   - `reportsApi.getAPILogs()`
   - `reportsApi.getAPIStats()`
 
-#### 2.5.5 Activity Feed Page
+#### 2.5.5 Activity Feed Page ✅
 Timeline of all user activities.
 
 **Page: `/reports/activity`**
@@ -3308,18 +3292,13 @@ Timeline of all user activities.
 - Real-time updates via WebSocket (optional)
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/reports/activity/page.tsx`
-- [ ] Create components:
-  - `ActivityTimeline` - Timeline component
-  - `ActivityFilters` - Category, date filters
-  - `ActivityItem` - Individual activity card
-- [ ] Add API functions:
+- [x] Create `frontend/src/app/(dashboard)/reports/activity/page.tsx`
+- [x] Add API functions:
   - `reportsApi.getActivities()`
   - `reportsApi.markAsRead()`
   - `reportsApi.getUnreadCount()`
-- [ ] Integrate with notification bell (existing)
 
-#### 2.5.6 Reports Overview Page
+#### 2.5.6 Reports Overview Page ✅
 Landing page with summary of all reports.
 
 **Page: `/reports`**
@@ -3331,12 +3310,7 @@ Landing page with summary of all reports.
 - Account balance chart (last 30 days)
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/reports/page.tsx`
-- [ ] Create components:
-  - `ReportsOverview` - Main layout
-  - `QuickStats` - Key metrics
-  - `RecentActivity` - Last 5 activities
-  - `BalanceChart` - Line chart of balance history
+- [x] Create `frontend/src/app/(dashboard)/reports/page.tsx`
 
 ---
 

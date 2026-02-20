@@ -1,7 +1,7 @@
 """Add activity_logs table.
 
 Revision ID: 20260219_1300
-Revises: 20260219_1200
+Revises: 2024021912001
 Create Date: 2026-02-19 13:00:00.000000
 
 """
@@ -9,12 +9,13 @@ Create Date: 2026-02-19 13:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "20260219_1300"
-down_revision: str = "20260219_1200"
+down_revision: str = "2024021912001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -23,8 +24,8 @@ def upgrade() -> None:
     """Create activity_logs table."""
     op.create_table(
         "activity_logs",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.UUID(), nullable=False),
+        sa.Column("id", UUID(as_uuid=False), nullable=False),
+        sa.Column("user_id", UUID(as_uuid=False), nullable=False),
         # Activity details
         sa.Column("activity_type", sa.String(50), nullable=False),
         sa.Column("category", sa.String(20), nullable=False),
@@ -32,7 +33,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         # Entity reference
         sa.Column("entity_type", sa.String(50), nullable=True),
-        sa.Column("entity_id", sa.UUID(), nullable=True),
+        sa.Column("entity_id", UUID(as_uuid=False), nullable=True),
         # Additional context
         sa.Column("extra_data", sa.JSON(), nullable=True),
         # Severity/importance

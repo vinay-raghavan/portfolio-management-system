@@ -432,12 +432,14 @@ class RealizedGain(Base):
 
     __tablename__ = "realized_gains"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
     user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     portfolio_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
     )
 
     # Security info
@@ -478,13 +480,13 @@ class RealizedGain(Base):
 
     # References to source entities
     cost_lot_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("cost_lots.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("cost_lots.id", ondelete="SET NULL"), nullable=True
     )
     buy_trade_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
     )
     sell_trade_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
     )
 
     # Financial year (e.g., "2024-25")

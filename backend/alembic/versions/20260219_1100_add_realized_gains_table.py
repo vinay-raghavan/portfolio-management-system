@@ -1,7 +1,7 @@
 """Add realized_gains table for capital gains tracking.
 
 Revision ID: 2024021911001
-Revises: 2024021910001
+Revises: txn_ledger_001
 Create Date: 2026-02-19 11:00:00.000000
 
 """
@@ -9,12 +9,13 @@ Create Date: 2026-02-19 11:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "2024021911001"
-down_revision: str | None = "2024021910001"
+down_revision: str | None = "txn_ledger_001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -23,16 +24,16 @@ def upgrade() -> None:
     """Create realized_gains table with indexes."""
     op.create_table(
         "realized_gains",
-        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("id", UUID(as_uuid=False), primary_key=True),
         sa.Column(
             "user_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "portfolio_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("portfolios.id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -56,19 +57,19 @@ def upgrade() -> None:
         # References
         sa.Column(
             "cost_lot_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("cost_lots.id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
             "buy_trade_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("trades.id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
             "sell_trade_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("trades.id", ondelete="SET NULL"),
             nullable=True,
         ),
