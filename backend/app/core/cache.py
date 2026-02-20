@@ -125,7 +125,10 @@ async def get_cached(redis: Redis, key: str) -> Any | None:
     try:
         data = await redis.get(key)
         if data:
+            logger.debug(f"Cache HIT: {key}")
             return json.loads(data)
+        else:
+            logger.debug(f"Cache MISS: {key}")
     except Exception as e:
         logger.warning(f"Cache get error for {key}: {e}")
     return None
@@ -142,6 +145,7 @@ async def set_cached(
         ttl = get_ttl(category)
         data = json.dumps(value, default=str)
         await redis.setex(key, ttl, data)
+        logger.debug(f"Cache SET: {key} (TTL: {ttl}s, category: {category.value})")
         return True
     except Exception as e:
         logger.warning(f"Cache set error for {key}: {e}")
@@ -155,7 +159,9 @@ async def invalidate_pattern(redis: Redis, pattern: str) -> int:
         async for key in redis.scan_iter(match=f"cache:{pattern}*"):
             keys.append(key)
         if keys:
-            return await redis.delete(*keys)
+            count = await redis.delete(*keys)
+            logger.debug(f"Cache INVALIDATE: {pattern}* ({count} keys deleted)")
+            return count
     except Exception as e:
         logger.warning(f"Cache invalidation error for {pattern}: {e}")
     return 0
