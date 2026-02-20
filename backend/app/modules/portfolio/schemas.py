@@ -3,8 +3,14 @@
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
+
+# Custom type that serializes Decimal as float for JSON
+DecimalAsFloat = Annotated[
+    Decimal, PlainSerializer(lambda x: float(x) if x is not None else None, return_type=float)
+]
 
 
 class ProductType(str, Enum):
@@ -383,12 +389,12 @@ class RealizedGainResponse(BaseModel):
 
     id: str
     symbol: str
-    quantity: Decimal
-    cost_basis: Decimal
-    sale_proceeds: Decimal
-    fees: Decimal
-    gain_loss: Decimal
-    gain_loss_pct: Decimal
+    quantity: DecimalAsFloat
+    cost_basis: DecimalAsFloat
+    sale_proceeds: DecimalAsFloat
+    fees: DecimalAsFloat
+    gain_loss: DecimalAsFloat
+    gain_loss_pct: DecimalAsFloat
     purchase_date: datetime
     sale_date: datetime
     holding_days: int
@@ -415,12 +421,12 @@ class RealizedGainsListResponse(BaseModel):
 class GainsSummaryResponse(BaseModel):
     """Schema for capital gains summary."""
 
-    total_gains: Decimal
-    total_losses: Decimal
-    net_gain_loss: Decimal
-    stcg: Decimal
-    ltcg: Decimal
-    speculative: Decimal
+    total_gains: DecimalAsFloat
+    total_losses: DecimalAsFloat
+    net_gain_loss: DecimalAsFloat
+    stcg: DecimalAsFloat
+    ltcg: DecimalAsFloat
+    speculative: DecimalAsFloat
     stcg_count: int
     ltcg_count: int
     speculative_count: int
@@ -431,8 +437,8 @@ class GainsBySymbolResponse(BaseModel):
     """Schema for gains aggregated by symbol."""
 
     symbol: str
-    total_gain: Decimal
-    total_quantity: Decimal
+    total_gain: DecimalAsFloat
+    total_quantity: DecimalAsFloat
     trade_count: int
 
 
