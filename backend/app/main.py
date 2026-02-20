@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,18 @@ from shared.strategies import register_all_prebuilt_strategies
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
+
+# Configure logging from LOG_LEVEL environment variable
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level_value = getattr(logging, log_level, logging.INFO)
+logging.basicConfig(
+    level=log_level_value,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+
+# Explicitly set level for app loggers to ensure DEBUG propagates
+logging.getLogger("app").setLevel(log_level_value)
+logging.getLogger("app.core.cache").setLevel(log_level_value)
 
 logger = logging.getLogger(__name__)
 

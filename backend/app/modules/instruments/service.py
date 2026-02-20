@@ -3,9 +3,11 @@
 import logging
 from datetime import datetime
 
+from redis.asyncio import Redis
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 from app.modules.instruments.models import Instrument
 from app.modules.instruments.schemas import (
     InstrumentBulkResponse,
@@ -19,9 +21,15 @@ logger = logging.getLogger(__name__)
 class InstrumentService:
     """Service for instrument operations."""
 
-    def __init__(self, db: AsyncSession):
-        """Initialize with database session."""
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
+        """Initialize with database session and optional Redis.
+
+        Args:
+            db: Database session for queries.
+            redis: Redis client for caching. If None, caching is disabled.
+        """
         self.db = db
+        self.redis = redis
 
     async def create(self, data: InstrumentCreate) -> Instrument:
         """Create a new instrument."""
@@ -205,28 +213,81 @@ class InstrumentService:
 
     async def get_indices(self, exchange: str = "NSE") -> list[Instrument]:
         """Get all index instruments."""
+        exchange_upper = exchange.upper()
+
+        # Try to get from cache
+        if self.redis:
+            cache_key = generate_cache_key("instruments", "indices", exchange_upper)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                # Reconstruct Instrument objects from cached data
+                return [Instrument(**item) for item in cached]
+
         result = await self.db.execute(
             select(Instrument).where(
-                Instrument.exchange == exchange.upper(),
+                Instrument.exchange == exchange_upper,
                 Instrument.instrument_type == "IDX",
                 Instrument.is_active,
             )
         )
-        return list(result.scalars().all())
+        instruments = list(result.scalars().all())
+
+        # Cache the result (24hr - reference data rarely changes)
+        if self.redis and instruments:
+            # Convert to dict for caching
+            cache_data = [
+                {
+                    "id": str(i.id),
+                    "symbol": i.symbol,
+                    "name": i.name,
+                    "exchange": i.exchange,
+                    "segment": i.segment,
+                    "instrument_type": i.instrument_type,
+                    "underlying": i.underlying,
+                    "expiry": i.expiry.isoformat() if i.expiry else None,
+                    "strike_price": float(i.strike_price) if i.strike_price else None,
+                    "option_type": i.option_type,
+                    "lot_size": i.lot_size,
+                    "tick_size": float(i.tick_size) if i.tick_size else None,
+                    "isin": i.isin,
+                    "provider": i.provider,
+                    "provider_symbol": i.provider_symbol,
+                    "is_active": i.is_active,
+                }
+                for i in instruments
+            ]
+            await set_cached(self.redis, cache_key, cache_data, CacheCategory.REFERENCE)
+
+        return instruments
 
     async def get_fo_underlyings(self, exchange: str = "NSE") -> list[str]:
         """Get unique underlyings for F&O instruments."""
+        exchange_upper = exchange.upper()
+
+        # Try to get from cache
+        if self.redis:
+            cache_key = generate_cache_key("instruments", "fo_underlyings", exchange_upper)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                return cached
+
         result = await self.db.execute(
             select(Instrument.underlying)
             .where(
-                Instrument.exchange == exchange.upper(),
+                Instrument.exchange == exchange_upper,
                 Instrument.segment == "FO",
                 Instrument.underlying.isnot(None),
                 Instrument.is_active,
             )
             .distinct()
         )
-        return [row[0] for row in result.all() if row[0]]
+        underlyings = [row[0] for row in result.all() if row[0]]
+
+        # Cache the result (24hr - reference data rarely changes)
+        if self.redis and underlyings:
+            await set_cached(self.redis, cache_key, underlyings, CacheCategory.REFERENCE)
+
+        return underlyings
 
     async def get_expiry_dates(self, underlying: str, exchange: str = "NSE") -> list:
         """Get available expiry dates for an underlying."""

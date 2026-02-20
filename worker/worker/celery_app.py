@@ -22,6 +22,7 @@ celery_app = Celery(
         "worker.tasks.algo",
         "worker.tasks.screener",
         "worker.tasks.research",
+        "worker.tasks.reporting",
     ],
 )
 
@@ -139,5 +140,10 @@ celery_app.conf.beat_schedule = {
     "generate-daily-digest": {
         "task": "worker.tasks.research.generate_daily_digest",
         "schedule": crontab(hour=10, minute=30),  # 4:00 PM IST = 10:30 UTC
+    },
+    # Sync reporting tables every 15 minutes
+    "sync-reporting-tables-every-15-minutes": {
+        "task": "worker.tasks.reporting.sync_reporting_tables",
+        "schedule": 900.0,  # Every 15 minutes
     },
 }

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, RedisClient
 from app.modules.broker.logging_service import BrokerLoggingService
 from app.modules.broker.schemas import (
     BrokerAuthUrlResponse,
@@ -75,6 +75,7 @@ async def get_broker_logs(
 @router.get("/logs/stats", response_model=BrokerLogStatsListResponse)
 async def get_broker_log_stats(
     db: DbSession,
+    redis: RedisClient,
     current_user: CurrentUser,
     broker_type: str | None = Query(None, description="Filter by broker type"),
 ) -> BrokerLogStatsListResponse:
@@ -83,7 +84,7 @@ async def get_broker_log_stats(
     Returns success rates, average latency, and other metrics
     grouped by broker type and action.
     """
-    logging_service = BrokerLoggingService(db)
+    logging_service = BrokerLoggingService(db, redis)
     stats_result = await logging_service.get_api_stats(
         user_id=current_user.id,
         broker_type=broker_type,

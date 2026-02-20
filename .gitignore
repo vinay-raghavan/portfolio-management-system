@@ -227,3 +227,6 @@ yarn-error.log*
 # Next.js specific
 next-env.d.ts
 intradaysignalAPI.py
+
+# Augment Code
+.augment/

@@ -5,9 +5,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from redis.asyncio import Redis
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import (
+    CacheCategory,
+    generate_cache_key,
+    get_cached,
+    invalidate_pattern,
+    set_cached,
+)
 from app.modules.portfolio.models import TransactionLedger, TransactionType, UserFunds
 from app.modules.portfolio.schemas import (
     BalanceHistoryEntry,
@@ -27,9 +35,10 @@ class LedgerService:
     Records all cash flow transactions and provides statement generation.
     """
 
-    def __init__(self, db: AsyncSession):
-        """Initialize with database session."""
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
+        """Initialize with database session and optional Redis client."""
         self.db = db
+        self.redis = redis
 
     async def record_transaction(
         self,
@@ -88,6 +97,9 @@ class LedgerService:
         self.db.add(entry)
         await self.db.flush()
         await self.db.refresh(entry)
+
+        # Invalidate cache for this user
+        await self.invalidate_ledger_cache(user_id)
 
         logger.info(
             f"Recorded {transaction_type.value} transaction for user {user_id}: "
@@ -286,6 +298,35 @@ class LedgerService:
         Returns:
             BalanceHistoryResponse with daily balance points
         """
+        # Try cache first - historical data is immutable, good candidate for caching
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+        cache_key = generate_cache_key(
+            "ledger:balance_history",
+            user_id,
+            start=start_str,
+            end=end_str,
+            portfolio=portfolio_id,
+        )
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                # Reconstruct response from cached data
+                return BalanceHistoryResponse(
+                    entries=[
+                        BalanceHistoryEntry(
+                            date=datetime.fromisoformat(e["date"]),
+                            cash_balance=Decimal(str(e["cash_balance"])),
+                            margin_used=Decimal(str(e["margin_used"])),
+                            total_balance=Decimal(str(e["total_balance"])),
+                        )
+                        for e in cached["entries"]
+                    ],
+                    start_date=datetime.fromisoformat(cached["start_date"]),
+                    end_date=datetime.fromisoformat(cached["end_date"]),
+                )
+
         conditions = [
             TransactionLedger.user_id == user_id,
             TransactionLedger.transaction_date >= start_date,
@@ -320,13 +361,40 @@ class LedgerService:
             for entry in daily_balances.values()
         ]
 
-        return BalanceHistoryResponse(
+        response = BalanceHistoryResponse(
             entries=history_entries,
             start_date=start_date,
             end_date=end_date,
         )
 
+        # Cache the result
+        if self.redis:
+            cache_data = {
+                "entries": [
+                    {
+                        "date": e.date.isoformat(),
+                        "cash_balance": str(e.cash_balance),
+                        "margin_used": str(e.margin_used),
+                        "total_balance": str(e.total_balance),
+                    }
+                    for e in history_entries
+                ],
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            }
+            await set_cached(self.redis, cache_key, cache_data, CacheCategory.DB_AGGREGATION)
+
+        return response
+
     async def _get_user_funds(self, user_id: str) -> UserFunds | None:
         """Get user funds for running balance calculation."""
         result = await self.db.execute(select(UserFunds).where(UserFunds.user_id == user_id))
         return result.scalar_one_or_none()
+
+    async def invalidate_ledger_cache(self, user_id: str) -> None:
+        """Invalidate all ledger caches for a user.
+
+        Should be called when new transactions are recorded.
+        """
+        if self.redis:
+            await invalidate_pattern(self.redis, f"ledger:balance_history:{user_id}")

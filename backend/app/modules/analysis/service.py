@@ -5,10 +5,12 @@ from decimal import Decimal
 
 import pandas as pd
 import yfinance as yf
+from redis.asyncio import Redis
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, EMAIndicator, SMAIndicator
 from ta.volatility import AverageTrueRange, BollingerBands
 
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 from app.core.config import settings
 from app.modules.analysis.schemas import (
     AnalysisResult,
@@ -24,13 +26,15 @@ logger = logging.getLogger(__name__)
 class AnalysisService:
     """Service for technical analysis calculations."""
 
-    def __init__(self, provider: DataProvider | None = None):
+    def __init__(self, provider: DataProvider | None = None, redis: Redis | None = None):
         """Initialize with optional custom data provider.
 
         Args:
             provider: Data provider instance. If None, uses default from config.
+            redis: Redis client for caching. If None, caching is disabled.
         """
         self._provider = provider or get_data_provider()
+        self.redis = redis
 
     def _normalize_symbol(self, symbol: str) -> str:
         """Normalize symbol for Yahoo Finance.
@@ -95,9 +99,16 @@ class AnalysisService:
         self, symbol: str, period: str = "6mo"
     ) -> TechnicalIndicators | None:
         """Calculate technical indicators for a symbol."""
-        try:
-            symbol_upper = symbol.upper().strip()
+        symbol_upper = symbol.upper().strip()
 
+        # Try to get from cache
+        if self.redis:
+            cache_key = generate_cache_key("analysis", "indicators", symbol_upper, period)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                return TechnicalIndicators(**cached)
+
+        try:
             # Use the configured data provider to fetch historical data
             ohlcv_list = await self._provider.get_historical(symbol_upper, period=period)
 
@@ -159,7 +170,7 @@ class AnalysisService:
             # Volume SMA
             vol_sma = SMAIndicator(volume.astype(float), window=20).sma_indicator().iloc[-1]
 
-            return TechnicalIndicators(
+            result = TechnicalIndicators(
                 symbol=symbol.upper(),
                 sma_20=self._to_decimal(sma_20),
                 sma_50=self._to_decimal(sma_50),
@@ -176,19 +187,35 @@ class AnalysisService:
                 atr_14=self._to_decimal(atr),
                 volume_sma_20=self._to_decimal(vol_sma),
             )
+
+            # Cache the result (5min market hours, 30min off-market)
+            if self.redis:
+                cache_key = generate_cache_key("analysis", "indicators", symbol_upper, period)
+                # Convert Decimal to str for JSON serialization
+                cache_data = result.model_dump(mode="json")
+                await set_cached(self.redis, cache_key, cache_data, CacheCategory.EXTERNAL_API)
+
+            return result
         except Exception as e:
             logger.error(f"Error calculating indicators for {symbol}: {e}")
             return None
 
     async def get_analysis(self, symbol: str) -> AnalysisResult | None:
         """Get complete technical analysis for a symbol."""
+        symbol_upper = symbol.upper().strip()
+
+        # Try to get from cache
+        if self.redis:
+            cache_key = generate_cache_key("analysis", "full", symbol_upper)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                return AnalysisResult(**cached)
+
         indicators = await self.get_technical_indicators(symbol)
         if indicators is None:
             return None
 
         try:
-            symbol_upper = symbol.upper().strip()
-
             # Get current price from the configured data provider
             current_price = Decimal("0")
             price = await self._provider.get_current_price(symbol_upper)
@@ -211,7 +238,7 @@ class AnalysisService:
             if indicators.bb_upper:
                 resistance_levels.append(indicators.bb_upper)
 
-            return AnalysisResult(
+            result = AnalysisResult(
                 symbol=symbol.upper(),
                 current_price=current_price,
                 indicators=indicators,
@@ -220,6 +247,14 @@ class AnalysisService:
                 resistance_levels=sorted(resistance_levels),
                 trend=trend,
             )
+
+            # Cache the result (5min market hours, 30min off-market)
+            if self.redis:
+                cache_key = generate_cache_key("analysis", "full", symbol_upper)
+                cache_data = result.model_dump(mode="json")
+                await set_cached(self.redis, cache_key, cache_data, CacheCategory.EXTERNAL_API)
+
+            return result
         except Exception as e:
             logger.error(f"Error getting analysis for {symbol}: {e}")
             return None

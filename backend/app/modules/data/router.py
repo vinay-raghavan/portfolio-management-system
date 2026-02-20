@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.api.deps import DbSession, OptionalUser
+from app.api.deps import DbSession, OptionalUser, RedisClient
 from app.modules.data.schemas import (
     HistoricalDataResponse,
     IndexConstituentsResponse,
@@ -40,7 +40,10 @@ async def get_market_status() -> MarketStatus:
 
 
 @router.get("/index/{index_name}/constituents", response_model=IndexConstituentsResponse)
-async def get_index_constituents(index_name: str) -> IndexConstituentsResponse:
+async def get_index_constituents(
+    index_name: str,
+    redis: RedisClient,
+) -> IndexConstituentsResponse:
     """Get constituents of a Nifty index with their current quotes.
 
     Available indices:
@@ -51,7 +54,7 @@ async def get_index_constituents(index_name: str) -> IndexConstituentsResponse:
 
     Note: This endpoint is only available when using the NSE data provider.
     """
-    service = MarketDataService()
+    service = MarketDataService(redis=redis)
     result = await service.get_index_constituents(index_name)
 
     if result is None:
@@ -118,6 +121,7 @@ async def get_stock_info(
 async def get_historical_data(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     period: str = Query("1mo", pattern="^(1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max)$"),
     interval: str = Query("1d", pattern="^(1m|2m|5m|15m|30m|60m|90m|1h|1d|5d|1wk|1mo|3mo)$"),
@@ -127,7 +131,7 @@ async def get_historical_data(
     if current_user:
         provider = await get_user_data_provider(db, current_user.id)
 
-    service = MarketDataService(provider=provider)
+    service = MarketDataService(provider=provider, redis=redis)
     data = await service.get_historical_data(symbol, period, interval)
 
     if data is None:

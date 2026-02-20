@@ -4,9 +4,11 @@ import logging
 import tempfile
 from decimal import Decimal
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 from app.modules.data.schemas import (
     HistoricalDataPoint,
     HistoricalDataResponse,
@@ -128,13 +130,15 @@ class MarketDataService:
     abstraction. It converts provider schemas to module-specific schemas.
     """
 
-    def __init__(self, provider: DataProvider | None = None):
+    def __init__(self, provider: DataProvider | None = None, redis: Redis | None = None):
         """Initialize with optional custom provider.
 
         Args:
             provider: Data provider instance. If None, uses default from config.
+            redis: Redis client for caching. If None, caching is disabled.
         """
         self._provider = provider or get_data_provider()
+        self.redis = redis
 
     async def get_current_price(self, symbol: str) -> Decimal | None:
         """Get current price for a symbol."""
@@ -206,6 +210,15 @@ class MarketDataService:
         interval: str = "1d",
     ) -> HistoricalDataResponse | None:
         """Get historical price data."""
+        symbol_upper = symbol.upper().strip()
+
+        # Try to get from cache
+        if self.redis:
+            cache_key = generate_cache_key("data", "history", symbol_upper, period, interval)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                return HistoricalDataResponse(**cached)
+
         ohlcv_list = await self._provider.get_historical(symbol, period, interval)
         if not ohlcv_list:
             return None
@@ -222,11 +235,18 @@ class MarketDataService:
             for ohlcv in ohlcv_list
         ]
 
-        return HistoricalDataResponse(
-            symbol=symbol.upper(),
+        result = HistoricalDataResponse(
+            symbol=symbol_upper,
             interval=interval,
             data=data_points,
         )
+
+        # Cache the result (5min market hours, 30min off-market)
+        if self.redis:
+            cache_data = result.model_dump(mode="json")
+            await set_cached(self.redis, cache_key, cache_data, CacheCategory.EXTERNAL_API)
+
+        return result
 
     async def search_symbols(self, query: str) -> list[dict]:
         """Search for symbols by name or ticker."""
@@ -281,6 +301,15 @@ class MarketDataService:
         Returns:
             IndexConstituentsResponse with list of constituent stocks
         """
+        index_normalized = index.upper().strip()
+
+        # Try to get from cache (index constituents change rarely - use REFERENCE TTL)
+        if self.redis:
+            cache_key = generate_cache_key("data", "index_constituents", index_normalized)
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                return IndexConstituentsResponse(**cached)
+
         # Check if provider supports index constituents
         if not hasattr(self._provider, "get_index_constituents"):
             logger.warning(
@@ -314,8 +343,15 @@ class MarketDataService:
             for c in constituents_data
         ]
 
-        return IndexConstituentsResponse(
-            index=index.upper(),
+        result = IndexConstituentsResponse(
+            index=index_normalized,
             count=len(constituents),
             constituents=constituents,
         )
+
+        # Cache with REFERENCE TTL (24 hours - constituents rarely change)
+        if self.redis:
+            cache_data = result.model_dump(mode="json")
+            await set_cached(self.redis, cache_key, cache_data, CacheCategory.REFERENCE)
+
+        return result
