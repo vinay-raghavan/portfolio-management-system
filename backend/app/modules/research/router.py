@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, DbSession, OptionalUser
+from app.api.deps import CurrentUser, DbSession, OptionalUser, RedisClient
 from app.modules.data.service import get_user_research_data_provider
 from app.modules.research.digest_service import DigestService
 from app.modules.research.notes_service import ResearchNoteService
@@ -106,6 +106,7 @@ def _convert_news(news: Any) -> NewsResponse | None:
 async def get_fundamentals(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> FundamentalsResponse:
     """Get fundamental analysis data for a stock.
@@ -120,7 +121,7 @@ async def get_fundamentals(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     fundamentals = await service.get_fundamentals(symbol)
 
     if fundamentals is None:
@@ -165,6 +166,7 @@ async def get_fundamentals(
 async def get_dividends(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> DividendsResponse:
     """Get dividend history and metrics for a stock.
@@ -179,7 +181,7 @@ async def get_dividends(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     dividends = await service.get_dividends(symbol)
 
     if dividends is None:
@@ -217,6 +219,7 @@ async def get_dividends(
 @router.get("/market/news", response_model=NewsResponse)
 async def get_market_news(
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     category: str | None = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
@@ -236,7 +239,7 @@ async def get_market_news(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     news = await service.get_market_news(category=category, limit=limit)
 
     return NewsResponse(
@@ -273,6 +276,7 @@ async def get_market_news(
 async def get_news(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     limit: int = Query(default=10, ge=1, le=50),
 ) -> NewsResponse:
@@ -292,7 +296,7 @@ async def get_news(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     news = await service.get_news(symbol, limit=limit)
 
     return NewsResponse(
@@ -324,6 +328,7 @@ async def get_news(
 async def get_peers(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     limit: int = Query(default=10, ge=1, le=20, description="Maximum number of peers"),
 ) -> PeerComparisonResponse:
@@ -342,7 +347,7 @@ async def get_peers(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     data = await service.get_peers(symbol, limit=limit)
 
     return PeerComparisonResponse(
@@ -379,6 +384,7 @@ async def get_peers(
 @router.get("/sectors", response_model=SectorListResponse)
 async def get_sectors(
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> SectorListResponse:
     """Get all sectors with performance metrics.
@@ -393,7 +399,7 @@ async def get_sectors(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     sectors_data = await service.get_sectors()
 
     return SectorListResponse(
@@ -419,6 +425,7 @@ async def get_sectors(
 async def get_sector_stocks(
     sector: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     limit: int = Query(default=20, ge=1, le=50, description="Maximum number of stocks"),
 ) -> SectorStocksResponse:
@@ -437,7 +444,7 @@ async def get_sector_stocks(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     data = await service.get_sector_stocks(sector, limit=limit)
 
     return SectorStocksResponse(
@@ -759,6 +766,7 @@ async def generate_digest(
 @router.get("/recommendations", response_model=RecommendationsResponse)
 async def get_recommendations(
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     category: str | None = Query(
         None, description="Filter by category: quality, value, growth, dividend"
@@ -779,7 +787,7 @@ async def get_recommendations(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = RecommendationService(db, provider=provider)
+    service = RecommendationService(db, provider=provider, redis=redis)
 
     # Get NIFTY50 stocks for recommendations (can be expanded)
     symbols = PREDEFINED_UNIVERSES.get("NIFTY50", {}).get("symbols", [])[:20]
@@ -852,6 +860,7 @@ async def get_recommendations(
 async def get_universe_research(
     universe_name: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     max_pe: float | None = Query(None, description="Maximum P/E ratio"),
     min_roe: float | None = Query(None, description="Minimum ROE %"),
@@ -873,7 +882,7 @@ async def get_universe_research(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = RecommendationService(db, provider=provider)
+    service = RecommendationService(db, provider=provider, redis=redis)
 
     # Resolve universe
     universe_upper = universe_name.upper().replace(" ", "")
@@ -965,6 +974,7 @@ async def get_universe_research(
 async def get_stock_research(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
     news_limit: int = Query(5, ge=1, le=20, description="Number of news articles to include"),
 ) -> StockResearchResponse:
@@ -983,7 +993,7 @@ async def get_stock_research(
     if current_user:
         provider = await get_user_research_data_provider(db, current_user.id)
 
-    service = ResearchService(provider=provider)
+    service = ResearchService(provider=provider, redis=redis)
     data = await service.get_full_research(symbol, news_limit=news_limit)
 
     # Convert shared module types to research response types

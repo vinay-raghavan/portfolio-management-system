@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import DbSession, OptionalUser
+from app.api.deps import DbSession, OptionalUser, RedisClient
 from app.modules.analysis.schemas import AnalysisResult, StockInfo, TechnicalIndicators
 from app.modules.analysis.service import AnalysisService
 from app.modules.data.service import get_user_data_provider
@@ -14,6 +14,7 @@ router = APIRouter()
 async def get_technical_indicators(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> TechnicalIndicators:
     """Get technical indicators for a stock symbol.
@@ -26,7 +27,7 @@ async def get_technical_indicators(
     if current_user:
         provider = await get_user_data_provider(db, current_user.id)
 
-    service = AnalysisService(provider=provider)
+    service = AnalysisService(provider=provider, redis=redis)
     indicators = await service.get_technical_indicators(symbol)
 
     if indicators is None:
@@ -42,6 +43,7 @@ async def get_technical_indicators(
 async def get_stock_info(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> StockInfo:
     """Get detailed stock information including fundamentals.
@@ -53,7 +55,7 @@ async def get_stock_info(
     if current_user:
         provider = await get_user_data_provider(db, current_user.id)
 
-    service = AnalysisService(provider=provider)
+    service = AnalysisService(provider=provider, redis=redis)
     info = await service.get_stock_info(symbol)
 
     if info is None:
@@ -69,6 +71,7 @@ async def get_stock_info(
 async def get_analysis(
     symbol: str,
     db: DbSession,
+    redis: RedisClient,
     current_user: OptionalUser,
 ) -> AnalysisResult:
     """Get complete technical analysis for a stock symbol.
@@ -80,7 +83,7 @@ async def get_analysis(
     if current_user:
         provider = await get_user_data_provider(db, current_user.id)
 
-    service = AnalysisService(provider=provider)
+    service = AnalysisService(provider=provider, redis=redis)
     analysis = await service.get_analysis(symbol)
 
     if analysis is None:

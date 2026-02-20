@@ -1,11 +1,22 @@
 """Portfolio database models."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Numeric, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -18,6 +29,21 @@ class ProductType(str, Enum):
 
     DELIVERY = "DELIVERY"  # CNC - Cash and Carry (overnight holding)
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
+
+
+class TransactionType(str, Enum):
+    """Type of transaction for the ledger."""
+
+    DEPOSIT = "DEPOSIT"  # Cash added to account
+    WITHDRAWAL = "WITHDRAWAL"  # Cash withdrawn
+    BUY = "BUY"  # Cash used to buy securities
+    SELL = "SELL"  # Cash received from selling
+    FEE = "FEE"  # Trading fees, brokerage
+    DIVIDEND = "DIVIDEND"  # Dividend received
+    INTEREST = "INTEREST"  # Interest earned/paid
+    ADJUSTMENT = "ADJUSTMENT"  # Manual adjustments
+    TRANSFER_IN = "TRANSFER_IN"  # Transfer from another portfolio
+    TRANSFER_OUT = "TRANSFER_OUT"  # Transfer to another portfolio
 
 
 class Portfolio(Base):
@@ -320,3 +346,162 @@ class CostLot(Base):
 
     def __repr__(self) -> str:
         return f"<CostLot {self.symbol}: {self.remaining_quantity}/{self.original_quantity} @ {self.purchase_price}>"
+
+
+class TransactionLedger(Base):
+    """Transaction ledger for tracking all cash flow activity.
+
+    Records every transaction with running balances for account statement generation.
+    Positive amounts are credits, negative amounts are debits.
+    """
+
+    __tablename__ = "transaction_ledger"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Transaction details
+    transaction_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # Positive for credits, negative for debits
+
+    # Running balances after this transaction
+    running_cash_balance: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    running_margin_used: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    running_total_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # cash + collateral - margin_used
+
+    # Reference to source entity
+    reference_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )  # "trade", "order", "manual", "dividend"
+    reference_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+
+    # Descriptive info
+    symbol: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # For trade-related transactions
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    extra_data: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True
+    )  # Additional context (fees breakdown, etc.)
+
+    # Timestamps
+    transaction_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )  # When the transaction occurred
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_txn_ledger_user_date", "user_id", "transaction_date"),
+        Index("ix_txn_ledger_user_type", "user_id", "transaction_type"),
+        Index("ix_txn_ledger_user_symbol", "user_id", "symbol"),
+        Index("ix_txn_ledger_portfolio_date", "portfolio_id", "transaction_date"),
+        Index("ix_txn_ledger_reference", "reference_type", "reference_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TransactionLedger {self.transaction_type}: {self.amount} ({self.description[:30]}...)>"
+
+
+class TaxType(str, Enum):
+    """Tax classification for realized gains."""
+
+    STCG = "STCG"  # Short Term Capital Gains (holding <= 365 days)
+    LTCG = "LTCG"  # Long Term Capital Gains (holding > 365 days)
+    SPECULATIVE = "SPECULATIVE"  # Intraday gains (same-day buy/sell)
+
+
+class RealizedGain(Base):
+    """Track realized gains/losses from closed positions for tax reporting.
+
+    Each record represents the gain/loss from selling a specific lot of shares,
+    with holding period classification for tax purposes.
+    """
+
+    __tablename__ = "realized_gains"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Security info
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    # Lot details
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    cost_basis: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # Total cost of shares sold
+    sale_proceeds: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # Total sale proceeds
+    fees: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, server_default="0"
+    )  # Total fees (buy + sell)
+
+    # Calculated gain/loss
+    gain_loss: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False
+    )  # sale_proceeds - cost_basis - fees
+    gain_loss_pct: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4), nullable=False
+    )  # Percentage gain/loss
+
+    # Holding period
+    purchase_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    sale_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    holding_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_long_term: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )  # True if holding_days > 365
+
+    # Tax classification
+    tax_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # "STCG", "LTCG", "SPECULATIVE"
+
+    # References to source entities
+    cost_lot_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("cost_lots.id", ondelete="SET NULL"), nullable=True
+    )
+    buy_trade_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
+    )
+    sell_trade_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("trades.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Financial year (e.g., "2024-25")
+    financial_year: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        Index("ix_realized_gains_user_date", "user_id", "sale_date"),
+        Index("ix_realized_gains_user_fy", "user_id", "financial_year"),
+        Index("ix_realized_gains_user_symbol", "user_id", "symbol"),
+        Index("ix_realized_gains_user_tax_type", "user_id", "tax_type"),
+        Index("ix_realized_gains_portfolio", "portfolio_id", "sale_date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<RealizedGain {self.symbol}: {self.gain_loss} ({self.tax_type})>"

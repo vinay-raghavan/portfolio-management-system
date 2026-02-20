@@ -2,6 +2,7 @@
 
 import logging
 
+from redis.asyncio import Redis
 from shared.providers.data.base import DataProvider
 from shared.providers.data.yahoo import YahooDataProvider
 from shared.providers.news import BaseNewsProvider, get_news_provider
@@ -11,6 +12,8 @@ from shared.providers.schemas import (
     FundamentalData,
     NewsResponse,
 )
+
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +25,18 @@ class ResearchService:
         self,
         provider: DataProvider | None = None,
         news_provider: BaseNewsProvider | None = None,
+        redis: Redis | None = None,
     ):
         """Initialize research service.
 
         Args:
             provider: Data provider to use. Defaults to YahooDataProvider.
             news_provider: News provider to use. Defaults to factory default.
+            redis: Redis client for caching. Optional.
         """
         self.provider = provider or YahooDataProvider()
         self.news_provider = news_provider or get_news_provider()
+        self.redis = redis
 
     async def get_fundamentals(self, symbol: str) -> FundamentalData | None:
         """Get fundamental analysis data for a stock.
@@ -41,7 +47,21 @@ class ResearchService:
         Returns:
             FundamentalData with valuation ratios and metrics
         """
-        return await self.provider.get_fundamentals(symbol)
+        # Try cache first
+        cache_key = generate_cache_key("research:fundamentals", symbol)
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return FundamentalData(**cached)
+
+        result = await self.provider.get_fundamentals(symbol)
+
+        # Cache result
+        if self.redis and result:
+            await set_cached(self.redis, cache_key, result.model_dump(), CacheCategory.FUNDAMENTALS)
+
+        return result
 
     async def get_financials(self, symbol: str) -> FinancialData | None:
         """Get financial statements for a stock.
@@ -63,7 +83,21 @@ class ResearchService:
         Returns:
             DividendData with dividend history
         """
-        return await self.provider.get_dividends(symbol)
+        # Try cache first
+        cache_key = generate_cache_key("research:dividends", symbol)
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return DividendData(**cached)
+
+        result = await self.provider.get_dividends(symbol)
+
+        # Cache result (6hr TTL - dividends change rarely)
+        if self.redis and result:
+            await set_cached(self.redis, cache_key, result.model_dump(), CacheCategory.DIVIDENDS)
+
+        return result
 
     async def get_news(self, symbol: str, limit: int = 10) -> NewsResponse:
         """Get news articles for a stock with sentiment analysis.
@@ -197,6 +231,14 @@ class ResearchService:
         Returns:
             List of sector dicts with performance data
         """
+        # Try cache first - sector data is expensive to compute
+        cache_key = generate_cache_key("research:sectors")
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
         try:
             from shared.providers.data.nse import NSEDataProvider
             from shared.providers.data.yahoo import YahooDataProvider
@@ -265,6 +307,11 @@ class ResearchService:
             sector_data.sort(key=lambda x: x.get("change_1d") or 0, reverse=True)
 
             logger.info(f"Fetched {len(sector_data)} sectors from NSE NIFTY 500")
+
+            # Cache result
+            if self.redis:
+                await set_cached(self.redis, cache_key, sector_data, CacheCategory.EXTERNAL_API)
+
             return sector_data
 
         except Exception as e:
@@ -358,6 +405,14 @@ class ResearchService:
         Returns:
             Dict with sector stocks and count
         """
+        # Try cache first
+        cache_key = generate_cache_key("research:sector_stocks", sector, limit=limit)
+        if self.redis:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
         try:
             from shared.providers.data.nse import NSEDataProvider
 
@@ -401,11 +456,17 @@ class ResearchService:
                 )
 
             logger.info(f"Found {len(stocks)} stocks in sector {sector}")
-            return {
+            result = {
                 "sector": sector,
                 "stocks": stocks,
                 "total_count": len(sector_stocks),
             }
+
+            # Cache result
+            if self.redis:
+                await set_cached(self.redis, cache_key, result, CacheCategory.EXTERNAL_API)
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching sector stocks for {sector}: {e}")

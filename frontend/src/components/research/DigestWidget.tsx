@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -9,25 +9,64 @@ import {
   TrendingUp,
   TrendingDown,
   Newspaper,
-  BarChart3,
   RefreshCw,
-  ArrowRight,
   Zap,
+  Plus,
 } from 'lucide-react';
 import { researchApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import Link from 'next/link';
+import { useToast } from '@/components/ui/use-toast';
 
 interface DigestWidgetProps {
   className?: string;
 }
 
 export function DigestWidget({ className }: DigestWidgetProps) {
-  const { data, isLoading, error, refetch } = useQuery({
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['research-digest-latest'],
     queryFn: () => researchApi.getLatestDigest(),
     staleTime: 5 * 60 * 1000,
   });
+
+  const generateMutation = useMutation({
+    mutationFn: () => researchApi.generateDigest(),
+    onSuccess: (response) => {
+      toast({
+        title: 'Success',
+        description: 'Daily digest generated successfully',
+      });
+      // Directly update the cache with the new digest data
+      queryClient.setQueryData(['research-digest-latest'], response);
+    },
+    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+      const message = error.response?.data?.detail || error.message || 'Failed to generate digest';
+      if (message.includes('already exists')) {
+        toast({
+          title: 'Info',
+          description: 'Digest already exists for today',
+        });
+        // Force refetch to get the existing digest
+        refetch();
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: message,
+        });
+      }
+    },
+  });
+
+  // Check if digest is stale (not from today)
+  const isDigestStale = () => {
+    if (!data?.data?.digest_date) return true;
+    const digestDate = new Date(data.data.digest_date).toDateString();
+    const today = new Date().toDateString();
+    return digestDate !== today;
+  };
 
   const digest = data?.data;
 
@@ -38,10 +77,10 @@ export function DigestWidget({ className }: DigestWidgetProps) {
   };
 
   const getSentimentColor = (sentiment: number | null | undefined): string => {
-    if (sentiment == null) return 'text-muted-foreground';
-    if (sentiment >= 0.3) return 'text-green-600';
-    if (sentiment <= -0.3) return 'text-red-600';
-    return 'text-yellow-600';
+    if (sentiment == null) return 'bg-gray-100 text-gray-800';
+    if (sentiment >= 0.3) return 'bg-green-100 text-green-800';
+    if (sentiment <= -0.3) return 'bg-red-100 text-red-800';
+    return 'bg-gray-100 text-gray-800';
   };
 
   const getSentimentLabel = (sentiment: number | null | undefined): string => {
@@ -86,18 +125,49 @@ export function DigestWidget({ className }: DigestWidgetProps) {
             <Newspaper className="h-5 w-5" />
             Daily Digest
           </CardTitle>
-          <Button variant="ghost" size="icon" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+              title="Generate today's digest"
+            >
+              <Plus className={cn('h-4 w-4', generateMutation.isPending && 'animate-pulse')} />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="text-center text-muted-foreground py-8">
-            No digest available for today
+          <div className="text-center py-8">
+            <p className="text-muted-foreground mb-4">No digest available for today</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Generate Today&apos;s Digest
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
     );
   }
+
+  const stale = isDigestStale();
 
   return (
     <Card className={className}>
@@ -105,15 +175,45 @@ export function DigestWidget({ className }: DigestWidgetProps) {
         <CardTitle className="flex items-center gap-2">
           <Newspaper className="h-5 w-5" />
           Daily Digest
-          <Badge variant="outline" className="ml-2">
+          <Badge variant={stale ? 'secondary' : 'outline'} className="ml-2">
             {new Date(digest.digest_date).toLocaleDateString()}
+            {stale && ' (old)'}
           </Badge>
         </CardTitle>
-        <Button variant="ghost" size="icon" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {stale && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+              title="Generate today's digest"
+            >
+              <Plus className={cn('h-4 w-4', generateMutation.isPending && 'animate-pulse')} />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Stale digest warning */}
+        {stale && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800">
+            <span className="text-sm text-yellow-700 dark:text-yellow-400">
+              This digest is from a previous day
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? 'Generating...' : 'Update'}
+            </Button>
+          </div>
+        )}
         {/* Market Sentiment */}
         <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-2">
@@ -195,15 +295,6 @@ export function DigestWidget({ className }: DigestWidgetProps) {
           </div>
         )}
 
-        {/* View Full Digest Link */}
-        <div className="pt-2">
-          <Link href="/research" className="w-full">
-            <Button variant="outline" className="w-full" size="sm">
-              View Full Research
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
-        </div>
       </CardContent>
     </Card>
   );

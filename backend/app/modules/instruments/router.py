@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import RedisClient
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.modules.instruments.schemas import (
@@ -103,9 +104,10 @@ async def get_instrument_by_symbol(
 async def get_indices(
     exchange: str = Query(default="NSE", description="Exchange"),
     db: AsyncSession = Depends(get_db),
+    redis: RedisClient = None,
 ) -> list[InstrumentResponse]:
     """Get all index instruments."""
-    service = InstrumentService(db)
+    service = InstrumentService(db, redis=redis)
     instruments = await service.get_indices(exchange)
     return [InstrumentResponse.model_validate(i) for i in instruments]
 
@@ -114,9 +116,10 @@ async def get_indices(
 async def get_fo_underlyings(
     exchange: str = Query(default="NSE", description="Exchange"),
     db: AsyncSession = Depends(get_db),
+    redis: RedisClient = None,
 ) -> list[str]:
     """Get unique F&O underlyings."""
-    service = InstrumentService(db)
+    service = InstrumentService(db, redis=redis)
     return await service.get_fo_underlyings(exchange)
 
 

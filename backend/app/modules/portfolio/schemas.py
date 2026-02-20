@@ -3,8 +3,14 @@
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
+
+# Custom type that serializes Decimal as float for JSON
+DecimalAsFloat = Annotated[
+    Decimal, PlainSerializer(lambda x: float(x) if x is not None else None, return_type=float)
+]
 
 
 class ProductType(str, Enum):
@@ -266,3 +272,178 @@ class TradeHistoryResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+# ============== Ledger Schemas ==============
+
+
+class TransactionType(str, Enum):
+    """Type of transaction for the ledger."""
+
+    DEPOSIT = "DEPOSIT"
+    WITHDRAWAL = "WITHDRAWAL"
+    BUY = "BUY"
+    SELL = "SELL"
+    FEE = "FEE"
+    DIVIDEND = "DIVIDEND"
+    INTEREST = "INTEREST"
+    ADJUSTMENT = "ADJUSTMENT"
+    TRANSFER_IN = "TRANSFER_IN"
+    TRANSFER_OUT = "TRANSFER_OUT"
+
+
+class LedgerEntryResponse(BaseModel):
+    """Schema for a single ledger entry."""
+
+    id: str
+    transaction_type: str
+    amount: Decimal
+    running_cash_balance: Decimal
+    running_margin_used: Decimal
+    running_total_balance: Decimal
+    reference_type: str | None = None
+    reference_id: str | None = None
+    symbol: str | None = None
+    description: str
+    extra_data: dict | None = None
+    transaction_date: datetime
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LedgerResponse(BaseModel):
+    """Schema for paginated ledger response."""
+
+    entries: list[LedgerEntryResponse]
+    total_count: int
+    page: int
+    page_size: int
+    total_in: Decimal  # Sum of credits
+    total_out: Decimal  # Sum of debits (absolute value)
+
+
+class LedgerStatementRequest(BaseModel):
+    """Schema for requesting account statement."""
+
+    start_date: datetime
+    end_date: datetime
+    transaction_types: list[TransactionType] | None = None
+    symbol: str | None = None
+    portfolio_id: str | None = None
+
+
+class LedgerStatementSummary(BaseModel):
+    """Schema for statement summary."""
+
+    period_start: datetime
+    period_end: datetime
+    opening_balance: Decimal
+    closing_balance: Decimal
+    total_deposits: Decimal
+    total_withdrawals: Decimal
+    total_buys: Decimal
+    total_sells: Decimal
+    total_fees: Decimal
+    total_dividends: Decimal
+    net_change: Decimal
+
+
+class LedgerStatementResponse(BaseModel):
+    """Schema for full account statement."""
+
+    summary: LedgerStatementSummary
+    entries: list[LedgerEntryResponse]
+
+
+class BalanceHistoryEntry(BaseModel):
+    """Schema for a single balance history point."""
+
+    date: datetime
+    cash_balance: Decimal
+    margin_used: Decimal
+    total_balance: Decimal
+
+
+class BalanceHistoryResponse(BaseModel):
+    """Schema for balance history response."""
+
+    entries: list[BalanceHistoryEntry]
+    start_date: datetime
+    end_date: datetime
+
+
+# ============== Capital Gains Schemas ==============
+
+
+class TaxType(str, Enum):
+    """Tax classification for capital gains."""
+
+    STCG = "STCG"  # Short Term Capital Gains (≤365 days)
+    LTCG = "LTCG"  # Long Term Capital Gains (>365 days)
+    SPECULATIVE = "SPECULATIVE"  # Intraday (same day)
+
+
+class RealizedGainResponse(BaseModel):
+    """Schema for a single realized gain record."""
+
+    id: str
+    symbol: str
+    quantity: DecimalAsFloat
+    cost_basis: DecimalAsFloat
+    sale_proceeds: DecimalAsFloat
+    fees: DecimalAsFloat
+    gain_loss: DecimalAsFloat
+    gain_loss_pct: DecimalAsFloat
+    purchase_date: datetime
+    sale_date: datetime
+    holding_days: int
+    is_long_term: bool
+    tax_type: str
+    financial_year: str
+    cost_lot_id: str | None = None
+    buy_trade_id: str | None = None
+    sell_trade_id: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RealizedGainsListResponse(BaseModel):
+    """Schema for paginated realized gains list."""
+
+    gains: list[RealizedGainResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class GainsSummaryResponse(BaseModel):
+    """Schema for capital gains summary."""
+
+    total_gains: DecimalAsFloat
+    total_losses: DecimalAsFloat
+    net_gain_loss: DecimalAsFloat
+    stcg: DecimalAsFloat
+    ltcg: DecimalAsFloat
+    speculative: DecimalAsFloat
+    stcg_count: int
+    ltcg_count: int
+    speculative_count: int
+    financial_year: str | None = None
+
+
+class GainsBySymbolResponse(BaseModel):
+    """Schema for gains aggregated by symbol."""
+
+    symbol: str
+    total_gain: DecimalAsFloat
+    total_quantity: DecimalAsFloat
+    trade_count: int
+
+
+class GainsBySymbolListResponse(BaseModel):
+    """Schema for list of gains by symbol."""
+
+    gains: list[GainsBySymbolResponse]
+    financial_year: str | None = None
