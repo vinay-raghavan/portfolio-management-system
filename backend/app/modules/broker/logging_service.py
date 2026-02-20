@@ -8,9 +8,11 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import CacheCategory, generate_cache_key, get_cached, set_cached
 from app.modules.broker.models import BrokerAPILog
 
 logger = logging.getLogger(__name__)
@@ -49,8 +51,9 @@ def mask_sensitive_data(data: Any) -> Any:
 class BrokerLoggingService:
     """Service for logging and querying broker API calls."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis: Redis | None = None):
         self.db = db
+        self.redis = redis
 
     async def log_request(
         self,
@@ -197,6 +200,14 @@ class BrokerLoggingService:
         end_date: datetime | None = None,
     ) -> dict:
         """Get API statistics (success rates, avg latency by broker/action)."""
+        # Try cache first (only if no date filters - dates make caching less useful)
+        cache_key = generate_cache_key("broker:stats", user_id, broker=broker_type or "all")
+        if self.redis and not start_date and not end_date:
+            cached = await get_cached(self.redis, cache_key)
+            if cached:
+                logger.debug(f"Cache hit for {cache_key}")
+                return cached
+
         from sqlalchemy import Integer
 
         query = select(
@@ -255,11 +266,17 @@ class BrokerLoggingService:
             successful = broker_stats["successful_calls"]
             broker_stats["success_rate"] = successful / total * 100 if total > 0 else 0
 
-        return {
+        stats = {
             "brokers": list(stats_by_broker.values()),
             "start_date": start_date.isoformat() if start_date else None,
             "end_date": end_date.isoformat() if end_date else None,
         }
+
+        # Cache result (only if no date filters)
+        if self.redis and not start_date and not end_date:
+            await set_cached(self.redis, cache_key, stats, CacheCategory.DB_AGGREGATION)
+
+        return stats
 
     async def get_log_by_id(self, user_id: str, log_id: str) -> BrokerAPILog | None:
         """Get a single log entry by ID."""
