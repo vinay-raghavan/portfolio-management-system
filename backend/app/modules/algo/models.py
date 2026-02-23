@@ -172,9 +172,7 @@ class UserStrategy(Base):
         Numeric(5, 2), nullable=False, default=Decimal("10.00")
     )
     # Max unrealized loss (absolute value) - triggers circuit breaker when open positions are down
-    max_unrealized_loss: Mapped[Decimal | None] = mapped_column(
-        Numeric(18, 2), nullable=True
-    )
+    max_unrealized_loss: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
     # Profit cutoff settings
     max_daily_profit: Mapped[Decimal | None] = mapped_column(
