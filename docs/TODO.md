@@ -5073,14 +5073,14 @@ class AutoTradeConfig(Base):
 ```
 
 **Tasks:**
-- [ ] Add "Save Screener" button to Screener results page
-- [ ] Create `SaveScreenerDialog` component
-- [ ] Add auto-trade toggle with conditional settings
-- [ ] Show inferred strategy type based on filters
-- [ ] Add run frequency selector (daily/hourly/manual)
-- [ ] Add strategy template selector
-- [ ] Call API to save screener with auto-trade config
-- [ ] Run frontend audit: `npm audit`
+- [x] Add "Save Screener" button to Screener results page
+- [x] Create `SaveScreenerDialog` component
+- [x] Add auto-trade toggle with conditional settings
+- [x] Show inferred strategy type based on filters
+- [x] Add run frequency selector (daily/hourly/manual)
+- [x] Add strategy template selector
+- [x] Call API to save screener with auto-trade config
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add save screener dialog with auto-trade option`
 
 ##### 2.6.12.7 Frontend: Saved Screeners Management
@@ -5130,16 +5130,16 @@ class AutoTradeConfig(Base):
 ```
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/screener/saved/page.tsx`
-- [ ] Create `SavedScreenerCard` component
-- [ ] Add auto-trade status badge (enabled/disabled)
-- [ ] Add "Run Now" button with loading state
-- [ ] Add "View Results" to show last run results
-- [ ] Add auto-trade settings modal
-- [ ] Show inferred strategy type on each card
-- [ ] Show run schedule and countdown
-- [ ] Add API functions in `frontend/src/lib/api.ts`
-- [ ] Run frontend audit: `npm audit`
+- [x] Create `frontend/src/app/(dashboard)/screener/saved/page.tsx`
+- [x] Create `SavedScreenerCard` component
+- [x] Add auto-trade status badge (enabled/disabled)
+- [x] Add "Run Now" button with loading state
+- [ ] Add "View Results" to show last run results (optional enhancement)
+- [ ] Add auto-trade settings modal (optional enhancement)
+- [x] Show inferred strategy type on each card
+- [x] Show run schedule and countdown
+- [x] Add API functions in `frontend/src/lib/api.ts`
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add saved screeners management page`
 
 ##### 2.6.12.8 Frontend: Auto-Trade Source Selection
@@ -5188,14 +5188,14 @@ class AutoTradeConfig(Base):
 ```
 
 **Tasks:**
-- [ ] Update Auto-Trade Settings page with source selection
-- [ ] Add radio buttons for Preset vs Custom screener
-- [ ] Add category dropdown for preset selection
-- [ ] Add saved screener dropdown for custom selection
-- [ ] Show inferred strategy when custom screener selected
-- [ ] Add "Manage Saved Screeners" link
-- [ ] Update API calls to save source selection
-- [ ] Run frontend audit: `npm audit`
+- [ ] Update Auto-Trade Settings page with source selection (optional enhancement)
+- [ ] Add radio buttons for Preset vs Custom screener (optional enhancement)
+- [ ] Add category dropdown for preset selection (optional enhancement)
+- [ ] Add saved screener dropdown for custom selection (optional enhancement)
+- [ ] Show inferred strategy when custom screener selected (optional enhancement)
+- [x] Add "Manage Saved Screeners" link
+- [ ] Update API calls to save source selection (optional enhancement)
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add screener source selection to auto-trade settings`
 
 ##### 2.6.12.9 Testing & Deployment

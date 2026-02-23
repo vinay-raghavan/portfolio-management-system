@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle, Bookmark } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -297,18 +297,25 @@ export default function AutoTradeSettingsPage() {
             Configure automatic trading from screener recommendations
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Link href="/screener/saved">
+            <Button variant="outline" className="gap-2">
+              <Bookmark className="h-4 w-4" />
+              Saved Screeners
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
           <Link href="/algo/templates">
             <Button variant="outline" className="gap-2">
               <Settings2 className="h-4 w-4" />
-              Manage Templates
+              Templates
               <ChevronRight className="h-4 w-4" />
             </Button>
           </Link>
           <Link href="/dashboard">
             <Button variant="outline" className="gap-2">
               <Clock className="h-4 w-4" />
-              View Pending Trades
+              Pending Trades
             </Button>
           </Link>
         </div>

@@ -770,6 +770,8 @@ export interface ScreenerPresetsResponse {
   presets: ScreenerPresetInfo[];
 }
 
+export type RunFrequency = 'daily' | 'hourly' | 'manual';
+
 export interface CustomScreenerCreate {
   name: string;
   description?: string;
@@ -777,6 +779,24 @@ export interface CustomScreenerCreate {
   filters: FilterConfig[];
   min_score?: number;
   top_n?: number;
+  // Auto-trade settings
+  is_auto_trade_enabled?: boolean;
+  run_frequency?: RunFrequency;
+  run_time?: string;
+  strategy_template_id?: string;
+}
+
+export interface CustomScreenerUpdate {
+  name?: string;
+  description?: string;
+  universe?: string;
+  filters?: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+  is_auto_trade_enabled?: boolean;
+  run_frequency?: RunFrequency;
+  run_time?: string;
+  strategy_template_id?: string;
 }
 
 export interface CustomScreener {
@@ -789,6 +809,14 @@ export interface CustomScreener {
   top_n: number;
   created_at: string;
   updated_at: string;
+  // Auto-trade fields
+  is_auto_trade_enabled: boolean;
+  run_frequency: string;
+  run_time: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  inferred_strategy_type: string | null;
+  strategy_template_id: string | null;
 }
 
 export interface RecommendationItem {
@@ -911,6 +939,16 @@ export const screenerApi = {
     api.delete(`/screener/custom/${id}`),
   runCustomScreener: (id: string) =>
     api.post<ScreenerRunResponse>(`/screener/custom/${id}/run`),
+
+  // Auto-trade screener operations
+  linkAutoTrade: (id: string, data: { run_frequency: RunFrequency; run_time?: string; strategy_template_id?: string }) =>
+    api.post<CustomScreener>(`/screener/custom/${id}/link-auto-trade`, data),
+  unlinkAutoTrade: (id: string) =>
+    api.post<{ id: string; name: string; is_auto_trade_enabled: boolean; message: string }>(`/screener/custom/${id}/unlink-auto-trade`),
+  runAutoTrade: (id: string) =>
+    api.post<{ status: string; screener_id: string; screener_name: string; passed_count: number; trades_created: number; pending_trades_created: number }>(`/screener/custom/${id}/run-auto-trade`),
+  inferScreenerStrategy: (id: string) =>
+    api.get<{ screener_id: string; screener_name: string; inferred_strategy_type: string; confidence: number; reasoning: string[]; suggested_params: Record<string, unknown> }>(`/screener/custom/${id}/infer-strategy`),
 
   // Recommendations
   getRecommendations: (date?: string) =>

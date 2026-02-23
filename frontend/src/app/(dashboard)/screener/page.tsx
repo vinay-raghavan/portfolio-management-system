@@ -7,6 +7,7 @@ import {
   ScreenerConfig,
   ScreenerResults,
   SavedScreenersList,
+  SaveScreenerDialog,
   PerformanceWidget,
   type UniverseType,
 } from '@/components/screener';
@@ -277,12 +278,19 @@ export default function ScreenerPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Search className="h-8 w-8" />
-          Stock Screener
-        </h1>
-        <p className="text-muted-foreground">Discover stocks matching your criteria</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Search className="h-8 w-8" />
+            Stock Screener
+          </h1>
+          <p className="text-muted-foreground">Discover stocks matching your criteria</p>
+        </div>
+        <SaveScreenerDialog
+          filters={filters}
+          universe={universe}
+          preset={selectedPreset}
+        />
       </div>
 
       {/* Main Layout */}
