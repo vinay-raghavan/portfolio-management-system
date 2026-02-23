@@ -839,14 +839,112 @@ class ScreenerService:
 
             await self.db.commit()
 
-            # TODO: Integrate with AutoTradeService when implemented
-            # For now, just return the screener results
+            # Process results through auto-trade pipeline
+            trades_created = 0
+            pending_trades_created = 0
+
+            if results and screener.is_auto_trade_enabled:
+                try:
+                    from app.modules.algo.auto_trade_service import (
+                        AutoTradeConfigService,
+                        PendingAutoTradeService,
+                        StrategyTemplateService,
+                    )
+                    from app.modules.algo.models import ConfirmationMode
+                    from app.modules.algo.multi_factor_scorer import MultiFactorScorer
+
+                    # Get user's auto-trade config for custom screeners
+                    config_service = AutoTradeConfigService(self.db)
+                    config = await config_service.get_config_by_category(
+                        user_id=user_id, category="custom"
+                    )
+
+                    if config and config.enabled:
+                        # Apply multi-factor scoring
+                        scorer = MultiFactorScorer(self.db)
+                        scored_results = []
+
+                        for r in results:
+                            scores = await scorer.score(
+                                symbol=r.symbol,
+                                technical_score=r.score,  # Use screener score as technical
+                                category="custom",
+                            )
+                            if scores.confidence_level != "skip":
+                                scored_results.append(
+                                    {
+                                        "symbol": r.symbol,
+                                        "technical_score": r.score,
+                                        "fundamental_score": scores.fundamental_score,
+                                        "sentiment_score": scores.sentiment_score,
+                                        "combined_score": scores.combined_score,
+                                        "confidence_level": scores.confidence_level,
+                                        "signal_direction": scores.signal_direction,
+                                        "recommended_strategy": scores.recommended_strategy,
+                                        "position_size_multiplier": scores.position_size_multiplier,
+                                        "reasons": r.reasons,
+                                    }
+                                )
+
+                        # Filter by confidence threshold
+                        confidence_values = {"high": 80, "medium": 60, "low": 40}
+                        min_conf = confidence_values.get(config.min_confidence, 60)
+                        filtered_results = [
+                            r
+                            for r in scored_results
+                            if confidence_values.get(r["confidence_level"], 0) >= min_conf
+                        ]
+
+                        if filtered_results:
+                            # Get strategy type from template or infer
+                            strategy_type = screener.inferred_strategy_type or "momentum"
+
+                            if config.confirmation_mode == ConfirmationMode.AUTO:
+                                # Auto-execute: create strategies immediately
+                                template_service = StrategyTemplateService(self.db)
+                                for r in filtered_results[: config.max_positions_per_day]:
+                                    strategy = await template_service.create_strategy_from_template(
+                                        user_id=user_id,
+                                        template_id=str(config.strategy_template_id)
+                                        if config.strategy_template_id
+                                        else None,
+                                        symbol=r["symbol"],
+                                        strategy_type=strategy_type,
+                                    )
+                                    if strategy:
+                                        trades_created += 1
+                            else:
+                                # Notify mode: create pending trades
+                                pending_service = PendingAutoTradeService(self.db)
+                                symbols = [
+                                    r["symbol"]
+                                    for r in filtered_results[: config.max_positions_per_day]
+                                ]
+                                scores_dict = {r["symbol"]: r for r in filtered_results}
+
+                                pending = await pending_service.create_pending_trade(
+                                    config=config,
+                                    symbols=symbols,
+                                    scores=scores_dict,
+                                    recommended_strategy_type=strategy_type,
+                                    suggested_params={
+                                        "source": "custom_screener",
+                                        "screener_id": screener_id,
+                                    },
+                                )
+                                if pending:
+                                    pending_trades_created += 1
+
+                except Exception as e:
+                    logger.warning(f"Auto-trade processing failed for screener {screener_id}: {e}")
+                    # Don't fail the whole operation, just log the warning
+
             return {
                 "status": "success",
                 "passed_count": len(results),
                 "total_screened": len(symbols),
-                "trades_created": 0,  # Will be set by AutoTradeService
-                "pending_trades_created": 0,  # Will be set by AutoTradeService
+                "trades_created": trades_created,
+                "pending_trades_created": pending_trades_created,
                 "results": [
                     {
                         "symbol": r.symbol,
