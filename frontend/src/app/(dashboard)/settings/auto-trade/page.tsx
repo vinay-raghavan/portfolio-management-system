@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle, Bookmark } from 'lucide-react';
+import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle, Bookmark, TrendingUp, BarChart3, Newspaper, Sparkles, Shield, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,10 +12,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { autoTradeApi } from '@/lib/api';
 import { BrandedSpinner } from '@/components/shared';
 import type { AutoTradeConfig, ConfirmationMode, StrategyTemplate } from '@/types';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
+
+// Weight presets for quick configuration
+const WEIGHT_PRESETS = [
+  { name: 'Balanced', tech: 40, fund: 40, sent: 20, icon: Sparkles, description: 'Equal focus on technical and fundamental' },
+  { name: 'Technical', tech: 60, fund: 25, sent: 15, icon: TrendingUp, description: 'Emphasis on price action and trends' },
+  { name: 'Fundamental', tech: 25, fund: 60, sent: 15, icon: BarChart3, description: 'Focus on company fundamentals' },
+  { name: 'Sentiment', tech: 30, fund: 30, sent: 40, icon: Newspaper, description: 'Higher weight on market sentiment' },
+];
+
+// Confidence level options
+const CONFIDENCE_LEVELS = [
+  { value: 40, label: 'Low', description: 'Include more trades with lower confidence', stars: 1, color: 'text-yellow-500' },
+  { value: 60, label: 'Medium', description: 'Balanced confidence threshold', stars: 2, color: 'text-blue-500' },
+  { value: 80, label: 'High', description: 'Only high-confidence opportunities', stars: 3, color: 'text-green-500' },
+];
 
 const CATEGORIES = [
   { value: 'momentum', label: 'Momentum', description: 'High momentum stocks with strong price trends' },
@@ -176,6 +194,136 @@ function AutoTradeConfigCard({
   );
 }
 
+// Mini bar chart for score breakdown visualization
+function ScoreBreakdownChart({ weights }: { weights: { technical: number; fundamental: number; sentiment: number } }) {
+  const total = weights.technical + weights.fundamental + weights.sentiment;
+  if (total === 0) return null;
+
+  return (
+    <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+      <div
+        className="bg-blue-500 transition-all duration-200"
+        style={{ width: `${weights.technical}%` }}
+        title={`Technical: ${weights.technical}%`}
+      />
+      <div
+        className="bg-purple-500 transition-all duration-200"
+        style={{ width: `${weights.fundamental}%` }}
+        title={`Fundamental: ${weights.fundamental}%`}
+      />
+      <div
+        className="bg-orange-500 transition-all duration-200"
+        style={{ width: `${weights.sentiment}%` }}
+        title={`Sentiment: ${weights.sentiment}%`}
+      />
+    </div>
+  );
+}
+
+// Preset grid for quick weight selection
+function PresetGrid({
+  onSelect,
+  currentWeights
+}: {
+  onSelect: (tech: number, fund: number, sent: number) => void;
+  currentWeights: { technical: number; fundamental: number; sentiment: number };
+}) {
+  const isPresetActive = (preset: typeof WEIGHT_PRESETS[0]) =>
+    preset.tech === currentWeights.technical &&
+    preset.fund === currentWeights.fundamental &&
+    preset.sent === currentWeights.sentiment;
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      {WEIGHT_PRESETS.map((preset) => {
+        const Icon = preset.icon;
+        const isActive = isPresetActive(preset);
+        return (
+          <TooltipProvider key={preset.name}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isActive ? 'default' : 'outline'}
+                  size="sm"
+                  className={cn('flex flex-col h-auto py-2 gap-1', isActive && 'ring-2 ring-primary')}
+                  onClick={() => onSelect(preset.tech, preset.fund, preset.sent)}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="text-xs">{preset.name}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-medium">{preset.description}</p>
+                <p className="text-xs text-muted-foreground">
+                  Tech: {preset.tech}% | Fund: {preset.fund}% | Sent: {preset.sent}%
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      })}
+    </div>
+  );
+}
+
+// Confidence level selector with visual stars
+function ConfidenceSelector({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  // Find closest confidence level
+  const getClosestLevel = (v: number) => {
+    return CONFIDENCE_LEVELS.reduce((prev, curr) =>
+      Math.abs(curr.value - v) < Math.abs(prev.value - v) ? curr : prev
+    );
+  };
+
+  const currentLevel = getClosestLevel(value);
+
+  return (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-2">
+        <Shield className="h-4 w-4" />
+        Minimum Confidence Level
+      </Label>
+      <RadioGroup
+        value={currentLevel.value.toString()}
+        onValueChange={(v) => onChange(parseInt(v))}
+        className="grid grid-cols-3 gap-2"
+      >
+        {CONFIDENCE_LEVELS.map((level) => (
+          <div key={level.value} className="flex items-center">
+            <RadioGroupItem
+              value={level.value.toString()}
+              id={`confidence-${level.value}`}
+              className="peer sr-only"
+            />
+            <Label
+              htmlFor={`confidence-${level.value}`}
+              className={cn(
+                'flex flex-col items-center w-full p-3 border rounded-lg cursor-pointer transition-all',
+                'hover:bg-accent peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5'
+              )}
+            >
+              <div className="flex gap-0.5 mb-1">
+                {Array.from({ length: level.stars }).map((_, i) => (
+                  <Star key={i} className={cn('h-3 w-3 fill-current', level.color)} />
+                ))}
+              </div>
+              <span className="font-medium text-sm">{level.label}</span>
+              <span className="text-[10px] text-muted-foreground text-center">{level.value}%+</span>
+            </Label>
+          </div>
+        ))}
+      </RadioGroup>
+      <p className="text-xs text-muted-foreground">{currentLevel.description}</p>
+    </div>
+  );
+}
+
 function WeightConfigPanel({
   category,
   config,
@@ -192,79 +340,152 @@ function WeightConfigPanel({
     fundamental: config.weight_fundamental,
     sentiment: config.weight_sentiment,
   });
+  const [minConfidence, setMinConfidence] = useState(config.min_confidence);
 
   const updateMutation = useMutation({
     mutationFn: () => autoTradeApi.updateWeights(category, {
       weight_technical: weights.technical,
       weight_fundamental: weights.fundamental,
       weight_sentiment: weights.sentiment,
+      min_confidence: minConfidence,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auto-trade-configs'] });
-      toast({ title: 'Weights updated', description: 'Multi-factor weights saved successfully' });
+      toast({ title: 'Settings updated', description: 'Multi-factor weights and confidence saved' });
       onUpdate();
     },
-    onError: () => toast({ title: 'Error', description: 'Failed to update weights', variant: 'destructive' }),
+    onError: () => toast({ title: 'Error', description: 'Failed to update settings', variant: 'destructive' }),
   });
 
   const total = weights.technical + weights.fundamental + weights.sentiment;
   const isValid = total === 100;
 
+  // Auto-normalize: when one slider changes, adjust others proportionally
+  const handleWeightChange = useCallback((key: 'technical' | 'fundamental' | 'sentiment', newValue: number) => {
+    setWeights(prev => {
+      const oldValue = prev[key];
+      const diff = newValue - oldValue;
+      const others = (['technical', 'fundamental', 'sentiment'] as const).filter(k => k !== key);
+
+      // Calculate remaining to distribute
+      const otherTotal = others.reduce((sum, k) => sum + prev[k], 0);
+
+      if (otherTotal === 0) {
+        // If others are 0, just set the value
+        return { ...prev, [key]: Math.min(100, Math.max(0, newValue)) };
+      }
+
+      // Distribute the difference proportionally among others
+      const newWeights = { ...prev, [key]: newValue };
+      let remainingDiff = -diff;
+
+      others.forEach((otherKey, idx) => {
+        if (idx === others.length - 1) {
+          // Last one gets the remainder to ensure sum is 100
+          newWeights[otherKey] = 100 - newValue - newWeights[others[0]];
+        } else {
+          const proportion = prev[otherKey] / otherTotal;
+          const adjustment = Math.round(remainingDiff * proportion);
+          newWeights[otherKey] = Math.max(0, Math.min(100, prev[otherKey] + adjustment));
+        }
+      });
+
+      // Ensure non-negative and valid
+      others.forEach(k => {
+        newWeights[k] = Math.max(0, newWeights[k]);
+      });
+
+      return newWeights;
+    });
+  }, []);
+
+  // Apply preset
+  const applyPreset = useCallback((tech: number, fund: number, sent: number) => {
+    setWeights({ technical: tech, fundamental: fund, sentiment: sent });
+  }, []);
+
   return (
-    <div className="space-y-3 pt-4 border-t">
+    <div className="space-y-4 pt-4 border-t">
+      {/* Header with total badge */}
       <div className="flex items-center justify-between">
-        <Label className="flex items-center gap-2">
+        <Label className="flex items-center gap-2 text-base font-medium">
           <Sliders className="h-4 w-4" />
-          Multi-Factor Weights
+          Multi-Factor Scoring
         </Label>
         <Badge variant={isValid ? 'outline' : 'destructive'}>
           Total: {total}%
         </Badge>
       </div>
-      <div className="grid gap-3">
+
+      {/* Score breakdown visualization */}
+      <ScoreBreakdownChart weights={weights} />
+
+      {/* Preset grid */}
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Quick Presets</Label>
+        <PresetGrid onSelect={applyPreset} currentWeights={weights} />
+      </div>
+
+      {/* Weight sliders with icons */}
+      <div className="grid gap-3 pt-2">
         <div className="flex items-center gap-3">
-          <Label className="w-24 text-sm">Technical</Label>
+          <div className="flex items-center gap-1.5 w-28">
+            <TrendingUp className="h-4 w-4 text-blue-500" />
+            <Label className="text-sm">Technical</Label>
+          </div>
           <Slider
             value={[weights.technical]}
             min={0} max={100} step={5}
             className="flex-1"
-            onValueChange={(v) => setWeights(prev => ({ ...prev, technical: v[0] }))}
+            onValueChange={(v) => handleWeightChange('technical', v[0])}
           />
-          <span className="w-12 text-right text-sm">{weights.technical}%</span>
+          <span className="w-12 text-right text-sm font-mono">{weights.technical}%</span>
         </div>
         <div className="flex items-center gap-3">
-          <Label className="w-24 text-sm">Fundamental</Label>
+          <div className="flex items-center gap-1.5 w-28">
+            <BarChart3 className="h-4 w-4 text-purple-500" />
+            <Label className="text-sm">Fundamental</Label>
+          </div>
           <Slider
             value={[weights.fundamental]}
             min={0} max={100} step={5}
             className="flex-1"
-            onValueChange={(v) => setWeights(prev => ({ ...prev, fundamental: v[0] }))}
+            onValueChange={(v) => handleWeightChange('fundamental', v[0])}
           />
-          <span className="w-12 text-right text-sm">{weights.fundamental}%</span>
+          <span className="w-12 text-right text-sm font-mono">{weights.fundamental}%</span>
         </div>
         <div className="flex items-center gap-3">
-          <Label className="w-24 text-sm">Sentiment</Label>
+          <div className="flex items-center gap-1.5 w-28">
+            <Newspaper className="h-4 w-4 text-orange-500" />
+            <Label className="text-sm">Sentiment</Label>
+          </div>
           <Slider
             value={[weights.sentiment]}
             min={0} max={100} step={5}
             className="flex-1"
-            onValueChange={(v) => setWeights(prev => ({ ...prev, sentiment: v[0] }))}
+            onValueChange={(v) => handleWeightChange('sentiment', v[0])}
           />
-          <span className="w-12 text-right text-sm">{weights.sentiment}%</span>
+          <span className="w-12 text-right text-sm font-mono">{weights.sentiment}%</span>
         </div>
       </div>
+
       {!isValid && (
         <p className="text-sm text-destructive flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" />
           Weights must sum to 100%
         </p>
       )}
+
+      {/* Confidence selector */}
+      <ConfidenceSelector value={minConfidence} onChange={setMinConfidence} />
+
+      {/* Save button */}
       <Button
-        size="sm"
         onClick={() => updateMutation.mutate()}
         disabled={!isValid || updateMutation.isPending}
+        className="w-full"
       >
-        Save Weights
+        {updateMutation.isPending ? 'Saving...' : 'Save Multi-Factor Settings'}
       </Button>
     </div>
   );

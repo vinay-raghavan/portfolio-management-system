@@ -14,40 +14,75 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
-// Multi-factor score display component
+// Mini bar for individual score
+function ScoreBar({ value, maxValue, color }: { value: number; maxValue: number; color: string }) {
+  const percentage = Math.max(0, Math.min(100, (value / maxValue) * 100));
+  return (
+    <div className="h-1.5 w-12 bg-muted rounded-full overflow-hidden">
+      <div
+        className={cn('h-full transition-all duration-300', color)}
+        style={{ width: `${percentage}%` }}
+      />
+    </div>
+  );
+}
+
+// Multi-factor score display component with mini bar chart
 function MultiFactorScores({ trade }: { trade: PendingAutoTrade }) {
   const hasScores = trade.technical_score !== null || trade.fundamental_score !== null || trade.sentiment_score !== null;
   if (!hasScores) return null;
 
+  // Normalize sentiment from -100..+100 to 0..100 for bar display
+  const normalizedSentiment = trade.sentiment_score !== null
+    ? (trade.sentiment_score + 100) / 2
+    : null;
+
   return (
-    <div className="flex items-center gap-3 text-[10px] mt-1.5 pt-1.5 border-t border-dashed">
-      {trade.technical_score !== null && (
-        <div className="flex items-center gap-1">
-          <TrendingUp className="h-3 w-3 text-blue-500" />
-          <span className="text-muted-foreground">Tech:</span>
+    <div className="space-y-1.5 mt-1.5 pt-1.5 border-t border-dashed">
+      {/* Score bars visualization */}
+      <div className="flex items-center gap-2">
+        {trade.technical_score !== null && (
+          <div className="flex items-center gap-1" title={`Technical: ${trade.technical_score.toFixed(0)}`}>
+            <TrendingUp className="h-3 w-3 text-blue-500" />
+            <ScoreBar value={trade.technical_score} maxValue={100} color="bg-blue-500" />
+          </div>
+        )}
+        {trade.fundamental_score !== null && (
+          <div className="flex items-center gap-1" title={`Fundamental: ${trade.fundamental_score.toFixed(0)}`}>
+            <BarChart3 className="h-3 w-3 text-purple-500" />
+            <ScoreBar value={trade.fundamental_score} maxValue={100} color="bg-purple-500" />
+          </div>
+        )}
+        {normalizedSentiment !== null && (
+          <div className="flex items-center gap-1" title={`Sentiment: ${trade.sentiment_score! > 0 ? '+' : ''}${trade.sentiment_score!.toFixed(0)}`}>
+            <Newspaper className="h-3 w-3 text-orange-500" />
+            <ScoreBar value={normalizedSentiment} maxValue={100} color="bg-orange-500" />
+          </div>
+        )}
+      </div>
+      {/* Text scores */}
+      <div className="flex items-center gap-3 text-[10px]">
+        {trade.technical_score !== null && (
           <span className={cn('font-medium', trade.technical_score >= 70 ? 'text-green-600' : trade.technical_score >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
-            {trade.technical_score.toFixed(0)}
+            T:{trade.technical_score.toFixed(0)}
           </span>
-        </div>
-      )}
-      {trade.fundamental_score !== null && (
-        <div className="flex items-center gap-1">
-          <BarChart3 className="h-3 w-3 text-purple-500" />
-          <span className="text-muted-foreground">Fund:</span>
+        )}
+        {trade.fundamental_score !== null && (
           <span className={cn('font-medium', trade.fundamental_score >= 70 ? 'text-green-600' : trade.fundamental_score >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
-            {trade.fundamental_score.toFixed(0)}
+            F:{trade.fundamental_score.toFixed(0)}
           </span>
-        </div>
-      )}
-      {trade.sentiment_score !== null && (
-        <div className="flex items-center gap-1">
-          <Newspaper className="h-3 w-3 text-orange-500" />
-          <span className="text-muted-foreground">Sent:</span>
+        )}
+        {trade.sentiment_score !== null && (
           <span className={cn('font-medium', trade.sentiment_score > 0 ? 'text-green-600' : trade.sentiment_score < 0 ? 'text-red-600' : 'text-muted-foreground')}>
-            {trade.sentiment_score > 0 ? '+' : ''}{trade.sentiment_score.toFixed(0)}
+            S:{trade.sentiment_score > 0 ? '+' : ''}{trade.sentiment_score.toFixed(0)}
           </span>
-        </div>
-      )}
+        )}
+        {trade.combined_score !== null && (
+          <span className="font-semibold text-primary">
+            ={trade.combined_score.toFixed(0)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
