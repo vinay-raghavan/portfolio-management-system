@@ -3766,7 +3766,7 @@ def expire_pending_auto_trades(self) -> dict:
 - [x] Create `TemplateSelector` component (integrated in AutoTradeConfigCard)
 - [x] Add API functions in `frontend/src/lib/api.ts`
 - [x] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add auto-trade settings page`
+- [x] Commit: `feat(frontend): add auto-trade settings page` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
 
 #### 2.6.7 Frontend: Strategy Templates
 
@@ -3791,7 +3791,7 @@ def expire_pending_auto_trades(self) -> dict:
 - [x] Create `TemplateForm` component
 - [x] Add API functions for templates
 - [x] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add strategy templates management page`
+- [x] Commit: `feat(frontend): add strategy templates management page` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
 
 #### 2.6.8 Frontend: Pending Auto-Trades Panel
 
@@ -3816,7 +3816,7 @@ Shows in Dashboard or as a notification drawer panel.
 - [x] Implement approve/reject API calls
 - [x] Add toast notifications for actions
 - [x] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add pending auto-trades panel`
+- [x] Commit: `feat(frontend): add pending auto-trades panel` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
 
 #### 2.6.9 Notifications Integration
 
@@ -5081,7 +5081,7 @@ class AutoTradeConfig(Base):
 - [x] Add strategy template selector
 - [x] Call API to save screener with auto-trade config
 - [x] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add save screener dialog with auto-trade option`
+- [x] Commit: `feat(frontend): add save screener dialog with auto-trade option` (combined in feat(frontend): add saved screeners page with auto-trade support)
 
 ##### 2.6.12.7 Frontend: Saved Screeners Management
 
@@ -5140,7 +5140,7 @@ class AutoTradeConfig(Base):
 - [x] Show run schedule and countdown
 - [x] Add API functions in `frontend/src/lib/api.ts`
 - [x] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add saved screeners management page`
+- [x] Commit: `feat(frontend): add saved screeners management page` (combined in feat(frontend): add saved screeners page with auto-trade support)
 
 ##### 2.6.12.8 Frontend: Auto-Trade Source Selection
 
