@@ -3736,13 +3736,13 @@ def expire_pending_auto_trades(self) -> dict:
 ```
 
 **Tasks:**
-- [ ] Create `process_auto_trades` task in `worker/worker/tasks/algo.py`
-- [ ] Create `expire_pending_auto_trades` task
-- [ ] Update `generate_daily_recommendations` to call `process_auto_trades` after completion
-- [ ] Add Celery Beat schedule for `expire_pending_auto_trades` (hourly)
+- [x] Create `process_auto_trades` task in `worker/worker/tasks/algo.py`
+- [x] Create `expire_pending_auto_trades` task
+- [ ] Update `generate_daily_recommendations` to call `process_auto_trades` after completion (TODO: integrate with screener task)
+- [x] Add Celery Beat schedule for `expire_pending_auto_trades` (hourly)
 - [ ] Add integration tests for Celery tasks
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(worker): add Celery tasks for auto-trade pipeline`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(worker): add Celery tasks for auto-trade pipeline`
 
 #### 2.6.6 Frontend: Auto-Trade Settings
 

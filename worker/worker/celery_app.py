@@ -126,6 +126,11 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.algo.check_stop_monitors",
         "schedule": 300.0,  # Every 5 minutes
     },
+    # Expire pending auto-trades every hour
+    "expire-pending-auto-trades-hourly": {
+        "task": "worker.tasks.algo.expire_pending_auto_trades",
+        "schedule": 3600.0,  # Every hour
+    },
     # Daily recommendations - at market open 9:15 AM IST (3:45 UTC)
     "generate-daily-recommendations": {
         "task": "worker.tasks.screener.generate_daily_recommendations",
