@@ -292,7 +292,7 @@ export default function SavedScreenersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Screener</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteScreener?.name}"? This cannot be undone.
+              Are you sure you want to delete &quot;{deleteScreener?.name}&quot;? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

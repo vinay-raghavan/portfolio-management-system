@@ -1774,6 +1774,7 @@ export interface AutoTradeConfig {
   min_confidence: number;
   source_type: ScreenerSourceType;
   screener_id: string | null;
+  run_time: string | null; // HH:MM format for scheduled run time
   created_at: string;
   updated_at: string;
   template?: StrategyTemplate | null;
@@ -1792,6 +1793,7 @@ export interface AutoTradeConfigCreate {
   min_confidence?: number;
   source_type?: ScreenerSourceType;
   screener_id?: string | null;
+  run_time?: string | null; // HH:MM format
 }
 
 export interface AutoTradeConfigUpdate {
@@ -1806,6 +1808,7 @@ export interface AutoTradeConfigUpdate {
   min_confidence?: number;
   source_type?: ScreenerSourceType;
   screener_id?: string | null;
+  run_time?: string | null; // HH:MM format
 }
 
 export interface WeightConfigUpdate {

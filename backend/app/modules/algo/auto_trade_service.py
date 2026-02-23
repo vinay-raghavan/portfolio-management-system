@@ -301,6 +301,7 @@ class AutoTradeConfigService:
             screener_source_type=ScreenerSourceType(data.screener_source_type),
             preset_category=data.preset_category,
             saved_screener_id=data.saved_screener_id,
+            run_time=data.run_time,
         )
         self.db.add(config)
         await self.db.flush()

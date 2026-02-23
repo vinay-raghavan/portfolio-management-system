@@ -135,7 +135,7 @@ function AutoTradeConfigCard({
             </Select>
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label>Max Trades Per Day</Label>
             <Input
@@ -156,6 +156,18 @@ function AutoTradeConfigCard({
               onValueCommit={(v) => updateMutation.mutate({ min_confidence: v[0] })}
             />
             <p className="text-sm text-muted-foreground">{config.min_confidence}%</p>
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Run Time (IST)
+            </Label>
+            <Input
+              type="time"
+              value={config.run_time || '09:20'}
+              onChange={(e) => updateMutation.mutate({ run_time: e.target.value })}
+            />
+            <p className="text-sm text-muted-foreground">Daily screener scan time</p>
           </div>
         </div>
         <WeightConfigPanel category={category.value} config={config} onUpdate={onUpdate} />

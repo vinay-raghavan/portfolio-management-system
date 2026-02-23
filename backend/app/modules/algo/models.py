@@ -816,6 +816,11 @@ class AutoTradeConfig(Base):
         nullable=True,
     )
 
+    # Schedule settings for when to run the screener
+    run_time: Mapped[str | None] = mapped_column(
+        String(5), nullable=True, default="09:20"
+    )  # HH:MM format, e.g., "09:20" for 9:20 AM IST
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

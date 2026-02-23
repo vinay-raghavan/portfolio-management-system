@@ -4198,16 +4198,16 @@ def generate_daily_recommendations(self) -> dict:
 ```
 
 **Tasks:**
-- [ ] Update `generate_daily_recommendations` to call `MultiFactorScorer`
-- [ ] Add helper function `_enrich_with_multi_factor()` in screener tasks
-- [ ] Update `DailyRecommendation` model to store additional fields:
+- [x] Update `generate_daily_recommendations` to call `MultiFactorScorer` (integrated via /recommendations/store endpoint)
+- [x] Add helper function `_enrich_with_multi_factor()` in screener tasks (N/A - scoring in backend)
+- [x] Update `DailyRecommendation` model to store additional fields:
   - `technical_score`, `fundamental_score`, `sentiment_score`
   - `direction`, `confidence`, `recommended_strategy`
   - `position_size_multiplier`
-- [ ] Create Alembic migration for new `DailyRecommendation` columns
-- [ ] Update `_store_recommendations()` to save enhanced data
+- [x] Create Alembic migration for new `DailyRecommendation` columns (20260223_1200_add_multi_factor_scoring_fields.py)
+- [x] Update `_store_recommendations()` to save enhanced data (in screener/router.py)
 - [ ] Add integration tests for enhanced recommendation flow
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [ ] Commit: `feat(screener): integrate multi-factor scoring into daily recommendations`
 
 ##### 2.6.11.3 Update AutoTradeService Integration

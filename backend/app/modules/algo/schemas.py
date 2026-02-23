@@ -1082,6 +1082,11 @@ class AutoTradeConfigCreate(BaseModel):
     screener_source_type: str = Field(default="preset", pattern="^(preset|custom)$")
     preset_category: str | None = None
     saved_screener_id: str | None = None
+    run_time: str | None = Field(
+        default="09:20",
+        description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
+        pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    )
 
 
 class AutoTradeConfigUpdate(BaseModel):
@@ -1100,6 +1105,11 @@ class AutoTradeConfigUpdate(BaseModel):
     screener_source_type: str | None = Field(default=None, pattern="^(preset|custom)$")
     preset_category: str | None = None
     saved_screener_id: str | None = None
+    run_time: str | None = Field(
+        default=None,
+        description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
+        pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    )
 
 
 class AutoTradeConfigResponse(BaseModel):
@@ -1121,6 +1131,7 @@ class AutoTradeConfigResponse(BaseModel):
     screener_source_type: str
     preset_category: str | None
     saved_screener_id: str | None
+    run_time: str | None = Field(default="09:20", description="Scheduled run time in HH:MM format")
     created_at: datetime
     updated_at: datetime
 
