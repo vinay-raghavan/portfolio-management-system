@@ -3821,13 +3821,17 @@ Shows in Dashboard or as a notification drawer panel.
 #### 2.6.9 Notifications Integration
 
 **Tasks:**
-- [ ] Add notification type `AUTO_TRADE_PENDING` for new pending trades
-- [ ] Add notification type `AUTO_TRADE_EXECUTED` for auto-executed trades
-- [ ] Add notification type `AUTO_TRADE_EXPIRED` for expired pending trades
-- [ ] Send notification when pending trade created (if mode == NOTIFY)
-- [ ] Include action buttons in notification (Approve/Reject)
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(notifications): add auto-trade notification types`
+- [x] Add notification type `AUTO_TRADE_PENDING` for new pending trades
+- [x] Add notification type `AUTO_TRADE_EXECUTED` for auto-executed trades
+- [x] Add notification type `AUTO_TRADE_EXPIRED` for expired pending trades
+- [x] Add notification type `AUTO_TRADE_APPROVED` for approved pending trades
+- [x] Add notification type `AUTO_TRADE_REJECTED` for rejected pending trades
+- [x] Add ActivityType enums for auto-trade events
+- [x] Add notification methods to `AlgoNotificationService`
+- [ ] Integrate notifications with `PendingAutoTradeService` (TODO: wire up service calls)
+- [ ] Include action buttons in notification UI (Frontend)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(notifications): add auto-trade notification types`
 
 #### 2.6.10 Testing & Deployment
 

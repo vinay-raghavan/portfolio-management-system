@@ -167,3 +167,224 @@ class AlgoNotificationService:
             notification_type=NotificationType.KILL_SWITCH_TRIGGERED,
             data={"reason": reason, "strategies_disabled": strategies_disabled},
         )
+
+    # =========================================================================
+    # Auto-Trade Pipeline Notifications
+    # =========================================================================
+
+    async def notify_auto_trade_pending(
+        self,
+        user_id: str,
+        pending_trade_id: str,
+        category: str,
+        symbols: list[str],
+        strategy_type: str,
+        expires_at: str,
+    ) -> bool:
+        """Notify when a pending auto-trade is created (NOTIFY mode).
+
+        Args:
+            user_id: User ID to notify
+            pending_trade_id: ID of the pending auto-trade
+            category: Trade category (momentum, breakout, value, sector)
+            symbols: List of symbols in the trade
+            strategy_type: Recommended strategy type
+            expires_at: Expiry timestamp as ISO string
+
+        Returns:
+            True if notification was sent successfully
+        """
+        if not self._provider:
+            return False
+
+        symbols_str = ", ".join(symbols[:3])
+        if len(symbols) > 3:
+            symbols_str += f" (+{len(symbols) - 3} more)"
+
+        return await self._provider.send(
+            user_id=user_id,
+            title=f"📊 Auto-Trade Pending: {category.title()}",
+            message=(
+                f"New auto-trade ready for {category}: {symbols_str}. "
+                f"Strategy: {strategy_type}. Approve or reject before expiry."
+            ),
+            priority=NotificationPriority.MEDIUM,
+            notification_type=NotificationType.AUTO_TRADE_PENDING,
+            data={
+                "pending_trade_id": pending_trade_id,
+                "category": category,
+                "symbols": symbols,
+                "strategy_type": strategy_type,
+                "expires_at": expires_at,
+                "actions": ["approve", "reject"],
+            },
+        )
+
+    async def notify_auto_trade_executed(
+        self,
+        user_id: str,
+        strategy_id: str,
+        strategy_name: str,
+        category: str,
+        symbols: list[str],
+        confirmation_mode: str,
+    ) -> bool:
+        """Notify when an auto-trade is executed.
+
+        Args:
+            user_id: User ID to notify
+            strategy_id: ID of the created strategy
+            strategy_name: Name of the strategy
+            category: Trade category
+            symbols: List of symbols in the trade
+            confirmation_mode: Whether it was AUTO or approved
+
+        Returns:
+            True if notification was sent successfully
+        """
+        if not self._provider:
+            return False
+
+        symbols_str = ", ".join(symbols[:3])
+        if len(symbols) > 3:
+            symbols_str += f" (+{len(symbols) - 3} more)"
+
+        mode_str = "Auto-executed" if confirmation_mode == "auto" else "Approved and executed"
+
+        return await self._provider.send(
+            user_id=user_id,
+            title=f"✅ Auto-Trade Executed: {strategy_name}",
+            message=f"{mode_str}: {category.title()} strategy for {symbols_str}.",
+            priority=NotificationPriority.MEDIUM,
+            notification_type=NotificationType.AUTO_TRADE_EXECUTED,
+            data={
+                "strategy_id": strategy_id,
+                "strategy_name": strategy_name,
+                "category": category,
+                "symbols": symbols,
+                "confirmation_mode": confirmation_mode,
+            },
+        )
+
+    async def notify_auto_trade_expired(
+        self,
+        user_id: str,
+        pending_trade_id: str,
+        category: str,
+        symbols: list[str],
+    ) -> bool:
+        """Notify when a pending auto-trade expires without action.
+
+        Args:
+            user_id: User ID to notify
+            pending_trade_id: ID of the expired pending trade
+            category: Trade category
+            symbols: List of symbols that expired
+
+        Returns:
+            True if notification was sent successfully
+        """
+        if not self._provider:
+            return False
+
+        symbols_str = ", ".join(symbols[:3])
+        if len(symbols) > 3:
+            symbols_str += f" (+{len(symbols) - 3} more)"
+
+        return await self._provider.send(
+            user_id=user_id,
+            title=f"⏰ Auto-Trade Expired: {category.title()}",
+            message=(
+                f"Pending auto-trade for {category} has expired: {symbols_str}. "
+                "No action was taken."
+            ),
+            priority=NotificationPriority.LOW,
+            notification_type=NotificationType.AUTO_TRADE_EXPIRED,
+            data={
+                "pending_trade_id": pending_trade_id,
+                "category": category,
+                "symbols": symbols,
+            },
+        )
+
+    async def notify_auto_trade_approved(
+        self,
+        user_id: str,
+        pending_trade_id: str,
+        strategy_id: str,
+        strategy_name: str,
+        category: str,
+    ) -> bool:
+        """Notify when a pending auto-trade is approved by user.
+
+        Args:
+            user_id: User ID to notify
+            pending_trade_id: ID of the approved pending trade
+            strategy_id: ID of the created strategy
+            strategy_name: Name of the created strategy
+            category: Trade category
+
+        Returns:
+            True if notification was sent successfully
+        """
+        if not self._provider:
+            return False
+
+        return await self._provider.send(
+            user_id=user_id,
+            title=f"✅ Auto-Trade Approved: {strategy_name}",
+            message=f"Your {category.title()} auto-trade has been approved and strategy created.",
+            priority=NotificationPriority.LOW,
+            notification_type=NotificationType.AUTO_TRADE_APPROVED,
+            data={
+                "pending_trade_id": pending_trade_id,
+                "strategy_id": strategy_id,
+                "strategy_name": strategy_name,
+                "category": category,
+            },
+        )
+
+    async def notify_auto_trade_rejected(
+        self,
+        user_id: str,
+        pending_trade_id: str,
+        category: str,
+        symbols: list[str],
+        reason: str | None = None,
+    ) -> bool:
+        """Notify when a pending auto-trade is rejected by user.
+
+        Args:
+            user_id: User ID to notify
+            pending_trade_id: ID of the rejected pending trade
+            category: Trade category
+            symbols: List of symbols that were rejected
+            reason: Optional rejection reason
+
+        Returns:
+            True if notification was sent successfully
+        """
+        if not self._provider:
+            return False
+
+        symbols_str = ", ".join(symbols[:3])
+        if len(symbols) > 3:
+            symbols_str += f" (+{len(symbols) - 3} more)"
+
+        message = f"Auto-trade for {category.title()} was rejected: {symbols_str}."
+        if reason:
+            message += f" Reason: {reason}"
+
+        return await self._provider.send(
+            user_id=user_id,
+            title=f"❌ Auto-Trade Rejected: {category.title()}",
+            message=message,
+            priority=NotificationPriority.LOW,
+            notification_type=NotificationType.AUTO_TRADE_REJECTED,
+            data={
+                "pending_trade_id": pending_trade_id,
+                "category": category,
+                "symbols": symbols,
+                "reason": reason,
+            },
+        )
