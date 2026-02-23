@@ -37,6 +37,9 @@ from app.modules.screener.schemas import (
     OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
+    RunAutoTradeScreenerResponse,
+    RunScheduledScreenersRequest,
+    RunScheduledScreenersResponse,
     ScreenerAlertCreate,
     ScreenerAlertListResponse,
     ScreenerAlertResponse,
@@ -478,6 +481,142 @@ async def infer_strategy_from_screener(
         confidence=result.recommended_strategy.confidence,
         reasoning=result.recommended_strategy.reasoning,
         suggested_params=result.recommended_strategy.suggested_params,
+    )
+
+
+@router.post("/custom/run-scheduled", response_model=RunScheduledScreenersResponse)
+async def run_scheduled_screeners(
+    data: RunScheduledScreenersRequest,
+    db: DbSession,
+    internal_user: InternalOrCurrentUser,
+) -> RunScheduledScreenersResponse:
+    """Run all scheduled custom screeners with the given frequency.
+
+    This endpoint is called by the Celery beat scheduler:
+    - Daily at 9:20 AM IST for frequency='daily'
+    - Hourly during market hours for frequency='hourly'
+
+    For each screener with matching frequency and auto-trade enabled:
+    1. Run the screener against its configured universe
+    2. Apply multi-factor scoring (if configured)
+    3. Create pending trades or auto-execute (based on config)
+    4. Update last_run_at and next_run_at timestamps
+    """
+    service = ScreenerService(db)
+    frequency = data.frequency.value
+
+    # Get all screeners due to run with this frequency
+    screeners = await service.get_screeners_by_frequency(frequency)
+
+    results = []
+    errors = []
+    auto_trades_triggered = 0
+    screeners_succeeded = 0
+
+    for screener in screeners:
+        try:
+            # Skip if not enabled for auto-trade
+            if not screener.is_auto_trade_enabled:
+                continue
+
+            # Run the screener
+            run_result = await service.run_custom_screener_for_auto_trade(
+                user_id=screener.user_id,
+                screener_id=str(screener.id),
+            )
+
+            if run_result.get("status") == "success":
+                screeners_succeeded += 1
+                auto_trades_triggered += run_result.get("trades_created", 0)
+                auto_trades_triggered += run_result.get("pending_trades_created", 0)
+
+            results.append(
+                {
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "user_id": str(screener.user_id),
+                    "status": run_result.get("status", "error"),
+                    "passed_count": run_result.get("passed_count", 0),
+                    "trades_created": run_result.get("trades_created", 0),
+                }
+            )
+
+        except Exception as e:
+            logger.exception(f"Error running scheduled screener {screener.id}: {e}")
+            errors.append(f"Screener {screener.id}: {str(e)}")
+            results.append(
+                {
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
+
+    return RunScheduledScreenersResponse(
+        status="completed" if screeners_succeeded > 0 else "no_screeners",
+        frequency=frequency,
+        screeners_processed=len(results),
+        screeners_succeeded=screeners_succeeded,
+        screeners_failed=len(errors),
+        auto_trades_triggered=auto_trades_triggered,
+        results=results,
+        errors=errors,
+    )
+
+
+@router.post(
+    "/custom/{screener_id}/run-auto-trade",
+    response_model=RunAutoTradeScreenerResponse,
+)
+async def run_screener_auto_trade(
+    screener_id: str,
+    db: DbSession,
+    current_user: InternalOrCurrentUser,
+) -> RunAutoTradeScreenerResponse:
+    """Run a specific custom screener and trigger auto-trade.
+
+    This endpoint can be called:
+    - By the scheduled Celery task for a specific screener
+    - Manually by the user to trigger an immediate run
+
+    The screener must have auto-trade enabled. Results flow through
+    the auto-trade pipeline based on the user's confirmation mode:
+    - AUTO: Strategies are created and activated immediately
+    - NOTIFY: Pending trades are created for user approval
+    """
+    service = ScreenerService(db)
+
+    # Get the screener
+    screener = await service.get_custom_screener(str(current_user.id), screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    if not screener.is_auto_trade_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auto-trade is not enabled for this screener",
+        )
+
+    # Run the screener for auto-trade
+    result = await service.run_custom_screener_for_auto_trade(
+        user_id=str(current_user.id),
+        screener_id=screener_id,
+    )
+
+    return RunAutoTradeScreenerResponse(
+        status=result.get("status", "success"),
+        screener_id=screener_id,
+        screener_name=screener.name,
+        passed_count=result.get("passed_count", 0),
+        total_screened=result.get("total_screened", 0),
+        trades_created=result.get("trades_created", 0),
+        pending_trades_created=result.get("pending_trades_created", 0),
+        results=result.get("results", []),
+        message=result.get("message"),
     )
 
 

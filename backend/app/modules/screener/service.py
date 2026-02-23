@@ -752,3 +752,111 @@ class ScreenerService:
     def get_preset(preset: ScreenerPresetType) -> ScreenerPresetInfo | None:
         """Get a specific preset definition."""
         return PRESET_DEFINITIONS.get(preset)
+
+    async def get_screeners_by_frequency(self, frequency: str) -> list[CustomScreener]:
+        """Get all custom screeners with the specified run frequency.
+
+        Args:
+            frequency: Either 'daily' or 'hourly'
+
+        Returns:
+            List of screeners with matching frequency that are auto-trade enabled
+        """
+        result = await self.db.execute(
+            select(CustomScreener).where(
+                CustomScreener.run_frequency == frequency,
+                CustomScreener.is_auto_trade_enabled == True,  # noqa: E712
+                CustomScreener.is_active == True,  # noqa: E712
+            )
+        )
+        return list(result.scalars().all())
+
+    async def run_custom_screener_for_auto_trade(self, user_id: str, screener_id: str) -> dict:
+        """Run a custom screener and process results for auto-trade.
+
+        This method:
+        1. Runs the screener against its configured universe
+        2. Updates last_run_at and calculates next_run_at
+        3. Returns results formatted for auto-trade processing
+
+        Note: Actual auto-trade creation (pending or immediate) is handled
+        by the AutoTradeService, which is not yet implemented.
+
+        Args:
+            user_id: The user who owns the screener
+            screener_id: UUID of the custom screener
+
+        Returns:
+            Dict with status, passed_count, results, etc.
+        """
+        from datetime import datetime, timedelta
+
+        from app.modules.screener.screener import StockScreener
+
+        screener = await self.get_custom_screener(user_id, screener_id)
+        if not screener:
+            return {"status": "error", "message": "Screener not found"}
+
+        if not screener.is_auto_trade_enabled:
+            return {"status": "error", "message": "Auto-trade not enabled"}
+
+        try:
+            # Get universe symbols
+            from app.modules.algo.universe_service import UniverseService
+
+            universe_service = UniverseService(self.db)
+            symbols = await universe_service.resolve_universe(screener.universe, user_id)
+
+            if not symbols:
+                return {"status": "error", "message": f"No symbols in universe {screener.universe}"}
+
+            # Convert stored filters to FilterConfig objects
+            from app.modules.screener.schemas import FilterConfig
+
+            filters = [FilterConfig(**f) for f in screener.filters]
+
+            # Run the screener
+            stock_screener = StockScreener()
+            results = await stock_screener.screen(
+                symbols=symbols,
+                filters=filters,
+                min_score=screener.min_score,
+                top_n=screener.top_n,
+            )
+
+            # Update last_run_at and next_run_at
+            now = datetime.utcnow()
+            screener.last_run_at = now
+
+            if screener.run_frequency == "daily":
+                # Next run tomorrow at the same time
+                screener.next_run_at = now + timedelta(days=1)
+            elif screener.run_frequency == "hourly":
+                # Next run in an hour
+                screener.next_run_at = now + timedelta(hours=1)
+            else:
+                screener.next_run_at = None  # Manual runs don't have scheduled next
+
+            await self.db.commit()
+
+            # TODO: Integrate with AutoTradeService when implemented
+            # For now, just return the screener results
+            return {
+                "status": "success",
+                "passed_count": len(results),
+                "total_screened": len(symbols),
+                "trades_created": 0,  # Will be set by AutoTradeService
+                "pending_trades_created": 0,  # Will be set by AutoTradeService
+                "results": [
+                    {
+                        "symbol": r.symbol,
+                        "score": r.score,
+                        "reasons": r.reasons,
+                    }
+                    for r in results
+                ],
+            }
+
+        except Exception as e:
+            logger.exception(f"Error running screener {screener_id} for auto-trade: {e}")
+            return {"status": "error", "message": str(e)}

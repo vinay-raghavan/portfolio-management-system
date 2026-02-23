@@ -364,3 +364,137 @@ def process_screener_alerts(self) -> dict:
     except Exception as e:
         logger.exception(f"Error processing screener alerts: {e}")
         return {"status": "error", "message": str(e)}
+
+
+# =============================================================================
+# Scheduled Custom Screener Tasks (Auto-Trade Pipeline)
+# =============================================================================
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.run_scheduled_screeners_daily")
+def run_scheduled_screeners_daily(self) -> dict:
+    """Run all custom screeners scheduled for daily execution.
+
+    This task runs at market open (9:20 AM IST / 3:50 UTC) to:
+    1. Fetch all custom screeners with run_frequency='daily'
+    2. Run each screener against its configured universe
+    3. Store results and trigger auto-trade if enabled
+    4. Update last_run_at and next_run_at timestamps
+
+    Returns summary of screeners processed.
+    """
+    logger.info("Starting daily scheduled screeners run")
+    return _run_scheduled_screeners("daily")
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.run_scheduled_screeners_hourly")
+def run_scheduled_screeners_hourly(self) -> dict:
+    """Run all custom screeners scheduled for hourly execution.
+
+    This task runs every hour during market hours to:
+    1. Fetch all custom screeners with run_frequency='hourly'
+    2. Run each screener against its configured universe
+    3. Store results and trigger auto-trade if enabled
+    4. Update last_run_at and next_run_at timestamps
+
+    Returns summary of screeners processed.
+    """
+    # Skip if outside market hours
+    if not _is_market_hours():
+        logger.info("Skipping hourly screeners - outside market hours")
+        return {"status": "skipped", "reason": "outside_market_hours"}
+
+    logger.info("Starting hourly scheduled screeners run")
+    return _run_scheduled_screeners("hourly")
+
+
+def _run_scheduled_screeners(frequency: str) -> dict:
+    """Run all custom screeners with the specified frequency.
+
+    Args:
+        frequency: Either 'daily' or 'hourly'
+
+    Returns:
+        Summary dict with counts and any errors
+    """
+    endpoint = f"{BACKEND_API_URL}/api/v1/screener/custom/run-scheduled"
+    payload = {"frequency": frequency}
+
+    try:
+        with httpx.Client(timeout=600.0) as client:  # 10 min timeout for multiple screeners
+            response = client.post(
+                endpoint,
+                json=payload,
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Run scheduled screeners error: {response.status_code} - {response.text}"
+                )
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+            result = response.json()
+            logger.info(
+                f"Scheduled screeners run complete: {result.get('screeners_processed', 0)} processed, "
+                f"{result.get('auto_trades_triggered', 0)} auto-trades triggered"
+            )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error(f"Timeout running {frequency} scheduled screeners")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error running {frequency} scheduled screeners: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.run_custom_screener_auto_trade")
+def run_custom_screener_auto_trade(
+    self,
+    screener_id: str,
+    user_id: str,
+) -> dict:
+    """Run a specific custom screener and trigger auto-trade.
+
+    This task is called when:
+    - A scheduled screener's run time is reached
+    - A user manually triggers a screener run with auto-trade
+
+    Args:
+        screener_id: UUID of the custom screener
+        user_id: User ID who owns the screener
+
+    Returns:
+        Summary with screener results and any trades created
+    """
+    logger.info(f"Running custom screener {screener_id} for auto-trade (user: {user_id})")
+
+    endpoint = f"{BACKEND_API_URL}/api/v1/screener/custom/{screener_id}/run-auto-trade"
+
+    try:
+        with httpx.Client(timeout=300.0) as client:  # 5 min timeout
+            response = client.post(
+                endpoint,
+                headers=_get_internal_headers(user_id),
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Run auto-trade screener error: {response.status_code} - {response.text}"
+                )
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+            result = response.json()
+            logger.info(
+                f"Auto-trade screener complete: {result.get('passed_count', 0)} stocks passed, "
+                f"{result.get('trades_created', 0)} trades created"
+            )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error(f"Timeout running auto-trade screener {screener_id}")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error running auto-trade screener {screener_id}: {e}")
+        return {"status": "error", "message": str(e)}

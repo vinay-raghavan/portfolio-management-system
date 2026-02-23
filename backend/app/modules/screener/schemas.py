@@ -611,3 +611,36 @@ class StoreRecommendationsRequest(BaseModel):
     date: str = Field(..., description="Date in ISO format (YYYY-MM-DD)")
     category: str = Field(..., description="Category: momentum, breakout, pullback, sector")
     results: list[dict] = Field(..., description="Screener results to store")
+
+
+class RunScheduledScreenersRequest(BaseModel):
+    """Request to run all scheduled screeners with given frequency."""
+
+    frequency: RunFrequencyEnum = Field(..., description="Frequency: daily or hourly")
+
+
+class RunScheduledScreenersResponse(BaseModel):
+    """Response from running scheduled screeners."""
+
+    status: str
+    frequency: str
+    screeners_processed: int = 0
+    screeners_succeeded: int = 0
+    screeners_failed: int = 0
+    auto_trades_triggered: int = 0
+    results: list[dict] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class RunAutoTradeScreenerResponse(BaseModel):
+    """Response from running a screener with auto-trade enabled."""
+
+    status: str
+    screener_id: str
+    screener_name: str
+    passed_count: int = 0
+    total_screened: int = 0
+    trades_created: int = 0
+    pending_trades_created: int = 0
+    results: list[dict] = Field(default_factory=list)
+    message: str | None = None

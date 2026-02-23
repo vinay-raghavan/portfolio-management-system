@@ -141,6 +141,16 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.screener.process_screener_alerts",
         "schedule": 900.0,  # Every 15 minutes
     },
+    # Run scheduled custom screeners - daily at 9:20 AM IST (3:50 UTC)
+    "run-scheduled-screeners-daily": {
+        "task": "worker.tasks.screener.run_scheduled_screeners_daily",
+        "schedule": crontab(hour=3, minute=50),  # 9:20 AM IST = 3:50 UTC
+    },
+    # Run scheduled custom screeners - hourly during market hours
+    "run-scheduled-screeners-hourly": {
+        "task": "worker.tasks.screener.run_scheduled_screeners_hourly",
+        "schedule": 3600.0,  # Every hour (task checks market hours internally)
+    },
     # Daily research digest - at market close 4:00 PM IST (10:30 UTC)
     "generate-daily-digest": {
         "task": "worker.tasks.research.generate_daily_digest",
