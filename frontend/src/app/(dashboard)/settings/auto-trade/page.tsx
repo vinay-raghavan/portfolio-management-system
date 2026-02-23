@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle, Bookmark, TrendingUp, BarChart3, Newspaper, Sparkles, Shield, Star } from 'lucide-react';
+import { Bot, Settings2, Zap, Clock, Sliders, ChevronRight, AlertTriangle, Bookmark, TrendingUp, BarChart3, Newspaper, Sparkles, Shield, Star, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +14,9 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { autoTradeApi } from '@/lib/api';
+import { autoTradeApi, screenerApi, CustomScreener } from '@/lib/api';
 import { BrandedSpinner } from '@/components/shared';
-import type { AutoTradeConfig, ConfirmationMode, StrategyTemplate } from '@/types';
+import type { AutoTradeConfig, ConfirmationMode, StrategyTemplate, ScreenerSourceType } from '@/types';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -48,15 +48,120 @@ const CONFIRMATION_MODES: { value: ConfirmationMode; label: string; description:
   { value: 'DISABLED', label: 'Disabled', description: 'Do not create any auto-trades for this category' },
 ];
 
-function AutoTradeConfigCard({ 
-  category, 
-  config, 
-  templates, 
-  onUpdate 
-}: { 
-  category: typeof CATEGORIES[0]; 
+// Source type selector (Preset vs Custom screener)
+function SourceSelector({
+  sourceType,
+  screenerId,
+  customScreeners,
+  categoryValue,
+  onSourceChange,
+  onScreenerChange,
+}: {
+  sourceType: ScreenerSourceType;
+  screenerId: string | null;
+  customScreeners: CustomScreener[];
+  categoryValue: string;
+  onSourceChange: (type: ScreenerSourceType) => void;
+  onScreenerChange: (id: string | null) => void;
+}) {
+  const selectedScreener = customScreeners.find(s => s.id === screenerId);
+
+  return (
+    <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+      <Label className="flex items-center gap-2 text-sm font-medium">
+        <Target className="h-4 w-4" />
+        Screener Source
+      </Label>
+
+      <RadioGroup
+        value={sourceType}
+        onValueChange={(v) => onSourceChange(v as ScreenerSourceType)}
+        className="grid grid-cols-2 gap-2"
+      >
+        <div className="flex items-center">
+          <RadioGroupItem value="PRESET" id={`source-preset-${categoryValue}`} className="peer sr-only" />
+          <Label
+            htmlFor={`source-preset-${categoryValue}`}
+            className={cn(
+              'flex flex-col items-center w-full p-3 border rounded-lg cursor-pointer transition-all',
+              'hover:bg-accent peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5'
+            )}
+          >
+            <Sparkles className="h-4 w-4 mb-1" />
+            <span className="font-medium text-sm">Daily Presets</span>
+            <span className="text-[10px] text-muted-foreground">Use built-in screeners</span>
+          </Label>
+        </div>
+        <div className="flex items-center">
+          <RadioGroupItem value="CUSTOM" id={`source-custom-${categoryValue}`} className="peer sr-only" />
+          <Label
+            htmlFor={`source-custom-${categoryValue}`}
+            className={cn(
+              'flex flex-col items-center w-full p-3 border rounded-lg cursor-pointer transition-all',
+              'hover:bg-accent peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5'
+            )}
+          >
+            <Bookmark className="h-4 w-4 mb-1" />
+            <span className="font-medium text-sm">Custom Screener</span>
+            <span className="text-[10px] text-muted-foreground">Use your saved screener</span>
+          </Label>
+        </div>
+      </RadioGroup>
+
+      {sourceType === 'CUSTOM' && (
+        <div className="space-y-2">
+          <Select
+            value={screenerId || 'none'}
+            onValueChange={(v) => onScreenerChange(v === 'none' ? null : v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select a saved screener" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No screener selected</SelectItem>
+              {customScreeners.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  <div className="flex items-center gap-2">
+                    <span>{s.name}</span>
+                    {s.is_auto_trade_enabled && (
+                      <Badge variant="secondary" className="text-[10px]">Auto-Trade</Badge>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedScreener && (
+            <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
+              <p><strong>Universe:</strong> {selectedScreener.universe}</p>
+              <p><strong>Filters:</strong> {selectedScreener.filters.length}</p>
+              {selectedScreener.run_frequency && (
+                <p><strong>Schedule:</strong> {selectedScreener.run_frequency} {selectedScreener.run_time && `at ${selectedScreener.run_time}`}</p>
+              )}
+            </div>
+          )}
+          {customScreeners.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No saved screeners found. <Link href="/screener/saved" className="text-primary hover:underline">Create one</Link>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AutoTradeConfigCard({
+  category,
+  config,
+  templates,
+  customScreeners,
+  onUpdate
+}: {
+  category: typeof CATEGORIES[0];
   config: AutoTradeConfig | undefined;
   templates: StrategyTemplate[];
+  customScreeners: CustomScreener[];
   onUpdate: () => void;
 }) {
   const { toast } = useToast();
@@ -153,6 +258,16 @@ function AutoTradeConfigCard({
             </Select>
           </div>
         </div>
+
+        {/* Source Selection (Preset vs Custom Screener) */}
+        <SourceSelector
+          sourceType={config.source_type || 'PRESET'}
+          screenerId={config.screener_id}
+          customScreeners={customScreeners}
+          categoryValue={category.value}
+          onSourceChange={(type) => updateMutation.mutate({ source_type: type, screener_id: type === 'PRESET' ? null : config.screener_id })}
+          onScreenerChange={(id) => updateMutation.mutate({ screener_id: id })}
+        />
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label>Max Trades Per Day</Label>
@@ -504,13 +619,19 @@ export default function AutoTradeSettingsPage() {
     queryFn: () => autoTradeApi.getTemplates().then(r => r.data),
   });
 
+  const { data: screenersData, isLoading: screenersLoading } = useQuery({
+    queryKey: ['custom-screeners'],
+    queryFn: () => screenerApi.getCustomScreeners().then(r => r.data),
+  });
+
   const configs = configsData?.configs || [];
   const templates = templatesData?.templates || [];
+  const customScreeners = screenersData?.screeners || [];
 
   const getConfigForCategory = (category: string) =>
     configs.find(c => c.category === category);
 
-  if (configsLoading || templatesLoading) {
+  if (configsLoading || templatesLoading || screenersLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <BrandedSpinner size="lg" />
@@ -561,6 +682,7 @@ export default function AutoTradeSettingsPage() {
             category={category}
             config={getConfigForCategory(category.value)}
             templates={templates}
+            customScreeners={customScreeners}
             onUpdate={() => queryClient.invalidateQueries({ queryKey: ['auto-trade-configs'] })}
           />
         ))}
