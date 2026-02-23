@@ -4591,7 +4591,7 @@ class AutoTradeConfig(Base):
 - [x] Implement auto-normalize logic (sliders adjust proportionally) - `handleWeightChange` in WeightConfigPanel
 - [x] Create `PresetGrid` component with preset buttons (Balanced, Technical, Fundamental, Sentiment)
 - [x] Create `ConfidenceSelector` radio group component with visual stars
-- [ ] Create `LiveScorePreview` component showing real-time scoring preview - future enhancement
+- [x] Create `LiveScorePreview` component showing real-time scoring preview - future enhancement
 - [x] Add input validation (weights must sum to 100) - validated in API and UI
 - [x] Add loading and error states
 - [x] Add toast notifications for save success/failure
@@ -5134,8 +5134,8 @@ class AutoTradeConfig(Base):
 - [x] Create `SavedScreenerCard` component
 - [x] Add auto-trade status badge (enabled/disabled)
 - [x] Add "Run Now" button with loading state
-- [ ] Add "View Results" to show last run results (optional enhancement)
-- [ ] Add auto-trade settings modal (optional enhancement)
+- [x] Add "View Results" to show last run results (optional enhancement)
+- [x] Add auto-trade settings modal (optional enhancement)
 - [x] Show inferred strategy type on each card
 - [x] Show run schedule and countdown
 - [x] Add API functions in `frontend/src/lib/api.ts`

@@ -335,6 +335,74 @@ function ScoreBreakdownChart({ weights }: { weights: { technical: number; fundam
   );
 }
 
+// Live score preview showing real-time calculation example
+function LiveScorePreview({ weights, minConfidence }: {
+  weights: { technical: number; fundamental: number; sentiment: number };
+  minConfidence: string;
+}) {
+  // Example stock data for preview
+  const examples = [
+    { name: 'Strong Buy', technical: 85, fundamental: 78, sentiment: 65 },
+    { name: 'Moderate', technical: 62, fundamental: 55, sentiment: 48 },
+    { name: 'Borderline', technical: 45, fundamental: 70, sentiment: 30 },
+  ];
+
+  const confidenceThreshold = minConfidence === 'high' ? 80 : minConfidence === 'medium' ? 60 : 40;
+
+  const calculateScore = (tech: number, fund: number, sent: number) => {
+    // Normalize sentiment from -100 to 100 range to 0-100 for display
+    const normalizedSent = (sent + 100) / 2;
+    return Math.round(
+      (tech * weights.technical + fund * weights.fundamental + normalizedSent * weights.sentiment) / 100
+    );
+  };
+
+  const getConfidenceLevel = (score: number): { label: string; color: string; icon: typeof Star } => {
+    if (score >= 80) return { label: 'HIGH', color: 'text-green-500', icon: Star };
+    if (score >= 60) return { label: 'MEDIUM', color: 'text-blue-500', icon: Star };
+    if (score >= 40) return { label: 'LOW', color: 'text-yellow-500', icon: Star };
+    return { label: 'SKIP', color: 'text-muted-foreground', icon: Target };
+  };
+
+  return (
+    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Target className="h-3 w-3" />
+        Live Score Preview
+      </div>
+      <div className="space-y-1.5">
+        {examples.map((ex) => {
+          const score = calculateScore(ex.technical, ex.fundamental, ex.sentiment);
+          const conf = getConfidenceLevel(score);
+          const wouldTrade = score >= confidenceThreshold;
+          return (
+            <div key={ex.name} className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <span className={cn("w-2 h-2 rounded-full", wouldTrade ? "bg-green-500" : "bg-muted-foreground")} />
+                <span className="text-muted-foreground">{ex.name}:</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-medium">{score}</span>
+                <Badge variant="outline" className={cn("text-xs px-1.5 py-0", conf.color)}>
+                  {conf.label}
+                </Badge>
+                {wouldTrade ? (
+                  <span className="text-xs text-green-500">✓ Trade</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Skip</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground pt-1 border-t">
+        Threshold: {confidenceThreshold}+ → {minConfidence.toUpperCase()} confidence
+      </p>
+    </div>
+  );
+}
+
 // Preset grid for quick weight selection
 function PresetGrid({
   onSelect,
@@ -593,6 +661,9 @@ function WeightConfigPanel({
 
       {/* Confidence selector */}
       <ConfidenceSelector value={minConfidence} onChange={setMinConfidence} />
+
+      {/* Live score preview */}
+      <LiveScorePreview weights={weights} minConfidence={minConfidence} />
 
       {/* Save button */}
       <Button
