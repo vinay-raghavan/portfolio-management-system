@@ -11,6 +11,7 @@ import {
   FundsSummary,
   RecommendationsCarousel,
   TotalAccountValue,
+  PendingAutoTradesPanel,
 } from '@/components/dashboard';
 import { SectorHeatmap } from '@/components/research';
 
@@ -46,6 +47,9 @@ export default function DashboardPage() {
         <AlgoSummary />
         <MarketOverview />
       </div>
+
+      {/* Pending Auto-Trades */}
+      <PendingAutoTradesPanel />
 
       {/* Recommendations, Sector Heatmap & Recent Trades */}
       <div className="grid gap-4 md:grid-cols-3">

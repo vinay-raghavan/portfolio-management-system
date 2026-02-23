@@ -1160,3 +1160,74 @@ export const reportsApi = {
   }) =>
     api.get<ActivityLogListResponse>(`/activity/entity/${entityType}/${entityId}`, { params }),
 };
+
+// ============================================================================
+// Auto-Trade API
+// ============================================================================
+
+import type {
+  StrategyTemplate,
+  StrategyTemplateCreate,
+  StrategyTemplateUpdate,
+  StrategyTemplateListResponse,
+  AutoTradeConfig,
+  AutoTradeConfigCreate,
+  AutoTradeConfigUpdate,
+  AutoTradeConfigListResponse,
+  WeightConfigUpdate,
+  WeightConfigResponse,
+  PendingAutoTrade,
+  PendingAutoTradeAction,
+  PendingAutoTradeListResponse,
+} from '@/types';
+
+export const autoTradeApi = {
+  // Strategy Templates
+  getTemplates: () =>
+    api.get<StrategyTemplateListResponse>('/auto-trade/templates'),
+
+  getTemplate: (id: string) =>
+    api.get<StrategyTemplate>(`/auto-trade/templates/${id}`),
+
+  createTemplate: (data: StrategyTemplateCreate) =>
+    api.post<StrategyTemplate>('/auto-trade/templates', data),
+
+  updateTemplate: (id: string, data: StrategyTemplateUpdate) =>
+    api.patch<StrategyTemplate>(`/auto-trade/templates/${id}`, data),
+
+  deleteTemplate: (id: string) =>
+    api.delete<{ message: string }>(`/auto-trade/templates/${id}`),
+
+  // Auto-Trade Configs
+  getConfigs: () =>
+    api.get<AutoTradeConfigListResponse>('/auto-trade/configs'),
+
+  getConfig: (category: string) =>
+    api.get<AutoTradeConfig>(`/auto-trade/configs/${category}`),
+
+  createConfig: (data: AutoTradeConfigCreate) =>
+    api.post<AutoTradeConfig>('/auto-trade/configs', data),
+
+  updateConfig: (category: string, data: AutoTradeConfigUpdate) =>
+    api.patch<AutoTradeConfig>(`/auto-trade/configs/${category}`, data),
+
+  deleteConfig: (category: string) =>
+    api.delete<{ message: string }>(`/auto-trade/configs/${category}`),
+
+  // Weight Configuration
+  getWeights: (category: string) =>
+    api.get<WeightConfigResponse>(`/auto-trade/weights/${category}`),
+
+  updateWeights: (category: string, data: WeightConfigUpdate) =>
+    api.put<WeightConfigResponse>(`/auto-trade/weights/${category}`, data),
+
+  // Pending Auto-Trades
+  getPendingTrades: (status?: string) =>
+    api.get<PendingAutoTradeListResponse>('/auto-trade/pending', { params: { status } }),
+
+  getPendingTrade: (id: string) =>
+    api.get<PendingAutoTrade>(`/auto-trade/pending/${id}`),
+
+  actionPendingTrade: (id: string, action: PendingAutoTradeAction) =>
+    api.post<PendingAutoTrade>(`/auto-trade/pending/${id}/action`, action),
+};

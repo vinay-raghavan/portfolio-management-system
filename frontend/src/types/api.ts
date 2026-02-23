@@ -1703,3 +1703,164 @@ export interface ActivityMarkReadRequest {
 export interface ActivityMarkReadResponse {
   marked_count: number;
 }
+
+// ============== Auto-Trade Types ==============
+
+export type ConfirmationMode = 'AUTO' | 'NOTIFY' | 'DISABLED';
+export type ScreenerSourceType = 'PRESET' | 'CUSTOM';
+export type PendingTradeStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'EXECUTED';
+
+export interface StrategyTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  strategy_type: string;
+  default_quantity: number;
+  position_sizing_method: PositionSizingMethod | null;
+  position_size_value: number | null;
+  max_position_value: number | null;
+  stop_loss_pct: number | null;
+  take_profit_pct: number | null;
+  trailing_stop_enabled: boolean;
+  trailing_stop_pct: number | null;
+  parameters: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyTemplateCreate {
+  name: string;
+  description?: string | null;
+  strategy_type: string;
+  default_quantity?: number;
+  position_sizing_method?: PositionSizingMethod | null;
+  position_size_value?: number | null;
+  max_position_value?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  trailing_stop_enabled?: boolean;
+  trailing_stop_pct?: number | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface StrategyTemplateUpdate {
+  name?: string;
+  description?: string | null;
+  strategy_type?: string;
+  default_quantity?: number;
+  position_sizing_method?: PositionSizingMethod | null;
+  position_size_value?: number | null;
+  max_position_value?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  trailing_stop_enabled?: boolean;
+  trailing_stop_pct?: number | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface AutoTradeConfig {
+  id: string;
+  user_id: string;
+  category: string;
+  is_enabled: boolean;
+  confirmation_mode: ConfirmationMode;
+  strategy_template_id: string | null;
+  max_trades_per_day: number;
+  max_position_value: number | null;
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence: number;
+  source_type: ScreenerSourceType;
+  screener_id: string | null;
+  created_at: string;
+  updated_at: string;
+  template?: StrategyTemplate | null;
+}
+
+export interface AutoTradeConfigCreate {
+  category: string;
+  is_enabled?: boolean;
+  confirmation_mode?: ConfirmationMode;
+  strategy_template_id?: string | null;
+  max_trades_per_day?: number;
+  max_position_value?: number | null;
+  weight_technical?: number;
+  weight_fundamental?: number;
+  weight_sentiment?: number;
+  min_confidence?: number;
+  source_type?: ScreenerSourceType;
+  screener_id?: string | null;
+}
+
+export interface AutoTradeConfigUpdate {
+  is_enabled?: boolean;
+  confirmation_mode?: ConfirmationMode;
+  strategy_template_id?: string | null;
+  max_trades_per_day?: number;
+  max_position_value?: number | null;
+  weight_technical?: number;
+  weight_fundamental?: number;
+  weight_sentiment?: number;
+  min_confidence?: number;
+  source_type?: ScreenerSourceType;
+  screener_id?: string | null;
+}
+
+export interface WeightConfigUpdate {
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence?: number;
+}
+
+export interface WeightConfigResponse {
+  category: string;
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence: number;
+  total_weight: number;
+}
+
+export interface PendingAutoTrade {
+  id: string;
+  user_id: string;
+  config_id: string;
+  category: string;
+  symbol: string;
+  recommended_action: string;
+  strategy_type: string;
+  strategy_params: Record<string, unknown>;
+  quantity: number;
+  estimated_value: number | null;
+  confidence_score: number | null;
+  technical_score: number | null;
+  fundamental_score: number | null;
+  sentiment_score: number | null;
+  status: PendingTradeStatus;
+  expires_at: string;
+  created_at: string;
+  reviewed_at: string | null;
+  executed_strategy_id: string | null;
+}
+
+export interface PendingAutoTradeAction {
+  action: 'approve' | 'reject';
+  reason?: string | null;
+}
+
+export interface PendingAutoTradeListResponse {
+  pending_trades: PendingAutoTrade[];
+  total: number;
+  pending_count: number;
+}
+
+export interface AutoTradeConfigListResponse {
+  configs: AutoTradeConfig[];
+}
+
+export interface StrategyTemplateListResponse {
+  templates: StrategyTemplate[];
+}

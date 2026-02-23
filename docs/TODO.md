@@ -3761,11 +3761,11 @@ def expire_pending_auto_trades(self) -> dict:
 - `LimitsForm` - Form for daily limits
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/settings/auto-trade/page.tsx`
-- [ ] Create `AutoTradeConfigCard` component
-- [ ] Create `TemplateSelector` component
-- [ ] Add API functions in `frontend/src/lib/api.ts`
-- [ ] Run frontend audit: `npm audit`
+- [x] Create `frontend/src/app/(dashboard)/settings/auto-trade/page.tsx`
+- [x] Create `AutoTradeConfigCard` component
+- [x] Create `TemplateSelector` component (integrated in AutoTradeConfigCard)
+- [x] Add API functions in `frontend/src/lib/api.ts`
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add auto-trade settings page`
 
 #### 2.6.7 Frontend: Strategy Templates
@@ -3786,11 +3786,11 @@ def expire_pending_auto_trades(self) -> dict:
 - `TemplatePreview` - Preview what strategy will look like
 
 **Tasks:**
-- [ ] Create `frontend/src/app/(dashboard)/algo/templates/page.tsx`
-- [ ] Create `TemplateCard` component
-- [ ] Create `TemplateForm` component
-- [ ] Add API functions for templates
-- [ ] Run frontend audit: `npm audit`
+- [x] Create `frontend/src/app/(dashboard)/algo/templates/page.tsx`
+- [x] Create `TemplateCard` component
+- [x] Create `TemplateForm` component
+- [x] Add API functions for templates
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add strategy templates management page`
 
 #### 2.6.8 Frontend: Pending Auto-Trades Panel
@@ -3809,13 +3809,13 @@ Shows in Dashboard or as a notification drawer panel.
 - Empty state when no pending trades
 
 **Tasks:**
-- [ ] Create `PendingAutoTradesPanel` component
-- [ ] Add to Dashboard page (collapsible section)
-- [ ] Add notification badge for pending count
-- [ ] Create `PendingTradeCard` component
-- [ ] Implement approve/reject API calls
-- [ ] Add toast notifications for actions
-- [ ] Run frontend audit: `npm audit`
+- [x] Create `PendingAutoTradesPanel` component
+- [x] Add to Dashboard page (collapsible section)
+- [x] Add notification badge for pending count
+- [x] Create `PendingTradeCard` component (integrated in PendingAutoTradesPanel)
+- [x] Implement approve/reject API calls
+- [x] Add toast notifications for actions
+- [x] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): add pending auto-trades panel`
 
 #### 2.6.9 Notifications Integration
