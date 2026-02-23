@@ -4809,7 +4809,7 @@ def infer_strategy_type(self, filters: list[dict]) -> str:
 - [x] Implement `run_custom_screener_for_auto_trade()` for scheduled runs
 - [x] Implement `link_to_auto_trade()` for connecting to auto-trade config
 - [x] Implement `infer_strategy_type()` using StrategyInferenceEngine
-- [ ] Add unit tests for auto-trade screener methods
+- [x] Add unit tests for auto-trade screener methods - `TestAutoTradeScreenerMethods` class
 - [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [x] Commit: `feat(screener): add auto-trade methods to ScreenerService`
 
