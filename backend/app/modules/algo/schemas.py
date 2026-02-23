@@ -985,3 +985,214 @@ class CompositeStrategyDryRunResponse(BaseModel):
     profit_factor: float | None = None
     component_signals: list[dict] | None = None  # Signal breakdown per component
     error_message: str | None = None
+
+
+# ============== Auto-Trade Configuration Schemas ==============
+
+
+class StrategyTemplateCreate(BaseModel):
+    """Request to create a strategy template."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    strategy_type: str = Field(..., min_length=1, max_length=50)
+    strategy_params: dict | None = None
+    position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
+    position_size_value: Decimal = Field(default=Decimal("5.00"), ge=0)
+    max_position_value: Decimal | None = None
+    stop_loss_percent: Decimal = Field(default=Decimal("2.00"), ge=0, le=100)
+    take_profit_percent: Decimal = Field(default=Decimal("4.00"), ge=0, le=100)
+    max_daily_loss: Decimal = Field(default=Decimal("5000.00"), ge=0)
+    max_consecutive_losses: int = Field(default=3, ge=1, le=20)
+    product_type: StrategyProductType = StrategyProductType.DELIVERY
+    trading_start_time: datetime | None = None
+    trading_end_time: datetime | None = None
+    is_default: bool = False
+
+
+class StrategyTemplateUpdate(BaseModel):
+    """Request to update a strategy template."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+    strategy_type: str | None = Field(default=None, min_length=1, max_length=50)
+    strategy_params: dict | None = None
+    position_sizing_method: PositionSizingMethod | None = None
+    position_size_value: Decimal | None = Field(default=None, ge=0)
+    max_position_value: Decimal | None = None
+    stop_loss_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    take_profit_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    max_daily_loss: Decimal | None = Field(default=None, ge=0)
+    max_consecutive_losses: int | None = Field(default=None, ge=1, le=20)
+    product_type: StrategyProductType | None = None
+    trading_start_time: datetime | None = None
+    trading_end_time: datetime | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+
+class StrategyTemplateResponse(BaseModel):
+    """Response for a strategy template."""
+
+    id: str
+    user_id: str
+    name: str
+    description: str | None
+    strategy_type: str
+    strategy_params: dict | None
+    position_sizing_method: PositionSizingMethod
+    position_size_value: Decimal
+    max_position_value: Decimal | None
+    stop_loss_percent: Decimal
+    take_profit_percent: Decimal
+    max_daily_loss: Decimal
+    max_consecutive_losses: int
+    product_type: StrategyProductType
+    trading_start_time: datetime | None
+    trading_end_time: datetime | None
+    is_default: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StrategyTemplateListResponse(BaseModel):
+    """Response for list of strategy templates."""
+
+    templates: list[StrategyTemplateResponse]
+    total: int
+
+
+class AutoTradeConfigCreate(BaseModel):
+    """Request to create an auto-trade configuration."""
+
+    category: str = Field(..., min_length=1, max_length=50)
+    enabled: bool = False
+    confirmation_mode: str = Field(default="notify", pattern="^(auto|notify|disabled)$")
+    strategy_template_id: str | None = None
+    max_positions_per_day: int = Field(default=3, ge=1, le=20)
+    max_capital_per_day: Decimal = Field(default=Decimal("50000.00"), ge=0)
+    expiry_hours: int = Field(default=4, ge=1, le=24)
+    weight_technical: int = Field(default=40, ge=0, le=100)
+    weight_fundamental: int = Field(default=40, ge=0, le=100)
+    weight_sentiment: int = Field(default=20, ge=0, le=100)
+    min_confidence: str = Field(default="medium", pattern="^(high|medium|low)$")
+    screener_source_type: str = Field(default="preset", pattern="^(preset|custom)$")
+    preset_category: str | None = None
+    saved_screener_id: str | None = None
+
+
+class AutoTradeConfigUpdate(BaseModel):
+    """Request to update an auto-trade configuration."""
+
+    enabled: bool | None = None
+    confirmation_mode: str | None = Field(default=None, pattern="^(auto|notify|disabled)$")
+    strategy_template_id: str | None = None
+    max_positions_per_day: int | None = Field(default=None, ge=1, le=20)
+    max_capital_per_day: Decimal | None = Field(default=None, ge=0)
+    expiry_hours: int | None = Field(default=None, ge=1, le=24)
+    weight_technical: int | None = Field(default=None, ge=0, le=100)
+    weight_fundamental: int | None = Field(default=None, ge=0, le=100)
+    weight_sentiment: int | None = Field(default=None, ge=0, le=100)
+    min_confidence: str | None = Field(default=None, pattern="^(high|medium|low)$")
+    screener_source_type: str | None = Field(default=None, pattern="^(preset|custom)$")
+    preset_category: str | None = None
+    saved_screener_id: str | None = None
+
+
+class AutoTradeConfigResponse(BaseModel):
+    """Response for an auto-trade configuration."""
+
+    id: str
+    user_id: str
+    category: str
+    enabled: bool
+    confirmation_mode: str
+    strategy_template_id: str | None
+    max_positions_per_day: int
+    max_capital_per_day: Decimal
+    expiry_hours: int
+    weight_technical: int
+    weight_fundamental: int
+    weight_sentiment: int
+    min_confidence: str
+    screener_source_type: str
+    preset_category: str | None
+    saved_screener_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AutoTradeConfigListResponse(BaseModel):
+    """Response for list of auto-trade configurations."""
+
+    configs: list[AutoTradeConfigResponse]
+    total: int
+
+
+class WeightConfigUpdate(BaseModel):
+    """Request to update multi-factor weight configuration."""
+
+    weight_technical: int = Field(..., ge=0, le=100)
+    weight_fundamental: int = Field(..., ge=0, le=100)
+    weight_sentiment: int = Field(..., ge=0, le=100)
+    min_confidence: str = Field(default="medium", pattern="^(high|medium|low)$")
+
+
+class WeightConfigResponse(BaseModel):
+    """Response for weight configuration."""
+
+    weight_technical: int
+    weight_fundamental: int
+    weight_sentiment: int
+    min_confidence: str
+    preview_symbol: str | None = None
+    preview_scores: dict | None = None
+
+
+class PendingAutoTradeResponse(BaseModel):
+    """Response for a pending auto-trade."""
+
+    id: str
+    user_id: str
+    auto_trade_config_id: str
+    category: str
+    recommendation_date: datetime
+    symbols: list[str]
+    scores: dict | None
+    recommended_strategy_type: str
+    suggested_params: dict | None
+    status: str
+    created_strategy_id: str | None
+    expires_at: datetime
+    actioned_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PendingAutoTradeListResponse(BaseModel):
+    """Response for list of pending auto-trades."""
+
+    pending_trades: list[PendingAutoTradeResponse]
+    total: int
+
+
+class PendingAutoTradeAction(BaseModel):
+    """Request to approve or reject a pending auto-trade."""
+
+    action: str = Field(..., pattern="^(approve|reject)$")
+
+
+class PendingAutoTradeActionResponse(BaseModel):
+    """Response after approving or rejecting a pending auto-trade."""
+
+    id: str
+    status: str
+    created_strategy_id: str | None = None
+    message: str

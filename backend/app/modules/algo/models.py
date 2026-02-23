@@ -629,3 +629,289 @@ class CircuitBreakerHistory(Base):
 
     def __repr__(self) -> str:
         return f"<CircuitBreakerHistory {self.event_type} strategy={self.strategy_id} at={self.event_at}>"
+
+
+# =============================================================================
+# Auto-Trade Configuration Models
+# =============================================================================
+
+
+class ConfirmationMode(str, Enum):
+    """Confirmation mode for auto-trade execution."""
+
+    AUTO = "auto"  # Execute immediately without confirmation
+    NOTIFY = "notify"  # Create pending, notify user, await confirmation
+    DISABLED = "disabled"  # Don't auto-trade this category
+
+
+class ScreenerSourceType(str, Enum):
+    """Source type for auto-trade screener."""
+
+    PRESET = "preset"  # Use daily preset recommendations
+    CUSTOM = "custom"  # Use saved custom screener
+
+
+class PendingTradeStatus(str, Enum):
+    """Status of a pending auto-trade."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    EXECUTED = "executed"
+
+
+class StrategyTemplate(Base):
+    """Reusable strategy configurations for auto-trade.
+
+    Users can create templates with predefined position sizing, risk limits,
+    and trading windows to quickly apply to auto-trade generated strategies.
+    """
+
+    __tablename__ = "strategy_templates"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Template info
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Strategy execution params
+    strategy_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    strategy_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Position sizing
+    position_sizing_method: Mapped[PositionSizingMethod] = mapped_column(
+        SQLEnum(PositionSizingMethod, name="positionsizingmethod", create_type=False),
+        nullable=False,
+        default=PositionSizingMethod.PERCENT_OF_PORTFOLIO,
+    )
+    position_size_value: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("5.00")
+    )
+    max_position_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
+    # Risk limits
+    stop_loss_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("2.00")
+    )
+    take_profit_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("4.00")
+    )
+    max_daily_loss: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("5000.00")
+    )
+    max_consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+
+    # Product type
+    product_type: Mapped[StrategyProductType] = mapped_column(
+        SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
+        nullable=False,
+        default=StrategyProductType.DELIVERY,
+    )
+
+    # Trading window (restrict execution to specific hours)
+    trading_start_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trading_end_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Default template flag
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (Index("ix_strategy_templates_user", "user_id"),)
+
+    def __repr__(self) -> str:
+        return f"<StrategyTemplate {self.name} user={self.user_id}>"
+
+
+class AutoTradeConfig(Base):
+    """Configuration for automatic trade execution from screener recommendations.
+
+    Users configure how recommendations from each category (momentum, breakout, etc.)
+    should be handled: auto-execute, notify for approval, or disabled.
+    """
+
+    __tablename__ = "auto_trade_configs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Category (momentum, breakout, value, sector) or custom
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Enabled and confirmation mode
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    confirmation_mode: Mapped[ConfirmationMode] = mapped_column(
+        SQLEnum(ConfirmationMode, name="confirmationmode", create_type=True),
+        nullable=False,
+        default=ConfirmationMode.NOTIFY,
+    )
+
+    # Link to strategy template for execution params
+    strategy_template_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("strategy_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Daily limits for this category
+    max_positions_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    max_capital_per_day: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("50000.00")
+    )
+
+    # Auto-expiry for pending trades
+    expiry_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
+
+    # Multi-factor weights (0-100, converted to 0-1 for calculations)
+    weight_technical: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
+    weight_fundamental: Mapped[int] = mapped_column(Integer, nullable=False, default=40)
+    weight_sentiment: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+
+    # Minimum confidence to auto-trade
+    min_confidence: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+
+    # Screener source selection (from Section 2.6.12.5)
+    screener_source_type: Mapped[ScreenerSourceType] = mapped_column(
+        SQLEnum(ScreenerSourceType, name="screenersourcetype", create_type=True),
+        nullable=False,
+        default=ScreenerSourceType.PRESET,
+    )
+
+    # If PRESET: which category (momentum, breakout, value, sector)
+    preset_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # If CUSTOM: which saved screener
+    saved_screener_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("custom_screeners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    strategy_template = relationship("StrategyTemplate", foreign_keys=[strategy_template_id])
+
+    __table_args__ = (
+        Index("ix_auto_trade_configs_user", "user_id"),
+        Index("ix_auto_trade_configs_category", "user_id", "category", unique=True),
+    )
+
+    @property
+    def weights_normalized(self) -> dict[str, float]:
+        """Return weights as decimals (0-1) for calculations."""
+        return {
+            "technical": self.weight_technical / 100,
+            "fundamental": self.weight_fundamental / 100,
+            "sentiment": self.weight_sentiment / 100,
+        }
+
+    def __repr__(self) -> str:
+        return f"<AutoTradeConfig {self.category} user={self.user_id} enabled={self.enabled}>"
+
+
+class PendingAutoTrade(Base):
+    """Queue for pending auto-trade executions awaiting user confirmation.
+
+    When confirmation_mode is NOTIFY, recommendations are queued here
+    for user approval before execution.
+    """
+
+    __tablename__ = "pending_auto_trades"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    auto_trade_config_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("auto_trade_configs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Source recommendation
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    recommendation_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    symbols: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    # Multi-factor scores (optional, if scoring was applied)
+    scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Inferred strategy details
+    recommended_strategy_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    suggested_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Status
+    status: Mapped[PendingTradeStatus] = mapped_column(
+        SQLEnum(PendingTradeStatus, name="pendingtradestatus", create_type=True),
+        nullable=False,
+        default=PendingTradeStatus.PENDING,
+    )
+
+    # If executed, link to created strategy
+    created_strategy_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_strategies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Timing
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    auto_trade_config = relationship("AutoTradeConfig", foreign_keys=[auto_trade_config_id])
+    created_strategy = relationship("UserStrategy", foreign_keys=[created_strategy_id])
+
+    __table_args__ = (
+        Index("ix_pending_auto_trades_user", "user_id"),
+        Index("ix_pending_auto_trades_status", "status"),
+        Index("ix_pending_auto_trades_expires", "expires_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PendingAutoTrade {self.id} status={self.status} category={self.category}>"
