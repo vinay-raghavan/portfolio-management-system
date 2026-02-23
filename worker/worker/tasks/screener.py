@@ -211,14 +211,18 @@ def generate_daily_recommendations(self) -> dict:
     - Sector: Strong sector leaders
 
     Results are stored in the daily_recommendations table for the dashboard widget.
+    After storing, triggers auto-trade processing for users with auto-trade enabled.
     """
     logger.info("Starting daily recommendations generation")
 
     from datetime import date
 
+    from worker.tasks.algo import process_auto_trades
+
     today = date.today().isoformat()
 
     categories_generated = []
+    category_symbols: dict[str, list[str]] = {}  # Store symbols per category for auto-trade
     errors = []
 
     # Run each preset screener and store results
@@ -250,6 +254,9 @@ def generate_daily_recommendations(self) -> dict:
                 store_result = _store_recommendations(today, category, recommendations)
                 if store_result.get("status") == "success":
                     categories_generated.append(category)
+                    # Extract symbols for auto-trade processing
+                    symbols = [r.get("symbol") for r in recommendations if r.get("symbol")]
+                    category_symbols[category] = symbols
                     logger.info(f"Stored {len(recommendations)} {category} recommendations")
                 else:
                     errors.append(f"{category}: {store_result.get('message')}")
@@ -260,18 +267,33 @@ def generate_daily_recommendations(self) -> dict:
             logger.exception(f"Error running {preset} screener: {e}")
             errors.append(f"{preset}: {str(e)}")
 
+    # Trigger auto-trade processing for each category with recommendations
+    auto_trade_results = {}
+    for category, symbols in category_symbols.items():
+        if symbols:
+            try:
+                # Queue auto-trade processing as a separate task
+                process_auto_trades.delay(category, symbols, today)
+                auto_trade_results[category] = "queued"
+                logger.info(f"Queued auto-trade processing for {category} ({len(symbols)} symbols)")
+            except Exception as e:
+                logger.exception(f"Error queuing auto-trade for {category}: {e}")
+                auto_trade_results[category] = f"error: {str(e)}"
+
     result = {
         "status": "completed" if categories_generated else "failed",
         "date": today,
         "categories_generated": categories_generated,
         "total_categories": len(presets),
+        "auto_trade_processing": auto_trade_results,
     }
 
     if errors:
         result["errors"] = errors
 
     logger.info(
-        f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories"
+        f"Daily recommendations complete: {len(categories_generated)}/{len(presets)} categories, "
+        f"auto-trade queued for {len(auto_trade_results)} categories"
     )
     return result
 
