@@ -1014,8 +1014,9 @@ async def check_stop_monitors(
             checked += 1
 
         except Exception as e:
-            logger.error(f"Stop monitor error for strategy {strategy.id}: {e}")
-            errors.append({"strategy_id": str(strategy.id), "error": str(e)})
+            logger.exception(f"Stop monitor error for strategy {strategy.id}: {e}")
+            # Don't expose exception details to external users
+            errors.append({"strategy_id": str(strategy.id), "error": "internal_error"})
 
     logger.info(
         f"Stop monitor complete: checked={checked}, closed={positions_closed}, "
