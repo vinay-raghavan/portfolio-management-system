@@ -545,8 +545,9 @@ class PositionTracker:
                 else position.stop_loss
             )
 
-            # Check stop-loss / trailing stop (only for fully open positions)
-            if position.status == PositionStatus.OPEN and effective_stop:
+            # Check stop-loss / trailing stop (for OPEN and PARTIAL positions)
+            # PARTIAL positions still need stop loss protection for remaining quantity
+            if position.status in (PositionStatus.OPEN, PositionStatus.PARTIAL) and effective_stop:
                 if position.side == PositionSide.LONG and current_price <= effective_stop:
                     should_close = True
                     close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
@@ -554,8 +555,12 @@ class PositionTracker:
                     should_close = True
                     close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
 
-            # Check take-profit (only for fully open positions)
-            if not should_close and position.status == PositionStatus.OPEN and position.take_profit:
+            # Check take-profit (for OPEN and PARTIAL positions)
+            if (
+                not should_close
+                and position.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
+                and position.take_profit
+            ):
                 if position.side == PositionSide.LONG and current_price >= position.take_profit:
                     should_close = True
                     close_reason = "take-profit"
