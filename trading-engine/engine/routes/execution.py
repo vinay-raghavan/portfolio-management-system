@@ -574,6 +574,7 @@ async def run_scheduled_strategies(
                         unrealized_pnl=unrealized_pnl,
                         max_daily_profit=strategy.max_daily_profit,
                         overall_profit_target=strategy.overall_profit_target,
+                        max_unrealized_loss=strategy.max_unrealized_loss,
                     )
 
                     # Handle circuit breaker triggers
@@ -887,3 +888,145 @@ async def load_all_circuit_breakers(
     loaded = await cb_persistence.load_all_active_strategies(db)
 
     return {"loaded": len(loaded), "strategy_ids": loaded}
+
+
+@router.post("/check-stop-monitors")
+async def check_stop_monitors(
+    db: DbSession,
+    redis: RedisDep,
+    _key: InternalKeyDep,
+):
+    """Check trailing stops and circuit breakers for all active strategies.
+
+    Called by Celery worker every 5 minutes during market hours.
+    This ensures trailing stops are checked frequently even for strategies
+    with longer execution intervals.
+
+    Unlike run_scheduled_strategies, this checks ALL active strategies
+    regardless of their next_run_at time.
+    """
+    from engine.algo.safety import CircuitBreakerPersistence
+
+    scheduler = StrategyScheduler(db)
+
+    # Get ALL active strategies (not just due ones)
+    active_strategies = await scheduler.get_active_strategies()
+
+    if not active_strategies:
+        return {
+            "status": "no_active_strategies",
+            "checked": 0,
+            "positions_closed": 0,
+            "circuit_breakers_triggered": 0,
+        }
+
+    data_provider = get_data_provider()
+    position_tracker = PositionTracker(db)
+    circuit_breaker = CircuitBreaker(redis)
+    cb_persistence = CircuitBreakerPersistence(redis)
+
+    checked = 0
+    positions_closed = 0
+    circuit_breakers_triggered = 0
+    errors = []
+
+    for strategy in active_strategies:
+        try:
+            # Check exit conditions (SL/TP/trailing stop/profit booking)
+            closed_positions, pnl_stats = await _check_exit_conditions_for_strategy(
+                db=db,
+                strategy=strategy,
+                data_provider=data_provider,
+            )
+
+            if closed_positions:
+                positions_closed += len(closed_positions)
+                # Update strategy stats
+                await scheduler.update_strategy_stats(
+                    strategy=strategy,
+                    orders_filled=len(closed_positions),
+                    total_pnl_delta=float(pnl_stats.total_pnl),
+                    winning_trades_delta=pnl_stats.winning_trades,
+                    losing_trades_delta=pnl_stats.losing_trades,
+                )
+                logger.info(
+                    f"Stop monitor: Closed {len(closed_positions)} positions for "
+                    f"strategy {strategy.id[:8]}..., P&L: {pnl_stats.total_pnl:.2f}"
+                )
+
+            # Calculate current unrealized P&L for circuit breaker check
+            open_positions = await position_tracker.get_all_open_positions(
+                strategy.id, strategy.user_id, include_partial=True
+            )
+
+            unrealized_pnl = Decimal("0")
+            if open_positions:
+                position_symbols = list({p.symbol for p in open_positions})
+                current_prices: dict[str, Decimal] = {}
+                for sym in position_symbols:
+                    try:
+                        quote = await data_provider.get_quote(sym)
+                        if quote and quote.price:
+                            current_prices[sym] = Decimal(str(quote.price))
+                    except Exception as price_err:
+                        logger.warning(f"Failed to get price for {sym}: {price_err}")
+
+                if current_prices:
+                    unrealized_pnl = await position_tracker.calculate_unrealized_pnl(
+                        strategy.id, strategy.user_id, current_prices
+                    )
+
+            # Check circuit breaker (unrealized loss check)
+            cb_state = await circuit_breaker.check_and_update(
+                strategy_id=strategy.id,
+                max_daily_loss=strategy.max_daily_loss,
+                max_consecutive_losses=strategy.max_consecutive_losses,
+                unrealized_pnl=unrealized_pnl,
+                max_daily_profit=strategy.max_daily_profit,
+                overall_profit_target=strategy.overall_profit_target,
+                max_unrealized_loss=strategy.max_unrealized_loss,
+            )
+
+            if cb_state.is_triggered:
+                circuit_breakers_triggered += 1
+                # Persist trigger event
+                await cb_persistence.persist_trigger_event(
+                    db=db,
+                    strategy_id=strategy.id,
+                    user_id=strategy.user_id,
+                    event_type="TRIGGERED",
+                    state=cb_state,
+                )
+                await cb_persistence.sync_to_db(db, strategy.id, strategy.user_id)
+
+                if cb_state.profit_cutoff_triggered:
+                    logger.info(
+                        f"🎯 Stop monitor: Profit cutoff triggered for {strategy.id[:8]}..."
+                    )
+                    await scheduler.disable_strategy(strategy, StrategyStatus.PAUSED)
+                else:
+                    logger.warning(
+                        f"⚠️ Stop monitor: Circuit breaker triggered for {strategy.id[:8]}...: "
+                        f"{cb_state.trigger_reason}"
+                    )
+                    await scheduler.disable_strategy(strategy, StrategyStatus.DISABLED)
+
+            checked += 1
+
+        except Exception as e:
+            logger.exception(f"Stop monitor error for strategy {strategy.id}: {e}")
+            # Don't expose exception details to external users
+            errors.append({"strategy_id": str(strategy.id), "error": "internal_error"})
+
+    logger.info(
+        f"Stop monitor complete: checked={checked}, closed={positions_closed}, "
+        f"cb_triggered={circuit_breakers_triggered}"
+    )
+
+    return {
+        "status": "success",
+        "checked": checked,
+        "positions_closed": positions_closed,
+        "circuit_breakers_triggered": circuit_breakers_triggered,
+        "errors": errors if errors else None,
+    }
