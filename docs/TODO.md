@@ -3316,7 +3316,7 @@ Landing page with summary of all reports.
 
 ### 2.6 Recommendation Auto-Trade Pipeline
 > 🌿 **Branch:** `phase-2/auto-trade-pipeline`
-> **Status:** 🔲 Not Started
+> **Status:** ✅ Core Complete (pending E2E tests & deployment)
 
 **Goal**: Automate the flow from screener recommendations to algo execution with minimal user intervention. User configures preferences once, then just confirms/skips daily picks.
 
@@ -3829,7 +3829,7 @@ Shows in Dashboard or as a notification drawer panel.
 - [x] Add ActivityType enums for auto-trade events
 - [x] Add notification methods to `AlgoNotificationService`
 - [x] Integrate notifications with `PendingAutoTradeService` (wired up in create/approve/reject/expire methods)
-- [ ] Include action buttons in notification UI (Frontend)
+- [x] Include action buttons in notification UI (Frontend) - added `PendingTradeActions` to NotificationBell.tsx
 - [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [x] Commit: `feat(notifications): add auto-trade notification types`
 
@@ -4280,13 +4280,13 @@ class AutoTradeService:
 - Tooltip with scoring reasons
 
 **Tasks:**
-- [ ] Create `MultiFactorScoreCard` component
-- [ ] Add score breakdown visualization (mini bar chart)
+- [x] Create `MultiFactorScoreCard` component (added `MultiFactorScores` to PendingAutoTradesPanel.tsx)
+- [ ] Add score breakdown visualization (mini bar chart) - optional enhancement
 - [x] Add direction and confidence badges (added to RecommendationsWidget.tsx)
 - [x] Update Daily Recommendations widget to show multi-factor data (added SignalDirection, ConfidenceLevel types to api.ts)
-- [ ] Update Pending Auto-Trades panel to show scores
-- [ ] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): display multi-factor scores in recommendations`
+- [x] Update Pending Auto-Trades panel to show scores (added tech/fund/sentiment icons with scores)
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): display multi-factor scores in recommendations`
 
 ##### 2.6.11.5 User Configuration: Scoring Weights
 
@@ -4984,7 +4984,7 @@ beat_schedule = {
 - [x] Create `run_scheduled_screeners` task in `worker/worker/tasks/screener.py`
 - [x] Create `run_single_screener` task for on-demand runs
 - [x] Implement `_get_due_screeners()` helper to find screeners ready to run
-- [ ] Implement `_process_screener_for_auto_trade()` to create pending trades (TODO: integrate with PendingAutoTradeService)
+- [x] Implement `_process_screener_for_auto_trade()` to create pending trades (integrated PendingAutoTradeService and MultiFactorScorer in run_custom_screener_for_auto_trade)
 - [x] Add Celery Beat schedules for daily and hourly runs in `worker/worker/celery_app.py`
 - [ ] Add integration tests for scheduled screener tasks
 - [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
