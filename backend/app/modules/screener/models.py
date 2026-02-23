@@ -1,22 +1,51 @@
 """Screener database models."""
 
-from datetime import datetime
+from datetime import datetime, time
+from enum import Enum as PyEnum
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Time,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
 
+if TYPE_CHECKING:
+    from app.modules.algo.models import UserStrategy
+
 # Use JSONB for PostgreSQL (production), JSON for SQLite (testing)
 # This allows tests to run with SQLite while production uses PostgreSQL's optimized JSONB
 JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 
+class RunFrequency(str, PyEnum):
+    """Frequency for scheduled screener runs."""
+
+    DAILY = "daily"
+    HOURLY = "hourly"
+    MANUAL = "manual"
+
+
 class CustomScreener(Base):
-    """User-defined custom screener configuration."""
+    """User-defined custom screener configuration.
+
+    Supports both manual screener runs and auto-trade integration.
+    When linked to auto-trade, the screener runs on schedule and
+    feeds results into the auto-trade pipeline.
+    """
 
     __tablename__ = "custom_screeners"
 
@@ -38,18 +67,53 @@ class CustomScreener(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # ========== Auto-Trade Integration Fields ==========
+    # Enable/disable auto-trade for this screener
+    is_auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Scheduling configuration
+    run_frequency: Mapped[str] = mapped_column(
+        String(20), default=RunFrequency.MANUAL.value, nullable=False
+    )
+    run_time: Mapped[time | None] = mapped_column(
+        Time, nullable=True, default=None
+    )  # For daily runs, e.g., 09:20
+
+    # Run tracking
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Strategy inference - automatically determined based on filters
+    inferred_strategy_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Link to strategy template for auto-trade execution params
+    strategy_template_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("user_strategies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Relationships
     runs: Mapped[list["ScreenerRun"]] = relationship(
         "ScreenerRun", back_populates="custom_screener", cascade="all, delete-orphan"
+    )
+    strategy_template: Mapped["UserStrategy | None"] = relationship(
+        "UserStrategy", foreign_keys=[strategy_template_id]
     )
 
     __table_args__ = (
         Index("ix_custom_screeners_user", "user_id"),
         Index("ix_custom_screeners_name", "user_id", "name"),
+        Index("ix_custom_screeners_auto_trade", "is_auto_trade_enabled", "run_frequency"),
     )
 
     def __repr__(self) -> str:
         return f"<CustomScreener {self.name}>"
+
+    @property
+    def is_scheduled(self) -> bool:
+        """Check if screener has scheduled runs."""
+        return self.run_frequency in (RunFrequency.DAILY.value, RunFrequency.HOURLY.value)
 
 
 class ScreenerRun(Base):

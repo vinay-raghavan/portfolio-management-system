@@ -156,6 +156,14 @@ class ScreenerRunResponse(BaseModel):
     duration_ms: int
 
 
+class RunFrequencyEnum(str, Enum):
+    """Frequency for scheduled screener runs."""
+
+    DAILY = "daily"
+    HOURLY = "hourly"
+    MANUAL = "manual"
+
+
 class CustomScreenerCreate(BaseModel):
     """Request to create/save a custom screener."""
 
@@ -165,6 +173,19 @@ class CustomScreenerCreate(BaseModel):
     filters: list[FilterConfig] = Field(min_length=1)
     min_score: float = Field(default=50.0, ge=0, le=100)
     top_n: int = Field(default=50, ge=1, le=500)
+
+    # Auto-trade settings (optional)
+    is_auto_trade_enabled: bool = Field(default=False)
+    run_frequency: RunFrequencyEnum = Field(default=RunFrequencyEnum.MANUAL)
+    run_time: str | None = Field(
+        default=None,
+        description="Time for daily runs in HH:MM format (e.g., '09:20')",
+        pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    )
+    strategy_template_id: str | None = Field(
+        default=None,
+        description="ID of strategy template to use for auto-trade execution",
+    )
 
 
 class CustomScreenerUpdate(BaseModel):
@@ -176,6 +197,16 @@ class CustomScreenerUpdate(BaseModel):
     filters: list[FilterConfig] | None = None
     min_score: float | None = Field(None, ge=0, le=100)
     top_n: int | None = Field(None, ge=1, le=500)
+
+    # Auto-trade settings (optional)
+    is_auto_trade_enabled: bool | None = None
+    run_frequency: RunFrequencyEnum | None = None
+    run_time: str | None = Field(
+        default=None,
+        description="Time for daily runs in HH:MM format (e.g., '09:20')",
+        pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    )
+    strategy_template_id: str | None = None
 
 
 class CustomScreenerResponse(BaseModel):
@@ -191,6 +222,15 @@ class CustomScreenerResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Auto-trade fields
+    is_auto_trade_enabled: bool = False
+    run_frequency: str = "manual"
+    run_time: str | None = None
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    inferred_strategy_type: str | None = None
+    strategy_template_id: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -198,6 +238,41 @@ class CustomScreenerListResponse(BaseModel):
     """Response for list of custom screeners."""
 
     screeners: list[CustomScreenerResponse]
+
+
+class LinkAutoTradeRequest(BaseModel):
+    """Request to link a screener to auto-trade configuration."""
+
+    run_frequency: RunFrequencyEnum = Field(default=RunFrequencyEnum.DAILY)
+    run_time: str | None = Field(
+        default="09:20",
+        description="Time for daily runs in HH:MM format",
+        pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    )
+    strategy_template_id: str | None = Field(
+        default=None,
+        description="ID of strategy template for execution params",
+    )
+
+
+class UnlinkAutoTradeResponse(BaseModel):
+    """Response after unlinking auto-trade from a screener."""
+
+    id: str
+    name: str
+    is_auto_trade_enabled: bool
+    message: str
+
+
+class StrategyInferenceResponse(BaseModel):
+    """Response for strategy inference based on screener filters."""
+
+    screener_id: str
+    screener_name: str
+    inferred_strategy_type: str
+    confidence: float = Field(ge=0, le=1.0)
+    reasoning: list[str] = Field(default_factory=list)
+    suggested_params: dict = Field(default_factory=dict)
 
 
 class ScreenerPresetInfo(BaseModel):

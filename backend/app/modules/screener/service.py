@@ -546,6 +546,14 @@ class ScreenerService:
         self, user_id: str, data: CustomScreenerCreate
     ) -> CustomScreener:
         """Create a new custom screener."""
+        from datetime import time
+
+        # Parse run_time if provided
+        run_time_obj = None
+        if data.run_time:
+            h, m = map(int, data.run_time.split(":"))
+            run_time_obj = time(hour=h, minute=m)
+
         screener = CustomScreener(
             user_id=user_id,
             name=data.name,
@@ -554,6 +562,11 @@ class ScreenerService:
             filters=[f.model_dump() for f in data.filters],
             min_score=data.min_score,
             top_n=data.top_n,
+            # Auto-trade fields
+            is_auto_trade_enabled=data.is_auto_trade_enabled,
+            run_frequency=data.run_frequency.value if data.run_frequency else "manual",
+            run_time=run_time_obj,
+            strategy_template_id=data.strategy_template_id,
         )
         self.db.add(screener)
         await self.db.flush()
@@ -564,6 +577,8 @@ class ScreenerService:
         self, user_id: str, screener_id: str, data: CustomScreenerUpdate
     ) -> CustomScreener | None:
         """Update a custom screener."""
+        from datetime import time
+
         screener = await self.get_custom_screener(user_id, screener_id)
         if not screener:
             return None
@@ -580,6 +595,17 @@ class ScreenerService:
             screener.min_score = data.min_score
         if data.top_n is not None:
             screener.top_n = data.top_n
+
+        # Auto-trade fields
+        if data.is_auto_trade_enabled is not None:
+            screener.is_auto_trade_enabled = data.is_auto_trade_enabled
+        if data.run_frequency is not None:
+            screener.run_frequency = data.run_frequency.value
+        if data.run_time is not None:
+            h, m = map(int, data.run_time.split(":"))
+            screener.run_time = time(hour=h, minute=m)
+        if data.strategy_template_id is not None:
+            screener.strategy_template_id = data.strategy_template_id
 
         await self.db.flush()
         await self.db.refresh(screener)

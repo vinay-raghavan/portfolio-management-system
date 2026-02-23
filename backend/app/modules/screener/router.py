@@ -33,6 +33,7 @@ from app.modules.screener.schemas import (
     FilterConfig,
     InferStrategyRequest,
     InferStrategyResponse,
+    LinkAutoTradeRequest,
     OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
@@ -45,7 +46,9 @@ from app.modules.screener.schemas import (
     ScreenerRunRequest,
     ScreenerRunResponse,
     StoreRecommendationsRequest,
+    StrategyInferenceResponse,
     StrategyRecommendationResponse,
+    UnlinkAutoTradeResponse,
     UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
@@ -355,6 +358,127 @@ async def run_custom_screener(
     )
     await db.commit()
     return result
+
+
+# =============================================================================
+# Custom Screener Auto-Trade Endpoints
+# =============================================================================
+
+
+@router.post("/custom/{screener_id}/link-auto-trade", response_model=CustomScreenerResponse)
+async def link_auto_trade(
+    screener_id: str,
+    data: LinkAutoTradeRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CustomScreenerResponse:
+    """Link a custom screener to auto-trade configuration.
+
+    This enables automated trading based on the screener results.
+    The screener will run on the specified schedule and create trades.
+    """
+    from datetime import time
+
+    from app.modules.algo.strategy_inference import StrategyInferenceEngine
+
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Parse run_time
+    run_time_obj = None
+    if data.run_time:
+        h, m = map(int, data.run_time.split(":"))
+        run_time_obj = time(hour=h, minute=m)
+
+    # Infer strategy type from filters
+    filters = [FilterConfig(**f) for f in screener.filters]
+    inference_engine = StrategyInferenceEngine()
+    inference_result = inference_engine.infer(filters)
+    inferred_type = inference_result.recommended_strategy.strategy_type
+
+    # Update screener with auto-trade settings
+    screener.is_auto_trade_enabled = True
+    screener.run_frequency = data.run_frequency.value
+    screener.run_time = run_time_obj
+    screener.strategy_template_id = data.strategy_template_id
+    screener.inferred_strategy_type = inferred_type
+
+    await db.commit()
+    await db.refresh(screener)
+
+    return _screener_to_response(screener)
+
+
+@router.post("/custom/{screener_id}/unlink-auto-trade", response_model=UnlinkAutoTradeResponse)
+async def unlink_auto_trade(
+    screener_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> UnlinkAutoTradeResponse:
+    """Unlink a custom screener from auto-trade.
+
+    This disables automated trading for the screener.
+    """
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Disable auto-trade
+    screener.is_auto_trade_enabled = False
+
+    await db.commit()
+
+    return UnlinkAutoTradeResponse(
+        id=screener.id,
+        name=screener.name,
+        is_auto_trade_enabled=False,
+        message="Auto-trade has been disabled for this screener",
+    )
+
+
+@router.get("/custom/{screener_id}/infer-strategy", response_model=StrategyInferenceResponse)
+async def infer_strategy_from_screener(
+    screener_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> StrategyInferenceResponse:
+    """Infer the optimal strategy type from a screener's filters.
+
+    This analyzes the screener's filter configuration and recommends
+    the best algo strategy type (e.g., trend_following, mean_reversion).
+    """
+    from app.modules.algo.strategy_inference import StrategyInferenceEngine
+
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Run strategy inference
+    filters = [FilterConfig(**f) for f in screener.filters]
+    inference_engine = StrategyInferenceEngine()
+    result = inference_engine.infer(filters)
+
+    return StrategyInferenceResponse(
+        screener_id=screener.id,
+        screener_name=screener.name,
+        inferred_strategy_type=result.recommended_strategy.strategy_type,
+        confidence=result.recommended_strategy.confidence,
+        reasoning=result.recommended_strategy.reasoning,
+        suggested_params=result.recommended_strategy.suggested_params,
+    )
 
 
 # =============================================================================
@@ -949,6 +1073,11 @@ async def get_screener_performance(
 # Helper functions
 def _screener_to_response(screener) -> CustomScreenerResponse:
     """Convert CustomScreener model to response."""
+    # Format run_time as HH:MM string if it exists
+    run_time_str = None
+    if screener.run_time:
+        run_time_str = screener.run_time.strftime("%H:%M")
+
     return CustomScreenerResponse(
         id=screener.id,
         name=screener.name,
@@ -959,6 +1088,14 @@ def _screener_to_response(screener) -> CustomScreenerResponse:
         top_n=screener.top_n,
         created_at=screener.created_at,
         updated_at=screener.updated_at,
+        # Auto-trade fields
+        is_auto_trade_enabled=screener.is_auto_trade_enabled or False,
+        run_frequency=screener.run_frequency or "manual",
+        run_time=run_time_str,
+        last_run_at=screener.last_run_at,
+        next_run_at=screener.next_run_at,
+        inferred_strategy_type=screener.inferred_strategy_type,
+        strategy_template_id=screener.strategy_template_id,
     )
 
 
