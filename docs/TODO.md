@@ -4281,7 +4281,7 @@ class AutoTradeService:
 
 **Tasks:**
 - [x] Create `MultiFactorScoreCard` component (added `MultiFactorScores` to PendingAutoTradesPanel.tsx)
-- [ ] Add score breakdown visualization (mini bar chart) - optional enhancement
+- [x] Add score breakdown visualization (mini bar chart) - `ScoreBar` component in PendingAutoTradesPanel
 - [x] Add direction and confidence badges (added to RecommendationsWidget.tsx)
 - [x] Update Daily Recommendations widget to show multi-factor data (added SignalDirection, ConfidenceLevel types to api.ts)
 - [x] Update Pending Auto-Trades panel to show scores (added tech/fund/sentiment icons with scores)
@@ -4588,10 +4588,10 @@ class AutoTradeConfig(Base):
 - [x] Update `MultiFactorScorer` to accept custom weights from user config
 - [x] Create `WeightConfigPanel` React component (integrated in auto-trade settings page)
 - [x] Create weight sliders with percentage display (using shadcn Slider)
-- [ ] Implement auto-normalize logic (sliders adjust proportionally) - optional enhancement
-- [ ] Create `PresetGrid` component with preset buttons - optional enhancement
-- [ ] Create `ConfidenceSelector` radio group component - optional enhancement
-- [ ] Create `LiveScorePreview` component showing real-time scoring preview - optional enhancement
+- [x] Implement auto-normalize logic (sliders adjust proportionally) - `handleWeightChange` in WeightConfigPanel
+- [x] Create `PresetGrid` component with preset buttons (Balanced, Technical, Fundamental, Sentiment)
+- [x] Create `ConfidenceSelector` radio group component with visual stars
+- [ ] Create `LiveScorePreview` component showing real-time scoring preview - future enhancement
 - [x] Add input validation (weights must sum to 100) - validated in API and UI
 - [x] Add loading and error states
 - [x] Add toast notifications for save success/failure
@@ -5188,15 +5188,15 @@ class AutoTradeConfig(Base):
 ```
 
 **Tasks:**
-- [ ] Update Auto-Trade Settings page with source selection (optional enhancement)
-- [ ] Add radio buttons for Preset vs Custom screener (optional enhancement)
-- [ ] Add category dropdown for preset selection (optional enhancement)
-- [ ] Add saved screener dropdown for custom selection (optional enhancement)
-- [ ] Show inferred strategy when custom screener selected (optional enhancement)
+- [x] Update Auto-Trade Settings page with source selection - `SourceSelector` component added
+- [x] Add radio buttons for Preset vs Custom screener - using RadioGroup with visual cards
+- [x] Add category dropdown for preset selection - category already selected by card
+- [x] Add saved screener dropdown for custom selection - Select with screener list
+- [x] Show inferred strategy when custom screener selected - displays universe, filters, schedule
 - [x] Add "Manage Saved Screeners" link
-- [ ] Update API calls to save source selection (optional enhancement)
+- [x] Update API calls to save source selection - `source_type` and `screener_id` mutations
 - [x] Run frontend audit: `npm audit`
-- [x] Commit: `feat(frontend): add screener source selection to auto-trade settings` (combined with saved screeners page commit)
+- [x] Commit: `feat(frontend): add screener source selection to auto-trade settings`
 
 ##### 2.6.12.9 Testing & Deployment
 

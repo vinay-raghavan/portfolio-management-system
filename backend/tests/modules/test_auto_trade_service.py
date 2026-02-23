@@ -246,3 +246,93 @@ class TestAutoTradeConfigService:
 
         assert config is not None
         assert config.category == "momentum"
+
+    @pytest.mark.asyncio
+    async def test_update_config(self, mock_db, sample_config):
+        """Test updating auto-trade config."""
+        from app.modules.algo.schemas import AutoTradeConfigUpdate
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_config
+        mock_db.execute.return_value = mock_result
+
+        service = AutoTradeConfigService(mock_db)
+        update_data = AutoTradeConfigUpdate(max_positions_per_day=10, enabled=False)
+        updated = await service.update_config("test-user", "config-id", update_data)
+
+        assert updated is not None
+        mock_db.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_weights(self, mock_db, sample_config):
+        """Test updating weight configuration."""
+        from app.modules.algo.schemas import AutoTradeConfigUpdate
+
+        sample_config.weight_technical = 40
+        sample_config.weight_fundamental = 40
+        sample_config.weight_sentiment = 20
+        sample_config.min_confidence = "medium"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_config
+        mock_db.execute.return_value = mock_result
+
+        service = AutoTradeConfigService(mock_db)
+        update_data = AutoTradeConfigUpdate(
+            weight_technical=50,
+            weight_fundamental=30,
+            weight_sentiment=20,
+            min_confidence="high",
+        )
+        updated = await service.update_config("test-user", "config-id", update_data)
+
+        assert updated is not None
+        mock_db.flush.assert_called_once()
+
+
+class TestAutoTradeScreenerMethods:
+    """Tests for auto-trade screener methods."""
+
+    @pytest.mark.asyncio
+    async def test_update_source_type_to_preset(self, mock_db, sample_config):
+        """Test updating source type to preset."""
+        from app.modules.algo.schemas import AutoTradeConfigUpdate
+
+        sample_config.screener_source = ScreenerSourceType.CUSTOM
+        sample_config.screener_id = "some-screener-id"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_config
+        mock_db.execute.return_value = mock_result
+
+        service = AutoTradeConfigService(mock_db)
+        update_data = AutoTradeConfigUpdate(
+            screener_source_type="preset",
+            saved_screener_id=None,
+        )
+        updated = await service.update_config("test-user", "config-id", update_data)
+
+        assert updated is not None
+        mock_db.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_source_type_to_custom(self, mock_db, sample_config):
+        """Test updating source type to custom screener."""
+        from app.modules.algo.schemas import AutoTradeConfigUpdate
+
+        sample_config.screener_source = ScreenerSourceType.PRESET
+        sample_config.screener_id = None
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_config
+        mock_db.execute.return_value = mock_result
+
+        service = AutoTradeConfigService(mock_db)
+        update_data = AutoTradeConfigUpdate(
+            screener_source_type="custom",
+            saved_screener_id="custom-screener-123",
+        )
+        updated = await service.update_config("test-user", "config-id", update_data)
+
+        assert updated is not None
+        mock_db.flush.assert_called_once()
