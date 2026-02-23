@@ -725,6 +725,16 @@ async def get_recommendations(
                 return_1d=r.return_1d,
                 return_1w=r.return_1w,
                 return_1m=r.return_1m,
+                # Multi-factor scoring fields
+                technical_score=r.technical_score,
+                fundamental_score=r.fundamental_score,
+                sentiment_score=r.sentiment_score,
+                combined_score=r.combined_score,
+                signal_direction=r.signal_direction,
+                confidence_level=r.confidence_level,
+                recommended_strategy=r.recommended_strategy,
+                position_size_multiplier=r.position_size_multiplier,
+                skip_reason=r.skip_reason,
             )
             for r in recs
         ]
@@ -754,9 +764,16 @@ async def store_recommendations(
 
     Called by the Celery task to persist recommendations.
     Accepts JSON body with date, category, and results.
+
+    Enriches recommendations with multi-factor scoring:
+    - Technical score (from screener data)
+    - Fundamental score (from RecommendationService)
+    - Sentiment score (from news analysis)
+    - Combined score, direction, confidence, and strategy recommendation
     """
     from datetime import datetime
 
+    from app.modules.algo.multi_factor_scorer import MultiFactorScorer
     from app.modules.screener.models import DailyRecommendation
 
     # Parse date
@@ -789,12 +806,55 @@ async def store_recommendations(
             except Exception:
                 pass  # Price will default to 0.0 if fetch fails
 
-    # Store new recommendations
+    # Prepare technical and fundamental data for multi-factor scoring
+    technical_data: dict[str, dict] = {}
+    fundamental_data: dict[str, dict] = {}
+
+    for result in data.results:
+        symbol = result.get("symbol", "")
+        if symbol:
+            # Technical data from screener result
+            technical_data[symbol] = {
+                "score": result.get("score", 50.0),
+                "momentum_score": result.get("filter_scores", {}).get("momentum", 0),
+                "volume_ratio": result.get("metadata", {}).get("volume_ratio", 1.0),
+                "breakout_score": result.get("filter_scores", {}).get("breakout", 0),
+                "ma_position": result.get("metadata", {}).get("ma_position", "unknown"),
+            }
+            # Fundamental data will be fetched by scorer if not provided
+            fund_score = result.get("metadata", {}).get("fundamental_score")
+            if fund_score is not None:
+                fundamental_data[symbol] = {
+                    "fundamental_score": fund_score,
+                    "reasons": result.get("metadata", {}).get("fundamental_reasons", []),
+                }
+
+    # Calculate multi-factor scores
+    scorer = MultiFactorScorer(db)
+    multi_factor_scores: dict[str, dict] = {}
+
+    try:
+        scores = await scorer.score_symbols(
+            symbols=symbols,
+            category=data.category,
+            technical_data=technical_data,
+            fundamental_data=fundamental_data,
+        )
+        for score in scores:
+            multi_factor_scores[score.symbol] = score.to_dict()
+    except Exception as e:
+        logger.warning(f"Multi-factor scoring failed: {e}. Storing without scores.")
+
+    # Store new recommendations with multi-factor data
     stored_count = 0
     for i, result in enumerate(data.results):
         symbol = result.get("symbol", "")
         # Use fetched price, or fallback to metadata, or 0.0
         price_at_rec = price_map.get(symbol, result.get("metadata", {}).get("current_price", 0.0))
+
+        # Get multi-factor score data if available
+        mf_data = multi_factor_scores.get(symbol, {})
+
         rec = DailyRecommendation(
             date=rec_date,
             category=data.category,
@@ -803,8 +863,18 @@ async def store_recommendations(
             score=result.get("score", 0.0),
             price_at_rec=price_at_rec,
             filter_scores=result.get("filter_scores", {}),
-            reasons=result.get("reasons", []),
+            reasons=mf_data.get("reasons", result.get("reasons", [])),
             extra_data=result.get("metadata", {}),
+            # Multi-factor scoring fields
+            technical_score=mf_data.get("technical_score"),
+            fundamental_score=mf_data.get("fundamental_score"),
+            sentiment_score=mf_data.get("sentiment_score"),
+            combined_score=mf_data.get("combined_score"),
+            signal_direction=mf_data.get("direction"),
+            confidence_level=mf_data.get("confidence"),
+            recommended_strategy=mf_data.get("recommended_strategy"),
+            position_size_multiplier=mf_data.get("position_size_multiplier"),
+            skip_reason=mf_data.get("skip_reason"),
         )
         db.add(rec)
         stored_count += 1
@@ -816,6 +886,7 @@ async def store_recommendations(
         "date": data.date,
         "category": data.category,
         "stored_count": stored_count,
+        "multi_factor_scored": len(multi_factor_scores),
     }
 
 

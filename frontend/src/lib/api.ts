@@ -819,6 +819,9 @@ export interface CustomScreener {
   strategy_template_id: string | null;
 }
 
+export type SignalDirection = 'long' | 'short' | 'neutral';
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'skip';
+
 export interface RecommendationItem {
   symbol: string;
   rank: number;
@@ -830,6 +833,16 @@ export interface RecommendationItem {
   return_1d?: number | null;
   return_1w?: number | null;
   return_1m?: number | null;
+  // Multi-factor scoring (Section 2.6.11)
+  technical_score?: number | null;
+  fundamental_score?: number | null;
+  sentiment_score?: number | null;
+  combined_score?: number | null;
+  signal_direction?: SignalDirection | null;
+  confidence_level?: ConfidenceLevel | null;
+  recommended_strategy?: string | null;
+  position_size_multiplier?: number | null;
+  skip_reason?: string | null;
 }
 
 export interface CategoryRecommendations {

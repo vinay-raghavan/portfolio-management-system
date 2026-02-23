@@ -229,6 +229,21 @@ class DailyRecommendation(Base):
     reasons: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     extra_data: Mapped[dict] = mapped_column(JSONType, nullable=False, default=dict)
 
+    # Multi-factor scoring fields (Section 2.6.11)
+    technical_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-100
+    fundamental_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0-100
+    sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # -100 to +100
+    combined_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # Weighted avg 0-100
+    signal_direction: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # long/short/neutral
+    confidence_level: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )  # high/medium/low/skip
+    recommended_strategy: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    position_size_multiplier: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0.25-1.0
+    skip_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

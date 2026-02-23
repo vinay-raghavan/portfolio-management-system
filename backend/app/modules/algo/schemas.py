@@ -1187,6 +1187,7 @@ class PendingAutoTradeAction(BaseModel):
     """Request to approve or reject a pending auto-trade."""
 
     action: str = Field(..., pattern="^(approve|reject)$")
+    reason: str | None = Field(None, description="Optional rejection reason")
 
 
 class PendingAutoTradeActionResponse(BaseModel):

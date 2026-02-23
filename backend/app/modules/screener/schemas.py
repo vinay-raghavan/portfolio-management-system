@@ -313,6 +313,16 @@ class RecommendationItem(BaseModel):
     return_1d: float | None = None
     return_1w: float | None = None
     return_1m: float | None = None
+    # Multi-factor scoring (Section 2.6.11)
+    technical_score: float | None = None  # 0-100
+    fundamental_score: float | None = None  # 0-100
+    sentiment_score: float | None = None  # -100 to +100
+    combined_score: float | None = None  # Weighted average 0-100
+    signal_direction: str | None = None  # long/short/neutral
+    confidence_level: str | None = None  # high/medium/low/skip
+    recommended_strategy: str | None = None
+    position_size_multiplier: float | None = None  # 0.25-1.0
+    skip_reason: str | None = None
 
 
 class CategoryRecommendations(BaseModel):

@@ -3603,9 +3603,9 @@ class StrategyTemplateService:
 **Tasks:**
 - [x] Create `StrategyTemplateService` in `backend/app/modules/algo/auto_trade_service.py` (combined with AutoTradeService)
 - [x] Implement CRUD operations for templates
-- [ ] Implement `create_strategy_from_template()` - converts template to active strategy (TODO: integrate with AlgoService)
-- [ ] Implement `get_default_for_category()` for auto-trade pipeline
-- [ ] Add unit tests for StrategyTemplateService
+- [x] Implement `create_strategy_from_template()` - converts template to active strategy
+- [x] Implement `get_default_for_category()` for auto-trade pipeline
+- [x] Add unit tests for StrategyTemplateService
 - [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [x] Commit: `feat(algo): implement StrategyTemplateService for reusable configs`
 
@@ -3828,7 +3828,7 @@ Shows in Dashboard or as a notification drawer panel.
 - [x] Add notification type `AUTO_TRADE_REJECTED` for rejected pending trades
 - [x] Add ActivityType enums for auto-trade events
 - [x] Add notification methods to `AlgoNotificationService`
-- [ ] Integrate notifications with `PendingAutoTradeService` (TODO: wire up service calls)
+- [x] Integrate notifications with `PendingAutoTradeService` (wired up in create/approve/reject/expire methods)
 - [ ] Include action buttons in notification UI (Frontend)
 - [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [x] Commit: `feat(notifications): add auto-trade notification types`
@@ -3836,8 +3836,8 @@ Shows in Dashboard or as a notification drawer panel.
 #### 2.6.10 Testing & Deployment
 
 **Tasks:**
-- [ ] Write unit tests for AutoTradeService
-- [ ] Write unit tests for StrategyTemplateService
+- [x] Write unit tests for AutoTradeService (10 tests in test_auto_trade_service.py)
+- [x] Write unit tests for StrategyTemplateService (3 tests)
 - [ ] Write integration tests for auto-trade pipeline flow
 - [ ] Write E2E tests for frontend auto-trade settings
 - [ ] Run full CI suite:
@@ -4133,15 +4133,15 @@ class MultiFactorScorer:
 ```
 
 **Tasks:**
-- [ ] Create `MultiFactorScorer` in `backend/app/modules/algo/multi_factor_scorer.py`
-- [ ] Implement `_get_technical_score()` using existing screener results
-- [ ] Implement `_get_fundamental_score()` using `RecommendationService.calculate_fundamental_score()`
-- [ ] Implement `_get_sentiment_score()` using `ResearchService.get_news()` and sentiment aggregation
-- [ ] Implement direction inference logic (`_infer_direction()`)
-- [ ] Implement confidence calculation (`_calculate_confidence()`)
-- [ ] Implement strategy recommendation (`_recommend_strategy()`)
-- [ ] Add unit tests for MultiFactorScorer
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Create `MultiFactorScorer` in `backend/app/modules/algo/multi_factor_scorer.py`
+- [x] Implement `_get_technical_score()` using existing screener results
+- [x] Implement `_get_fundamental_score()` using `RecommendationService.calculate_fundamental_score()`
+- [x] Implement `_get_sentiment_score()` using `ResearchService.get_news()` and sentiment aggregation
+- [x] Implement direction inference logic (`_infer_direction()`)
+- [x] Implement confidence calculation (`_calculate_confidence()`)
+- [x] Implement strategy recommendation (`_recommend_strategy()`)
+- [x] Add unit tests for MultiFactorScorer (15 tests in test_multi_factor_scorer.py)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
 - [ ] Commit: `feat(algo): implement MultiFactorScorer service`
 
 ##### 2.6.11.2 Update Daily Recommendations Task
@@ -4282,8 +4282,8 @@ class AutoTradeService:
 **Tasks:**
 - [ ] Create `MultiFactorScoreCard` component
 - [ ] Add score breakdown visualization (mini bar chart)
-- [ ] Add direction and confidence badges
-- [ ] Update Daily Recommendations widget to show multi-factor data
+- [x] Add direction and confidence badges (added to RecommendationsWidget.tsx)
+- [x] Update Daily Recommendations widget to show multi-factor data (added SignalDirection, ConfidenceLevel types to api.ts)
 - [ ] Update Pending Auto-Trades panel to show scores
 - [ ] Run frontend audit: `npm audit`
 - [ ] Commit: `feat(frontend): display multi-factor scores in recommendations`
@@ -4602,9 +4602,9 @@ class AutoTradeConfig(Base):
 ##### 2.6.11.6 Testing & Deployment
 
 **Tasks:**
-- [ ] Write unit tests for `MultiFactorScorer`
-- [ ] Write unit tests for direction inference logic
-- [ ] Write unit tests for confidence calculation
+- [x] Write unit tests for `MultiFactorScorer` (TestSignalDirection, TestConfidenceLevel, TestPositionSizeMultiplier, TestStrategyRecommendation)
+- [x] Write unit tests for direction inference logic (3 tests)
+- [x] Write unit tests for confidence calculation (4 tests)
 - [ ] Write integration tests for enhanced daily recommendations
 - [ ] Write integration tests for auto-trade with multi-factor filtering
 - [ ] Test sentiment API rate limits and caching

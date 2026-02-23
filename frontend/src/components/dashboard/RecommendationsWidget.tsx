@@ -61,6 +61,62 @@ function RecommendationRow({ item, isExpanded, onToggle, onNavigate }: Recommend
       </div>
       <CollapsibleContent>
         <div className="ml-2 mr-2 mb-2 mt-1 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 rounded-lg p-3">
+          {/* Multi-Factor Score Banner - show if available */}
+          {(item.combined_score || item.confidence_level) && (
+            <div className="mb-3 p-2.5 rounded-lg border bg-gradient-to-r from-primary/5 to-transparent">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  {/* Combined Score */}
+                  {item.combined_score && (
+                    <div className="flex items-center gap-2">
+                      <Target className="h-4 w-4 text-primary" />
+                      <span className="text-xs text-muted-foreground">Score:</span>
+                      <span className={cn('font-bold text-sm', item.combined_score >= 70 ? 'text-green-600' : item.combined_score >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
+                        {item.combined_score.toFixed(0)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Signal Direction */}
+                  {item.signal_direction && (
+                    <Badge variant={item.signal_direction === 'long' ? 'default' : item.signal_direction === 'short' ? 'destructive' : 'secondary'} className="text-xs">
+                      {item.signal_direction === 'long' ? '↑ Long' : item.signal_direction === 'short' ? '↓ Short' : '→ Neutral'}
+                    </Badge>
+                  )}
+                  {/* Confidence */}
+                  {item.confidence_level && item.confidence_level !== 'skip' && (
+                    <Badge variant={item.confidence_level === 'high' ? 'default' : item.confidence_level === 'medium' ? 'secondary' : 'outline'} className="text-xs">
+                      {item.confidence_level === 'high' ? '🎯 High' : item.confidence_level === 'medium' ? '⚡ Medium' : '📊 Low'} Confidence
+                    </Badge>
+                  )}
+                  {item.confidence_level === 'skip' && item.skip_reason && (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      ⚠️ {item.skip_reason}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[10px]">
+                  {/* Individual Factor Scores */}
+                  {item.technical_score !== null && item.technical_score !== undefined && (
+                    <span className="text-muted-foreground">Tech: <span className="font-medium">{item.technical_score.toFixed(0)}</span></span>
+                  )}
+                  {item.fundamental_score !== null && item.fundamental_score !== undefined && (
+                    <span className="text-muted-foreground">Fund: <span className="font-medium">{item.fundamental_score.toFixed(0)}</span></span>
+                  )}
+                  {item.sentiment_score !== null && item.sentiment_score !== undefined && (
+                    <span className={cn('text-muted-foreground', item.sentiment_score > 0 ? 'text-green-600' : item.sentiment_score < 0 ? 'text-red-600' : '')}>
+                      Sent: <span className="font-medium">{item.sentiment_score > 0 ? '+' : ''}{item.sentiment_score.toFixed(0)}</span>
+                    </span>
+                  )}
+                  {/* Recommended Strategy */}
+                  {item.recommended_strategy && (
+                    <Badge variant="outline" className="text-[10px] ml-1">
+                      {item.recommended_strategy.toUpperCase()}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Filter Scores Card */}
             <div className="rounded-lg border bg-card p-2.5 shadow-sm">

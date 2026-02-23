@@ -263,12 +263,15 @@ def _process_auto_trades_sync(category: str, symbols: list[str], date_str: str) 
     Calls the backend's internal API to process auto-trades for all users
     with auto-trade enabled for this category.
     """
+    from worker.config import settings as worker_settings
+
+    backend_url = worker_settings.BACKEND_API_URL
     logger.info(f"Processing auto-trades for category '{category}' with {len(symbols)} symbols")
 
     try:
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
-                f"{TRADING_ENGINE_URL}/internal/auto-trade/process",
+                f"{backend_url}/auto-trade/internal/process",
                 headers=_get_internal_headers(),
                 json={
                     "category": category,
@@ -289,8 +292,8 @@ def _process_auto_trades_sync(category: str, symbols: list[str], date_str: str) 
             result = response.json()
             logger.info(
                 f"Auto-trade processing complete: "
-                f"{result.get('auto_executed', 0)} auto-executed, "
-                f"{result.get('pending_created', 0)} pending created"
+                f"{result.get('users_processed', 0)} users processed, "
+                f"{result.get('status', 'unknown')} status"
             )
             return {"status": "success", **result}
 
@@ -331,12 +334,15 @@ def process_auto_trades(self, category: str, symbols: list[str], date_str: str) 
 
 def _expire_pending_auto_trades_sync() -> dict:
     """Expire pending auto-trades that have passed their expiry time."""
+    from worker.config import settings as worker_settings
+
+    backend_url = worker_settings.BACKEND_API_URL
     logger.info("Checking for expired pending auto-trades")
 
     try:
         with httpx.Client(timeout=60.0) as client:
             response = client.post(
-                f"{TRADING_ENGINE_URL}/internal/auto-trade/expire-pending",
+                f"{backend_url}/auto-trade/internal/expire-pending",
                 headers=_get_internal_headers(),
             )
 

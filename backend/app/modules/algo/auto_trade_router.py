@@ -1,12 +1,17 @@
 """API routes for auto-trade configuration and management."""
 
 import logging
+from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.config import settings
 from app.modules.algo.auto_trade_service import (
     AutoTradeConfigService,
+    AutoTradeService,
     PendingAutoTradeService,
     StrategyTemplateService,
 )
@@ -31,6 +36,115 @@ from app.modules.algo.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# =============================================================================
+# Internal API Schemas
+# =============================================================================
+
+
+class ProcessAutoTradesRequest(BaseModel):
+    """Request to process auto-trades for a category."""
+
+    category: str = Field(..., min_length=1, max_length=50)
+    symbols: list[str] = Field(default_factory=list)
+    date: str = Field(..., description="ISO format date string")
+
+
+class ProcessAutoTradesResponse(BaseModel):
+    """Response from processing auto-trades."""
+
+    status: str
+    category: str
+    users_processed: int = 0
+    results: dict = Field(default_factory=dict)
+
+
+class ExpirePendingResponse(BaseModel):
+    """Response from expiring pending auto-trades."""
+
+    status: str
+    expired_count: int = 0
+
+
+# =============================================================================
+# Internal API Key Verification
+# =============================================================================
+
+
+def verify_internal_key(x_internal_key: Annotated[str | None, Header()] = None) -> str:
+    """Verify the internal API key for worker-to-backend calls."""
+    internal_key = getattr(settings, "INTERNAL_API_KEY", "internal-worker-key")
+    if not x_internal_key or x_internal_key != internal_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing internal API key",
+        )
+    return x_internal_key
+
+
+InternalAuth = Annotated[str, Depends(verify_internal_key)]
+
+
+# =============================================================================
+# Internal Endpoints (Called by Celery Worker)
+# =============================================================================
+
+
+@router.post("/internal/process", response_model=ProcessAutoTradesResponse)
+async def process_auto_trades_internal(
+    data: ProcessAutoTradesRequest,
+    db: DbSession,
+    _key: InternalAuth,
+) -> ProcessAutoTradesResponse:
+    """Process auto-trades for a category after daily recommendations are generated.
+
+    This is an internal endpoint called by the Celery worker.
+    It processes recommendations for all users with auto-trade enabled.
+    """
+
+    # Parse the date string
+    try:
+        rec_date = datetime.fromisoformat(data.date)
+        if rec_date.tzinfo is None:
+            rec_date = rec_date.replace(tzinfo=UTC)
+    except ValueError:
+        rec_date = datetime.now(UTC)
+
+    service = AutoTradeService(db)
+    result = await service.process_recommendations(
+        category=data.category,
+        symbols=data.symbols,
+        recommendation_date=rec_date,
+    )
+
+    await db.commit()
+
+    return ProcessAutoTradesResponse(
+        status=result.get("status", "processed"),
+        category=data.category,
+        users_processed=result.get("users_processed", 0),
+        results=result.get("results", {}),
+    )
+
+
+@router.post("/internal/expire-pending", response_model=ExpirePendingResponse)
+async def expire_pending_auto_trades_internal(
+    db: DbSession,
+    _key: InternalAuth,
+) -> ExpirePendingResponse:
+    """Expire pending auto-trades that have passed their expiry time.
+
+    This is an internal endpoint called by the Celery worker hourly.
+    """
+    service = PendingAutoTradeService(db)
+    expired_count = await service.expire_old_trades()
+    await db.commit()
+
+    return ExpirePendingResponse(
+        status="success",
+        expired_count=expired_count,
+    )
 
 
 # =============================================================================
@@ -347,7 +461,9 @@ async def action_pending_auto_trade(
             message="Trade approved successfully",
         )
     else:  # reject
-        pending = await service.reject_pending_trade(str(current_user.id), trade_id)
+        pending = await service.reject_pending_trade(
+            str(current_user.id), trade_id, reason=data.reason
+        )
         if not pending:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
