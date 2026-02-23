@@ -135,10 +135,14 @@ class TestPositionTrackerUnit:
 
     async def test_open_position_new(self, tracker, mock_db):
         """Test opening a new position."""
-        # Mock no existing position
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_db.execute.return_value = mock_result
+        # First call returns strategy (None), second returns existing position (None)
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.scalar_one_or_none.return_value = None
+
+        mock_position_result = MagicMock()
+        mock_position_result.scalar_one_or_none.return_value = None
+
+        mock_db.execute.side_effect = [mock_strategy_result, mock_position_result]
 
         # Mock refresh to set an id
         async def mock_refresh(pos):
@@ -169,10 +173,21 @@ class TestPositionTrackerUnit:
         existing.remaining_quantity = 50
         existing.entry_price = Decimal("1400.00")
         existing.side = PositionSide.LONG
+        # Trailing stop fields - disabled for this test
+        existing.trailing_stop_enabled = False
+        existing.trailing_stop_pct = None
+        existing.highest_price_since_entry = None
+        existing.lowest_price_since_entry = None
+        existing.trailing_stop_price = None
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
-        mock_db.execute.return_value = mock_result
+        # First call returns strategy (None for this test), second returns existing position
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.scalar_one_or_none.return_value = None
+
+        mock_position_result = MagicMock()
+        mock_position_result.scalar_one_or_none.return_value = existing
+
+        mock_db.execute.side_effect = [mock_strategy_result, mock_position_result]
 
         result = await tracker.open_position(
             strategy_id="strat-1",

@@ -121,6 +121,11 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.algo.sync_circuit_breakers",
         "schedule": 300.0,  # Every 5 minutes
     },
+    # Check trailing stops and circuit breakers every 5 minutes during market hours
+    "check-stop-monitors-every-5-minutes": {
+        "task": "worker.tasks.algo.check_stop_monitors",
+        "schedule": 300.0,  # Every 5 minutes
+    },
     # Daily recommendations - at market open 9:15 AM IST (3:45 UTC)
     "generate-daily-recommendations": {
         "task": "worker.tasks.screener.generate_daily_recommendations",

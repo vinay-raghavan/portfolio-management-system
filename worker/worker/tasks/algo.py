@@ -171,3 +171,82 @@ def sync_circuit_breakers(self) -> dict:
     """
     logger.info("Starting circuit breaker sync")
     return _sync_circuit_breakers_sync()
+
+
+def _is_market_hours() -> bool:
+    """Check if current time is within Indian market hours (9:15 AM - 3:30 PM IST).
+
+    Also skips weekends.
+    """
+    from datetime import datetime, time
+    from zoneinfo import ZoneInfo
+
+    IST = ZoneInfo("Asia/Kolkata")
+    now_ist = datetime.now(IST)
+
+    # Skip weekends
+    if now_ist.weekday() >= 5:
+        return False
+
+    market_open = time(9, 15)
+    market_close = time(15, 30)
+    current_time = now_ist.time()
+
+    return market_open <= current_time <= market_close
+
+
+def _check_stop_monitors_sync() -> dict:
+    """Synchronous implementation of stop monitor check.
+
+    Calls the trading engine's /internal/check-stop-monitors endpoint.
+    """
+    if not _is_market_hours():
+        logger.debug("Market closed, skipping stop monitor check")
+        return {"status": "market_closed", "checked": 0}
+
+    logger.info("Checking trailing stops and circuit breakers for all active strategies")
+
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(
+                f"{TRADING_ENGINE_URL}/internal/check-stop-monitors",
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Trading engine error: {response.status_code} - {response.text}")
+                return {
+                    "status": "error",
+                    "message": f"Trading engine returned {response.status_code}",
+                }
+
+            result = response.json()
+            if result.get("positions_closed", 0) > 0:
+                logger.info(
+                    f"Stop monitor: Closed {result['positions_closed']} positions, "
+                    f"{result.get('circuit_breakers_triggered', 0)} CB triggered"
+                )
+            else:
+                logger.debug(
+                    f"Stop monitor complete: {result.get('checked', 0)} strategies checked"
+                )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout calling trading engine for stop monitor")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error in stop monitor check: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.algo.check_stop_monitors")
+def check_stop_monitors(self) -> dict:
+    """Check trailing stops and circuit breakers for all active strategies.
+
+    This task is called by Celery beat every 5 minutes during market hours.
+    It ensures trailing stops and unrealized loss circuit breakers are
+    checked frequently, even for strategies with longer execution intervals.
+    """
+    logger.info("Starting stop monitor check")
+    return _check_stop_monitors_sync()

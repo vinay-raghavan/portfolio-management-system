@@ -171,10 +171,18 @@ class PositionTracker:
     ) -> PositionResult:
         """Open a new position or add to existing one.
 
+        Automatically applies strategy's default trailing stop settings to new positions.
+
         Returns PositionResult with position details.
         """
         symbol = symbol.upper()
         position_side = PositionSide.LONG if side == "BUY" else PositionSide.SHORT
+
+        # Fetch strategy for default trailing stop settings
+        strategy_result = await self.db.execute(
+            select(UserStrategy).where(UserStrategy.id == strategy_id)
+        )
+        strategy = strategy_result.scalar_one_or_none()
 
         # Check for existing open position
         existing = await self.get_open_position(strategy_id, user_id, symbol)
@@ -190,6 +198,30 @@ class PositionTracker:
             existing.entry_quantity = total_qty
             existing.remaining_quantity = total_qty
             existing.entry_price = new_avg_price
+
+            # Update trailing stop price if enabled (recalculate based on new avg price)
+            if existing.trailing_stop_enabled and existing.trailing_stop_pct:
+                if position_side == PositionSide.LONG:
+                    # For LONG: update highest price if new avg is higher
+                    if (
+                        existing.highest_price_since_entry is None
+                        or new_avg_price > existing.highest_price_since_entry
+                    ):
+                        existing.highest_price_since_entry = new_avg_price
+                    existing.trailing_stop_price = existing.highest_price_since_entry * (
+                        Decimal("1") - existing.trailing_stop_pct
+                    )
+                else:
+                    # For SHORT: update lowest price if new avg is lower
+                    if (
+                        existing.lowest_price_since_entry is None
+                        or new_avg_price < existing.lowest_price_since_entry
+                    ):
+                        existing.lowest_price_since_entry = new_avg_price
+                    existing.trailing_stop_price = existing.lowest_price_since_entry * (
+                        Decimal("1") + existing.trailing_stop_pct
+                    )
+
             await self.db.flush()
 
             logger.info(f"Added to position {symbol}: qty={total_qty}, avg={new_avg_price}")
@@ -202,7 +234,35 @@ class PositionTracker:
                 status="OPEN",
             )
 
-        # Create new position
+        # Initialize trailing stop from strategy defaults
+        trailing_stop_enabled = False
+        trailing_stop_pct = None
+        trailing_stop_price = None
+        highest_price = None
+        lowest_price = None
+
+        if (
+            strategy
+            and strategy.default_trailing_stop_enabled
+            and strategy.default_trailing_stop_pct
+        ):
+            trailing_stop_enabled = True
+            trailing_stop_pct = strategy.default_trailing_stop_pct
+
+            # Initialize price tracking and calculate initial stop price
+            if position_side == PositionSide.LONG:
+                highest_price = entry_price
+                trailing_stop_price = entry_price * (Decimal("1") - trailing_stop_pct)
+            else:  # SHORT
+                lowest_price = entry_price
+                trailing_stop_price = entry_price * (Decimal("1") + trailing_stop_pct)
+
+            logger.info(
+                f"Initialized trailing stop for {symbol}: enabled={trailing_stop_enabled}, "
+                f"pct={trailing_stop_pct}, stop_price={trailing_stop_price}"
+            )
+
+        # Create new position with trailing stop settings
         position = AlgoPosition(
             strategy_id=strategy_id,
             user_id=user_id,
@@ -215,6 +275,11 @@ class PositionTracker:
             stop_loss=stop_loss,
             take_profit=take_profit,
             status=PositionStatus.OPEN,
+            trailing_stop_enabled=trailing_stop_enabled,
+            trailing_stop_pct=trailing_stop_pct,
+            trailing_stop_price=trailing_stop_price,
+            highest_price_since_entry=highest_price,
+            lowest_price_since_entry=lowest_price,
         )
         self.db.add(position)
         await self.db.flush()
@@ -480,8 +545,9 @@ class PositionTracker:
                 else position.stop_loss
             )
 
-            # Check stop-loss / trailing stop (only for fully open positions)
-            if position.status == PositionStatus.OPEN and effective_stop:
+            # Check stop-loss / trailing stop (for OPEN and PARTIAL positions)
+            # PARTIAL positions still need stop loss protection for remaining quantity
+            if position.status in (PositionStatus.OPEN, PositionStatus.PARTIAL) and effective_stop:
                 if position.side == PositionSide.LONG and current_price <= effective_stop:
                     should_close = True
                     close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
@@ -489,8 +555,12 @@ class PositionTracker:
                     should_close = True
                     close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
 
-            # Check take-profit (only for fully open positions)
-            if not should_close and position.status == PositionStatus.OPEN and position.take_profit:
+            # Check take-profit (for OPEN and PARTIAL positions)
+            if (
+                not should_close
+                and position.status in (PositionStatus.OPEN, PositionStatus.PARTIAL)
+                and position.take_profit
+            ):
                 if position.side == PositionSide.LONG and current_price >= position.take_profit:
                     should_close = True
                     close_reason = "take-profit"
