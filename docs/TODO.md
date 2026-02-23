@@ -3485,12 +3485,12 @@ class PendingAutoTrade(Base):
 ```
 
 **Tasks:**
-- [ ] Create `AutoTradeConfig` model in `backend/app/modules/algo/models.py`
-- [ ] Create `StrategyTemplate` model in `backend/app/modules/algo/models.py`
-- [ ] Create `PendingAutoTrade` model in `backend/app/modules/algo/models.py`
-- [ ] Create Alembic migration for new tables
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): add auto-trade pipeline database models`
+- [x] Create `AutoTradeConfig` model in `backend/app/modules/algo/models.py`
+- [x] Create `StrategyTemplate` model in `backend/app/modules/algo/models.py`
+- [x] Create `PendingAutoTrade` model in `backend/app/modules/algo/models.py`
+- [x] Create Alembic migration for new tables
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add auto-trade pipeline database models`
 
 #### 2.6.2 Auto-Trade Service
 
@@ -3546,15 +3546,15 @@ class AutoTradeService:
 ```
 
 **Tasks:**
-- [ ] Create `AutoTradeService` in `backend/app/modules/algo/auto_trade_service.py`
-- [ ] Implement `get_user_configs()` and `update_config()`
-- [ ] Implement `process_recommendations()` - core pipeline logic
-- [ ] Implement `create_pending_trade()` with strategy inference
-- [ ] Implement `approve_pending_trade()` - creates UserStrategy from template
-- [ ] Implement `reject_pending_trade()` and `expire_pending_trades()`
+- [x] Create `AutoTradeService` in `backend/app/modules/algo/auto_trade_service.py`
+- [x] Implement `get_user_configs()` and `update_config()`
+- [ ] Implement `process_recommendations()` - core pipeline logic (TODO: integrate with Celery task)
+- [x] Implement `create_pending_trade()` with strategy inference
+- [x] Implement `approve_pending_trade()` - creates UserStrategy from template
+- [x] Implement `reject_pending_trade()` and `expire_pending_trades()`
 - [ ] Add unit tests for AutoTradeService
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): implement AutoTradeService for pipeline orchestration`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): implement AutoTradeService for pipeline orchestration`
 
 #### 2.6.3 Strategy Template Service
 
@@ -3601,13 +3601,13 @@ class StrategyTemplateService:
 ```
 
 **Tasks:**
-- [ ] Create `StrategyTemplateService` in `backend/app/modules/algo/template_service.py`
-- [ ] Implement CRUD operations for templates
-- [ ] Implement `create_strategy_from_template()` - converts template to active strategy
+- [x] Create `StrategyTemplateService` in `backend/app/modules/algo/auto_trade_service.py` (combined with AutoTradeService)
+- [x] Implement CRUD operations for templates
+- [ ] Implement `create_strategy_from_template()` - converts template to active strategy (TODO: integrate with AlgoService)
 - [ ] Implement `get_default_for_category()` for auto-trade pipeline
 - [ ] Add unit tests for StrategyTemplateService
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): implement StrategyTemplateService for reusable configs`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): implement StrategyTemplateService for reusable configs`
 
 #### 2.6.4 API Endpoints
 
@@ -3690,13 +3690,13 @@ async def create_strategy_from_template(
 ```
 
 **Tasks:**
-- [ ] Create `backend/app/modules/algo/auto_trade_router.py`
-- [ ] Create `backend/app/modules/algo/template_router.py`
-- [ ] Create Pydantic schemas for all request/response types
-- [ ] Register routers in main app
+- [x] Create `backend/app/modules/algo/auto_trade_router.py`
+- [x] Create template endpoints in auto_trade_router.py (combined with auto-trade router)
+- [x] Create Pydantic schemas for all request/response types
+- [x] Register routers in main app (`/auto-trade` prefix)
 - [ ] Add API tests for all endpoints
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): add API endpoints for auto-trade and templates`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add API endpoints for auto-trade and templates`
 
 #### 2.6.5 Celery Tasks
 
@@ -4706,11 +4706,11 @@ class SavedScreener(Base):
 ```
 
 **Tasks:**
-- [ ] Create `SavedScreener` model in `backend/app/modules/screener/models.py`
-- [ ] Create Alembic migration for `saved_screeners` table
-- [ ] Add `saved_screener_id` field to `AutoTradeConfig` model
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(screener): add SavedScreener model for custom screener persistence`
+- [x] Create `CustomScreener` model with auto-trade fields in `backend/app/modules/screener/models.py`
+- [x] Create Alembic migration for screener auto-trade fields
+- [x] Add `saved_screener_id` field to `AutoTradeConfig` model
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade fields to CustomScreener model`
 
 ##### 2.6.12.2 Saved Screener Service
 
@@ -4800,14 +4800,14 @@ def infer_strategy_type(self, filters: list[dict]) -> str:
 ```
 
 **Tasks:**
-- [ ] Create `SavedScreenerService` in `backend/app/modules/screener/saved_screener_service.py`
-- [ ] Implement CRUD operations for saved screeners
-- [ ] Implement `run_screener()` using existing `ScreenerService`
-- [ ] Implement `link_to_auto_trade()` for connecting to auto-trade config
-- [ ] Implement `infer_strategy_type()` with filter analysis logic
-- [ ] Add unit tests for SavedScreenerService
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(screener): implement SavedScreenerService with strategy inference`
+- [x] Add auto-trade methods to existing `ScreenerService` in `backend/app/modules/screener/service.py`
+- [x] Implement CRUD operations with auto-trade fields in existing CustomScreener
+- [x] Implement `run_custom_screener_for_auto_trade()` for scheduled runs
+- [x] Implement `link_to_auto_trade()` for connecting to auto-trade config
+- [x] Implement `infer_strategy_type()` using StrategyInferenceEngine
+- [ ] Add unit tests for auto-trade screener methods
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade methods to ScreenerService`
 
 ##### 2.6.12.3 API Endpoints for Saved Screeners
 
@@ -4869,13 +4869,13 @@ async def infer_strategy_for_screener(
 ```
 
 **Tasks:**
-- [ ] Create `backend/app/modules/screener/saved_screener_router.py`
-- [ ] Create Pydantic schemas: `SavedScreenerCreate`, `SavedScreenerUpdate`, `SavedScreenerResponse`
-- [ ] Create `LinkAutoTradeRequest` and `StrategyInferenceResponse` schemas
-- [ ] Register router in main app
+- [x] Add auto-trade endpoints to existing `backend/app/modules/screener/router.py`
+- [x] Create Pydantic schemas: `LinkAutoTradeRequest`, `UnlinkAutoTradeResponse`, `StrategyInferenceResponse`
+- [x] Add `run_frequency` schema enum (`RunFrequencyEnum`)
+- [x] Router already registered in main app
 - [ ] Add API tests for all endpoints
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(screener): add API endpoints for saved screeners`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade endpoints to existing router`
 
 ##### 2.6.12.4 Scheduled Screener Runs
 
@@ -4977,14 +4977,14 @@ beat_schedule = {
 ```
 
 **Tasks:**
-- [ ] Create `run_scheduled_screeners` task in `worker/worker/tasks/screener.py`
-- [ ] Create `run_single_screener` task for on-demand runs
-- [ ] Implement `_get_due_screeners()` helper to find screeners ready to run
-- [ ] Implement `_process_screener_for_auto_trade()` to create pending trades
-- [ ] Add Celery Beat schedules for daily and hourly runs
+- [x] Create `run_scheduled_screeners` task in `worker/worker/tasks/screener.py`
+- [x] Create `run_single_screener` task for on-demand runs
+- [x] Implement `_get_due_screeners()` helper to find screeners ready to run
+- [ ] Implement `_process_screener_for_auto_trade()` to create pending trades (TODO: integrate with PendingAutoTradeService)
+- [x] Add Celery Beat schedules for daily and hourly runs in `worker/worker/celery_app.py`
 - [ ] Add integration tests for scheduled screener tasks
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(worker): add scheduled custom screener execution`
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(worker): add scheduled custom screener execution`
 
 ##### 2.6.12.5 Update Auto-Trade Config for Custom Screeners
 
@@ -5011,13 +5011,13 @@ class AutoTradeConfig(Base):
 ```
 
 **Tasks:**
-- [ ] Add `screener_source_type`, `preset_category`, `saved_screener_id` to `AutoTradeConfig`
-- [ ] Create Alembic migration for new columns
-- [ ] Update `AutoTradeConfigUpdate` schema with new fields
-- [ ] Update `AutoTradeService.process_recommendations()` to handle both source types
-- [ ] Add validation: if CUSTOM, `saved_screener_id` required
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): update AutoTradeConfig for custom screener sources`
+- [x] Add `screener_source_type`, `preset_category`, `saved_screener_id` to `AutoTradeConfig`
+- [x] Create Alembic migration for new tables (`20260223_1100_add_auto_trade_config_tables.py`)
+- [x] Update `AutoTradeConfigCreate` and `AutoTradeConfigUpdate` schemas with new fields
+- [ ] Update `AutoTradeService.process_recommendations()` to handle both source types (TODO: integrate with Celery task)
+- [x] Add validation: if CUSTOM, `saved_screener_id` required
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): update AutoTradeConfig for custom screener sources`
 
 ##### 2.6.12.6 Frontend: Save Screener Flow
 
