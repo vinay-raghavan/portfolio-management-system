@@ -218,6 +218,21 @@ class CircuitBreaker:
                 f"Consecutive losses: {consecutive_losses} >= {strategy.max_consecutive_losses}"
             )
 
+        # Unrealized loss threshold (for open positions drawdown protection)
+        if (
+            strategy.max_unrealized_loss
+            and current_unrealized < Decimal("0")
+            and abs(current_unrealized) >= strategy.max_unrealized_loss
+        ):
+            trigger_reason = (
+                f"Unrealized loss limit breached: ₹{abs(current_unrealized):.2f} >= "
+                f"₹{strategy.max_unrealized_loss:.2f} (open positions are down)"
+            )
+            logger.warning(
+                f"⚠️ UNREALIZED LOSS: Strategy {strategy.id} breached unrealized loss limit "
+                f"₹{abs(current_unrealized):.2f} >= ₹{strategy.max_unrealized_loss:.2f}"
+            )
+
         # Profit cutoff thresholds (using total profit = realized + unrealized)
         if strategy.max_daily_profit and total_daily_profit >= strategy.max_daily_profit:
             trigger_reason = (

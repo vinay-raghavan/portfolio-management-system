@@ -574,6 +574,7 @@ async def run_scheduled_strategies(
                         unrealized_pnl=unrealized_pnl,
                         max_daily_profit=strategy.max_daily_profit,
                         overall_profit_target=strategy.overall_profit_target,
+                        max_unrealized_loss=strategy.max_unrealized_loss,
                     )
 
                     # Handle circuit breaker triggers

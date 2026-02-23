@@ -146,18 +146,22 @@ class CircuitBreaker:
         unrealized_pnl: Decimal | None = None,
         max_daily_profit: Decimal | None = None,
         overall_profit_target: Decimal | None = None,
+        max_unrealized_loss: Decimal | None = None,
     ) -> CircuitBreakerState:
         """Check if circuit breaker should trigger and update state.
 
         Args:
             strategy_id: The strategy ID
-            max_daily_loss: Max daily loss limit
+            max_daily_loss: Max daily loss limit (realized losses from closed trades)
             max_consecutive_losses: Max consecutive losses allowed
             trade_pnl: P&L of the last trade (if just completed)
             is_loss: Whether the last trade was a loss
             unrealized_pnl: Current unrealized P&L from open positions
             max_daily_profit: Daily profit target (optional)
             overall_profit_target: Overall profit target (optional)
+            max_unrealized_loss: Max unrealized loss from open positions (optional).
+                If unrealized_pnl is negative and abs(unrealized_pnl) >= this value,
+                circuit breaker triggers.
         """
         key = CIRCUIT_BREAKER_KEY.format(strategy_id=strategy_id)
 
@@ -229,6 +233,19 @@ class CircuitBreaker:
                 f"🎯 PROFIT CUTOFF: Strategy {strategy_id} reached overall profit target "
                 f"₹{total_overall_profit:.2f}"
             )
+
+        # Check unrealized loss threshold (for open positions drawdown protection)
+        if max_unrealized_loss and current_unrealized < Decimal("0"):
+            unrealized_loss_abs = abs(current_unrealized)
+            if unrealized_loss_abs >= max_unrealized_loss:
+                trigger_reason = (
+                    f"Unrealized loss limit breached: ₹{unrealized_loss_abs:.2f} >= "
+                    f"₹{max_unrealized_loss:.2f} (open positions are down)"
+                )
+                logger.warning(
+                    f"🛑 UNREALIZED LOSS CUTOFF: Strategy {strategy_id} "
+                    f"open positions down ₹{unrealized_loss_abs:.2f}"
+                )
 
         # Save state
         state_dict = {

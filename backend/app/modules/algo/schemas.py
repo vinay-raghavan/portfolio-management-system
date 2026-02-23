@@ -88,6 +88,8 @@ class RiskConfig(BaseModel):
     cooldown_seconds: int = Field(default=60, ge=0)
     max_consecutive_losses: int = Field(default=3, ge=1, le=20)
     max_drawdown_percent: Decimal = Field(default=Decimal("10.00"), ge=0, le=100)
+    # Max unrealized loss - triggers circuit breaker when open positions are down this much
+    max_unrealized_loss: Decimal | None = Field(default=None, ge=0)
     # Profit cutoff settings
     max_daily_profit: Decimal | None = Field(default=None, ge=0)
     overall_profit_target: Decimal | None = Field(default=None, ge=0)
@@ -153,6 +155,7 @@ class UserStrategyResponse(UserStrategyBase):
     cooldown_seconds: int
     max_consecutive_losses: int
     max_drawdown_percent: Decimal
+    max_unrealized_loss: Decimal | None
     max_daily_profit: Decimal | None
     overall_profit_target: Decimal | None
     profit_cutoff_action: ProfitCutoffAction
@@ -268,6 +271,9 @@ class CircuitBreakerStatus(BaseModel):
     max_consecutive_losses: int
     current_drawdown_percent: Decimal
     max_drawdown_percent: Decimal
+    # Unrealized loss tracking
+    current_unrealized_loss: Decimal = Decimal("0")
+    max_unrealized_loss: Decimal | None = None
     # Profit cutoff tracking
     daily_profit: Decimal = Decimal("0")
     max_daily_profit: Decimal | None = None
