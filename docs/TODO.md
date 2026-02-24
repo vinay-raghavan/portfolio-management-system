@@ -3314,9 +3314,9 @@ Landing page with summary of all reports.
 **Tasks:**
 - [x] Create `frontend/src/app/(dashboard)/reports/page.tsx`
 
-### 2.6 Recommendation Auto-Trade Pipeline
+### 2.6 Recommendation Auto-Trade Pipeline ✅
 > 🌿 **Branch:** `phase-2/auto-trade-pipeline`
-> **Status:** ✅ Core Complete (pending E2E tests & deployment)
+> **Status:** ✅ Complete (2026-02-24) - Core pipeline with multi-factor scoring and exit-only symbol management
 
 **Goal**: Automate the flow from screener recommendations to algo execution with minimal user intervention. User configures preferences once, then just confirms/skips daily picks.
 

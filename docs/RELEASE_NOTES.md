@@ -1,5 +1,120 @@
 # Release Notes
 
+## v1.4.0 (2026-02-24)
+
+### 🚀 Phase 2 Features
+
+This release completes several Phase 2 components including the recommendation auto-trade pipeline, Redis caching, reporting infrastructure, and frontend reports.
+
+---
+
+### 🤖 Recommendation Auto-Trade Pipeline (Section 2.6)
+
+Fully automated flow from screener recommendations to algo execution with minimal user intervention.
+
+**Core Features:**
+- **Auto-Trade Configuration**: Per-user, per-category auto-trade settings (momentum, breakout, value, sector)
+- **Strategy Templates**: Reusable strategy configurations with position sizing, risk limits, and trading windows
+- **Pending Trade Queue**: User confirmation layer with approve/reject/expire workflow
+- **Multi-Factor Scoring**: Combined technical (40%) + fundamental (40%) + sentiment (20%) analysis
+  - Signal direction inference (LONG/SHORT/NEUTRAL)
+  - Confidence levels (HIGH/MEDIUM/LOW/SKIP)
+  - Position size multipliers based on confidence
+  - Customizable weights via UI
+- **Custom Screener Integration**: Link saved screeners to auto-trade with scheduling
+- **Exit-Only Symbol Management**: Symbols dropped from screener but with open positions are tracked separately and only allow SELL signals until positions close
+
+**New API Endpoints:**
+- `GET/PUT /algo/auto-trade/configs` - Auto-trade configuration management
+- `GET/POST /algo/auto-trade/pending/*` - Pending trade approval workflow
+- `CRUD /algo/templates` - Strategy template management
+- `GET/PUT /algo/auto-trade/weights` - Multi-factor weight configuration
+
+**New Frontend Pages:**
+- `/settings/auto-trade` - Auto-trade configuration with weight sliders, presets, confidence selectors
+- `/algo/templates` - Strategy template management
+- Dashboard integration with `AlgoCarousel` combining Summary + Pending Trades tabs
+
+---
+
+### ⚡ Redis Caching (Section 2.4.3)
+
+Comprehensive caching layer for improved performance.
+
+**Features:**
+- Cache service with TTL management
+- Market data caching
+- User session caching
+- Strategy execution result caching
+
+---
+
+### 📊 Reporting Infrastructure (Section 2.4)
+
+Complete reporting backend with ledger, capital gains, and activity tracking.
+
+**Features:**
+- **Transaction Ledger**: Full cash flow history with running balances
+- **Capital Gains Tracking**: Short-term and long-term gains calculation with tax reports
+- **Broker API Logging**: Request/response logging with latency tracking
+- **Activity Log**: Comprehensive audit trail of all user and system events
+
+---
+
+### 📱 Reports Frontend (Section 2.5)
+
+New "Reports" section in the sidebar with comprehensive reporting pages.
+
+**New Pages:**
+- `/reports` - Overview with summary cards and quick links
+- `/reports/statement` - Account statement with filtering and export
+- `/reports/gains` - Capital gains report with STCG/LTCG breakdown
+- `/reports/api-logs` - Broker API interaction logs
+- `/reports/activity` - Activity timeline with filtering
+
+---
+
+### 🐛 Bug Fixes
+
+- **Trailing Stop Initialization**: Fixed trailing stop not being initialized from strategy defaults when opening positions
+- **Migration Conflicts**: Fixed down_revision to use correct revision ID
+- **Chart Symbol Comparison**: Fixed multi-chart candle interval issues
+- **Daily Digest Widget**: Fixed refresh button with visual feedback
+- **SQLAlchemy Enum Serialization**: Fixed enum serialization in auto-trade schemas
+
+---
+
+### 🔒 Security & Infrastructure
+
+- **Docker Hardening**: Multi-stage builds with Chainguard production images
+- **Security Dependency Upgrades**: Updated packages to address CVEs
+- **npm Audit**: Addressed frontend security vulnerabilities
+
+---
+
+### ✨ UX Improvements
+
+- **Keyboard Shortcuts**: Enhanced navigation and trading shortcuts
+- **Accessibility**: Improved ARIA labels and focus states
+- **Error Handling**: Better error boundaries and recovery
+- **Recommendations Carousel**: Expandable 3-column analysis view
+- **AlgoCarousel**: Combined Summary + Pending Trades on dashboard
+
+---
+
+### 📦 Installation
+
+See [README.md](../README.md) for quick start instructions.
+
+### 🗺️ Roadmap (Phase 2 Remaining)
+
+- [ ] Angel One broker integration
+- [ ] Email/WhatsApp notifications
+- [ ] Live trading safety features
+- [ ] E2E tests for auto-trade pipeline
+
+---
+
 ## v1.0.0 (2026-02-13)
 
 ### 🎉 Initial Release
