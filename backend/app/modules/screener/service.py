@@ -805,8 +805,6 @@ class ScreenerService:
         """
         from datetime import datetime, timedelta
 
-        from app.modules.screener.screener import StockScreener
-
         screener = await self.get_custom_screener(user_id, screener_id)
         if not screener:
             return {"status": "error", "message": "Screener not found"}
@@ -840,7 +838,9 @@ class ScreenerService:
                             f"with {strictness.value} strictness"
                         )
                     else:
-                        logger.warning(f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS")
+                        logger.warning(
+                            f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS"
+                        )
                         filters = []
                 except ValueError as e:
                     logger.warning(f"Invalid preset value '{screener.preset}': {e}")
@@ -850,8 +850,9 @@ class ScreenerService:
                 filters = [FilterConfig(**f) for f in screener.filters]
 
             # Get user's preferred data provider (required for screening)
-            from app.modules.data.service import get_user_data_provider
             from shared.providers.data import get_data_provider
+
+            from app.modules.data.service import get_user_data_provider
 
             provider = await get_user_data_provider(self.db, user_id)
             if provider is None:
@@ -955,7 +956,9 @@ class ScreenerService:
                             for r in scored_results
                             if confidence_values.get(r["confidence_level"], 0) >= min_conf
                         ]
-                        logger.info(f"After confidence filter: {len(filtered_results)} symbols passed")
+                        logger.info(
+                            f"After confidence filter: {len(filtered_results)} symbols passed"
+                        )
 
                         if filtered_results:
                             # Get strategy type from template or infer
