@@ -69,6 +69,8 @@ class StrategyConfig:
     strategy_params: dict = field(default_factory=dict)
     timeframe: str = "1d"
     symbols: list[str] = field(default_factory=list)
+    # Exit-only symbols: only SELL signals are allowed, no new BUY positions
+    exit_only_symbols: list[str] = field(default_factory=list)
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.FIXED_QUANTITY
     fixed_quantity: int = 1
     fixed_amount: Decimal = Decimal("10000")
@@ -147,28 +149,42 @@ class StrategyExecutor:
             if not strategy:
                 raise ValueError(f"Strategy '{config.strategy_name}' not found in registry")
 
-            # Get symbols to analyze
-            symbols = symbols_override or config.symbols
-            if not symbols:
+            # Get symbols to analyze: active symbols + exit-only symbols
+            active_symbols = symbols_override or config.symbols
+            exit_only_symbols = set(config.exit_only_symbols or [])
+            all_symbols = list(set(active_symbols) | exit_only_symbols)
+
+            if not all_symbols:
                 result.status = ExecutionStatus.NO_SIGNAL
                 result.error_message = "No symbols to analyze"
                 result.duration_ms = int((time.time() - start_time) * 1000)
                 return result
 
-            result.symbols_analyzed = len(symbols)
+            result.symbols_analyzed = len(all_symbols)
 
             # Fetch market data and run strategy for each symbol
             all_signals: list[tuple[str, SignalData]] = []
             symbol_prices: dict[str, Decimal] = {}
-            for symbol in symbols:
+            for symbol in all_symbols:
                 try:
                     signals, current_price = await self._analyze_symbol(
                         strategy, symbol, config.timeframe
                     )
                     if current_price:
                         symbol_prices[symbol] = current_price
+
+                    # Filter signals based on exit-only status
                     for signal in signals:
-                        all_signals.append((symbol, signal))
+                        if symbol in exit_only_symbols:
+                            # Exit-only: only allow SELL signals (to close positions)
+                            if signal.signal_type == SignalType.SELL:
+                                all_signals.append((symbol, signal))
+                                logger.debug(f"Exit-only symbol {symbol}: allowing SELL signal")
+                            else:
+                                logger.debug(f"Exit-only symbol {symbol}: blocking BUY signal")
+                        else:
+                            # Active symbol: allow all signals
+                            all_signals.append((symbol, signal))
                 except Exception as e:
                     logger.warning(f"Error analyzing {symbol}: {e}")
                     continue

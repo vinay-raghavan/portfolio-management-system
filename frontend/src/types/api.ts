@@ -1703,3 +1703,179 @@ export interface ActivityMarkReadRequest {
 export interface ActivityMarkReadResponse {
   marked_count: number;
 }
+
+// ============== Auto-Trade Types ==============
+
+export type ConfirmationMode = 'AUTO' | 'NOTIFY' | 'DISABLED';
+export type ScreenerSourceType = 'PRESET' | 'CUSTOM';
+export type PendingTradeStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'EXECUTED';
+
+export interface StrategyTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  strategy_type: string;
+  default_quantity: number;
+  position_sizing_method: PositionSizingMethod | null;
+  position_size_value: number | null;
+  max_position_value: number | null;
+  stop_loss_pct: number | null;
+  take_profit_pct: number | null;
+  trailing_stop_enabled: boolean;
+  trailing_stop_pct: number | null;
+  parameters: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StrategyTemplateCreate {
+  name: string;
+  description?: string | null;
+  strategy_type: string;
+  default_quantity?: number;
+  position_sizing_method?: PositionSizingMethod | null;
+  position_size_value?: number | null;
+  max_position_value?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  trailing_stop_enabled?: boolean;
+  trailing_stop_pct?: number | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface StrategyTemplateUpdate {
+  name?: string;
+  description?: string | null;
+  strategy_type?: string;
+  default_quantity?: number;
+  position_sizing_method?: PositionSizingMethod | null;
+  position_size_value?: number | null;
+  max_position_value?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  trailing_stop_enabled?: boolean;
+  trailing_stop_pct?: number | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface AutoTradeConfig {
+  id: string;
+  user_id: string;
+  category: string;
+  enabled: boolean;
+  confirmation_mode: string; // 'AUTO' | 'NOTIFY' | 'DISABLED'
+  strategy_template_id: string | null;
+  max_positions_per_day: number;
+  max_capital_per_day: number;
+  expiry_hours: number;
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence: string; // 'high' | 'medium' | 'low'
+  screener_source_type: string; // 'PRESET' | 'CUSTOM'
+  preset_category: string | null;
+  saved_screener_id: string | null;
+  run_time: string | null; // HH:MM format for scheduled run time
+  created_at: string;
+  updated_at: string;
+  template?: StrategyTemplate | null;
+}
+
+export interface AutoTradeConfigCreate {
+  category: string;
+  enabled?: boolean;
+  confirmation_mode?: string; // 'auto' | 'notify' | 'disabled'
+  strategy_template_id?: string | null;
+  max_positions_per_day?: number;
+  max_capital_per_day?: number;
+  expiry_hours?: number;
+  weight_technical?: number;
+  weight_fundamental?: number;
+  weight_sentiment?: number;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
+  screener_source_type?: string; // 'preset' | 'custom'
+  preset_category?: string | null;
+  saved_screener_id?: string | null;
+  run_time?: string | null; // HH:MM format
+}
+
+export interface AutoTradeConfigUpdate {
+  enabled?: boolean;
+  confirmation_mode?: string; // 'auto' | 'notify' | 'disabled'
+  strategy_template_id?: string | null;
+  max_positions_per_day?: number;
+  max_capital_per_day?: number;
+  expiry_hours?: number;
+  weight_technical?: number;
+  weight_fundamental?: number;
+  weight_sentiment?: number;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
+  screener_source_type?: string; // 'preset' | 'custom'
+  preset_category?: string | null;
+  saved_screener_id?: string | null;
+  run_time?: string | null; // HH:MM format
+}
+
+export interface WeightConfigUpdate {
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
+}
+
+export interface WeightConfigResponse {
+  category: string;
+  weight_technical: number;
+  weight_fundamental: number;
+  weight_sentiment: number;
+  min_confidence: string; // 'high' | 'medium' | 'low'
+  total_weight?: number;
+  preview_symbol?: string | null;
+  preview_scores?: Record<string, unknown> | null;
+}
+
+export interface PendingAutoTrade {
+  id: string;
+  user_id: string;
+  auto_trade_config_id: string;
+  category: string;
+  recommendation_date: string;
+  symbols: string[];
+  scores: {
+    technical_score?: number;
+    fundamental_score?: number;
+    sentiment_score?: number;
+    combined_score?: number;
+    confidence?: string;
+    direction?: string;
+    position_size_multiplier?: number;
+  } | null;
+  recommended_strategy_type: string;
+  suggested_params: Record<string, unknown> | null;
+  status: PendingTradeStatus;
+  created_strategy_id: string | null;
+  expires_at: string;
+  actioned_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PendingAutoTradeAction {
+  action: 'approve' | 'reject';
+  reason?: string | null;
+}
+
+export interface PendingAutoTradeListResponse {
+  pending_trades: PendingAutoTrade[];
+  total: number;
+  pending_count: number;
+}
+
+export interface AutoTradeConfigListResponse {
+  configs: AutoTradeConfig[];
+}
+
+export interface StrategyTemplateListResponse {
+  templates: StrategyTemplate[];
+}

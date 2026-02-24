@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap, BarChart3, Activity, Target, CheckCircle2, AlertCircle, Info, Brain } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpDown, TrendingUp, Eye, Bell, ShoppingCart, Plus, Download, ChevronDown, ChevronUp, Layers, Zap, BarChart3, Activity, Target, CheckCircle2, AlertCircle, Info, Brain, Bot, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -201,6 +202,19 @@ export function ScreenerResults({
                 <DropdownMenuItem onClick={exportToCsv}>
                   <Download className="h-4 w-4 mr-2" />
                   Export to CSV
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/screener/saved">
+                    <Bot className="h-4 w-4 mr-2" />
+                    Setup Auto-Trade
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings/auto-trade">
+                    <Settings2 className="h-4 w-4 mr-2" />
+                    Auto-Trade Settings
+                  </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

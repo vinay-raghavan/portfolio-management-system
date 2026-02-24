@@ -770,13 +770,38 @@ export interface ScreenerPresetsResponse {
   presets: ScreenerPresetInfo[];
 }
 
+export type RunFrequency = 'daily' | 'hourly' | 'manual';
+
 export interface CustomScreenerCreate {
   name: string;
   description?: string;
   universe?: string;
-  filters: FilterConfig[];
+  // Either preset or filters must be provided
+  preset?: string;
+  strictness?: StrictnessLevel;
+  filters?: FilterConfig[];
   min_score?: number;
   top_n?: number;
+  // Auto-trade settings
+  is_auto_trade_enabled?: boolean;
+  run_frequency?: RunFrequency;
+  run_time?: string;
+  strategy_template_id?: string;
+}
+
+export interface CustomScreenerUpdate {
+  name?: string;
+  description?: string;
+  universe?: string;
+  preset?: string;
+  strictness?: StrictnessLevel;
+  filters?: FilterConfig[];
+  min_score?: number;
+  top_n?: number;
+  is_auto_trade_enabled?: boolean;
+  run_frequency?: RunFrequency;
+  run_time?: string;
+  strategy_template_id?: string;
 }
 
 export interface CustomScreener {
@@ -784,12 +809,25 @@ export interface CustomScreener {
   name: string;
   description: string | null;
   universe: string;
-  filters: FilterConfig[];
+  preset: string | null;
+  strictness: string | null;
+  filters: FilterConfig[] | null;
   min_score: number;
   top_n: number;
   created_at: string;
   updated_at: string;
+  // Auto-trade fields
+  is_auto_trade_enabled: boolean;
+  run_frequency: string;
+  run_time: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  inferred_strategy_type: string | null;
+  strategy_template_id: string | null;
 }
+
+export type SignalDirection = 'long' | 'short' | 'neutral';
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'skip';
 
 export interface RecommendationItem {
   symbol: string;
@@ -802,6 +840,16 @@ export interface RecommendationItem {
   return_1d?: number | null;
   return_1w?: number | null;
   return_1m?: number | null;
+  // Multi-factor scoring (Section 2.6.11)
+  technical_score?: number | null;
+  fundamental_score?: number | null;
+  sentiment_score?: number | null;
+  combined_score?: number | null;
+  signal_direction?: SignalDirection | null;
+  confidence_level?: ConfidenceLevel | null;
+  recommended_strategy?: string | null;
+  position_size_multiplier?: number | null;
+  skip_reason?: string | null;
 }
 
 export interface CategoryRecommendations {
@@ -911,6 +959,16 @@ export const screenerApi = {
     api.delete(`/screener/custom/${id}`),
   runCustomScreener: (id: string) =>
     api.post<ScreenerRunResponse>(`/screener/custom/${id}/run`),
+
+  // Auto-trade screener operations
+  linkAutoTrade: (id: string, data: { run_frequency: RunFrequency; run_time?: string; strategy_template_id?: string }) =>
+    api.post<CustomScreener>(`/screener/custom/${id}/link-auto-trade`, data),
+  unlinkAutoTrade: (id: string) =>
+    api.post<{ id: string; name: string; is_auto_trade_enabled: boolean; message: string }>(`/screener/custom/${id}/unlink-auto-trade`),
+  runAutoTrade: (id: string) =>
+    api.post<{ status: string; screener_id: string; screener_name: string; passed_count: number; trades_created: number; pending_trades_created: number }>(`/screener/custom/${id}/run-auto-trade`),
+  inferScreenerStrategy: (id: string) =>
+    api.get<{ screener_id: string; screener_name: string; inferred_strategy_type: string; confidence: number; reasoning: string[]; suggested_params: Record<string, unknown> }>(`/screener/custom/${id}/infer-strategy`),
 
   // Recommendations
   getRecommendations: (date?: string) =>
@@ -1159,4 +1217,75 @@ export const reportsApi = {
     page_size?: number;
   }) =>
     api.get<ActivityLogListResponse>(`/activity/entity/${entityType}/${entityId}`, { params }),
+};
+
+// ============================================================================
+// Auto-Trade API
+// ============================================================================
+
+import type {
+  StrategyTemplate,
+  StrategyTemplateCreate,
+  StrategyTemplateUpdate,
+  StrategyTemplateListResponse,
+  AutoTradeConfig,
+  AutoTradeConfigCreate,
+  AutoTradeConfigUpdate,
+  AutoTradeConfigListResponse,
+  WeightConfigUpdate,
+  WeightConfigResponse,
+  PendingAutoTrade,
+  PendingAutoTradeAction,
+  PendingAutoTradeListResponse,
+} from '@/types';
+
+export const autoTradeApi = {
+  // Strategy Templates
+  getTemplates: () =>
+    api.get<StrategyTemplateListResponse>('/auto-trade/templates'),
+
+  getTemplate: (id: string) =>
+    api.get<StrategyTemplate>(`/auto-trade/templates/${id}`),
+
+  createTemplate: (data: StrategyTemplateCreate) =>
+    api.post<StrategyTemplate>('/auto-trade/templates', data),
+
+  updateTemplate: (id: string, data: StrategyTemplateUpdate) =>
+    api.patch<StrategyTemplate>(`/auto-trade/templates/${id}`, data),
+
+  deleteTemplate: (id: string) =>
+    api.delete<{ message: string }>(`/auto-trade/templates/${id}`),
+
+  // Auto-Trade Configs
+  getConfigs: () =>
+    api.get<AutoTradeConfigListResponse>('/auto-trade/configs'),
+
+  getConfig: (category: string) =>
+    api.get<AutoTradeConfig>(`/auto-trade/configs/${category}`),
+
+  createConfig: (data: AutoTradeConfigCreate) =>
+    api.post<AutoTradeConfig>('/auto-trade/configs', data),
+
+  updateConfig: (category: string, data: AutoTradeConfigUpdate) =>
+    api.patch<AutoTradeConfig>(`/auto-trade/configs/${category}`, data),
+
+  deleteConfig: (category: string) =>
+    api.delete<{ message: string }>(`/auto-trade/configs/${category}`),
+
+  // Weight Configuration
+  getWeights: (category: string) =>
+    api.get<WeightConfigResponse>(`/auto-trade/weights/${category}`),
+
+  updateWeights: (category: string, data: WeightConfigUpdate) =>
+    api.put<WeightConfigResponse>(`/auto-trade/weights/${category}`, data),
+
+  // Pending Auto-Trades
+  getPendingTrades: (status?: string) =>
+    api.get<PendingAutoTradeListResponse>('/auto-trade/pending', { params: { status_filter: status } }),
+
+  getPendingTrade: (id: string) =>
+    api.get<PendingAutoTrade>(`/auto-trade/pending/${id}`),
+
+  actionPendingTrade: (id: string, action: PendingAutoTradeAction) =>
+    api.post<PendingAutoTrade>(`/auto-trade/pending/${id}/action`, action),
 };

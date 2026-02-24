@@ -55,7 +55,7 @@ import { algoApi, portfolioApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, DSLStrategyBuilder } from '@/components/algo';
-import { FundsSummary } from '@/components/dashboard';
+import { FundsSummary, PendingAutoTradesPanel } from '@/components/dashboard';
 import { BrandedSpinner } from '@/components/shared';
 import type { AlgoStrategy, StrategyStatus } from '@/types';
 
@@ -426,6 +426,9 @@ export default function AlgoTradingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pending Auto-Trades */}
+      <PendingAutoTradesPanel />
 
       {/* P&L Dashboard with Unrealized Positions and Profit Booking */}
       <PnLDashboard />

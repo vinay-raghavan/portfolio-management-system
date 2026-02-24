@@ -337,6 +337,9 @@ class PositionTracker:
         if position.remaining_quantity <= 0:
             position.status = PositionStatus.CLOSED
             position.exit_quantity = position.entry_quantity
+
+            # Auto-remove from exit_only_symbols if position is fully closed
+            await self._cleanup_exit_only_symbol(strategy_id, symbol)
         else:
             position.status = PositionStatus.PARTIAL
             position.exit_quantity = (position.exit_quantity or 0) + close_qty
@@ -355,6 +358,31 @@ class PositionTracker:
             is_winner=is_winner,
             status=position.status.value,
         )
+
+    async def _cleanup_exit_only_symbol(self, strategy_id: str, symbol: str) -> None:
+        """Remove symbol from exit_only_symbols when its position is fully closed.
+
+        This is called automatically when a position reaches CLOSED status.
+        If the symbol was in exit_only_symbols (meaning it was a screener-dropped
+        symbol waiting for position close), it will be removed from the list.
+        """
+        # Fetch the strategy
+        result = await self.db.execute(select(UserStrategy).where(UserStrategy.id == strategy_id))
+        strategy = result.scalar_one_or_none()
+
+        if not strategy:
+            logger.warning(f"Strategy {strategy_id} not found for exit_only cleanup")
+            return
+
+        exit_only_symbols = strategy.exit_only_symbols or []
+        if symbol.upper() in [s.upper() for s in exit_only_symbols]:
+            # Remove the symbol (case-insensitive match)
+            updated_list = [s for s in exit_only_symbols if s.upper() != symbol.upper()]
+            strategy.exit_only_symbols = updated_list
+            logger.info(
+                f"Removed {symbol} from exit_only_symbols for strategy {strategy.name}. "
+                f"Remaining: {updated_list}"
+            )
 
     async def process_order_fill(
         self,

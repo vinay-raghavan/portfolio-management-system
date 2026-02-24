@@ -240,6 +240,8 @@ class ExecuteStrategyRequest(BaseModel):
     strategy_params: dict = {}
     timeframe: str = "1d"
     symbols: list[str] = []
+    # Exit-only symbols: only SELL signals allowed (for closing positions)
+    exit_only_symbols: list[str] = []
     position_sizing_method: str = "FIXED_QUANTITY"
     fixed_quantity: int = 1
     fixed_amount: float = 10000.0
@@ -284,6 +286,7 @@ async def execute_strategy_full(
             strategy_params=request.strategy_params,
             timeframe=request.timeframe,
             symbols=request.symbols,
+            exit_only_symbols=request.exit_only_symbols,
             position_sizing_method=PositionSizingMethod(request.position_sizing_method),
             fixed_quantity=request.fixed_quantity,
             fixed_amount=Decimal(str(request.fixed_amount)),
@@ -469,6 +472,9 @@ async def run_scheduled_strategies(
                     elif strategy.universe:
                         symbols = strategy.universe.symbols or []
 
+                    # Get exit-only symbols (symbols waiting to close positions)
+                    exit_only_symbols = strategy.exit_only_symbols or []
+
                     # Build strategy config
                     config = StrategyConfig(
                         id=strategy.id,
@@ -478,6 +484,7 @@ async def run_scheduled_strategies(
                         strategy_params=strategy.strategy_params or {},
                         timeframe=strategy.timeframe,
                         symbols=symbols,
+                        exit_only_symbols=exit_only_symbols,
                         position_sizing_method=strategy.position_sizing_method,
                         fixed_quantity=strategy.fixed_quantity,
                         fixed_amount=strategy.fixed_amount or Decimal("10000"),
@@ -702,6 +709,9 @@ async def execute_strategy_by_id(
             elif strategy.universe:
                 symbols = strategy.universe.symbols or []
 
+        # Get exit-only symbols (symbols waiting to close positions)
+        exit_only_symbols = strategy.exit_only_symbols or []
+
         # Build strategy config
         config = StrategyConfig(
             id=strategy.id,
@@ -711,6 +721,7 @@ async def execute_strategy_by_id(
             strategy_params=strategy.strategy_params or {},
             timeframe=strategy.timeframe,
             symbols=symbols,
+            exit_only_symbols=exit_only_symbols,
             position_sizing_method=strategy.position_sizing_method,
             fixed_quantity=strategy.fixed_quantity,
             fixed_amount=strategy.fixed_amount or Decimal("10000"),
