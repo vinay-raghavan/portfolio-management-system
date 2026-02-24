@@ -195,6 +195,8 @@ main                           # Production-ready code
 | 2 | 8-9 | `phase-2/live-safety` | Live trading safety features |
 | 2 | 10-11 | `phase-2/reporting-ledger` | Transaction ledger, gains tracking, API logging |
 | 2 | 11-12 | `phase-2/reports-frontend` | Reports UI: statement, gains, API logs, activity |
+| 2 | 12-13 | `phase-2/auto-trade-pipeline` | Recommendation → Algo automation, templates, pending trades |
+| 2 | 13-14 | `phase-2/algo-time-window` | Trading time window for strategies (from/to time) |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
@@ -3311,6 +3313,2172 @@ Landing page with summary of all reports.
 
 **Tasks:**
 - [x] Create `frontend/src/app/(dashboard)/reports/page.tsx`
+
+### 2.6 Recommendation Auto-Trade Pipeline ✅
+> 🌿 **Branch:** `phase-2/auto-trade-pipeline`
+> **Status:** ✅ Complete (2026-02-24) - Core pipeline with multi-factor scoring and exit-only symbol management
+
+**Goal**: Automate the flow from screener recommendations to algo execution with minimal user intervention. User configures preferences once, then just confirms/skips daily picks.
+
+#### Auto-Trade Pipeline Architecture
+
+```mermaid
+flowchart TB
+    subgraph Config["⚙️ USER CONFIGURATION (One-time Setup)"]
+        direction LR
+        UC1[Auto-Trade Settings<br/>per category]
+        UC2[Strategy Templates<br/>preset params per style]
+        UC3[Risk Limits<br/>per auto-trade profile]
+        UC4[Confirmation Mode<br/>auto/notify/disabled]
+    end
+
+    subgraph Pipeline["🔄 DAILY PIPELINE"]
+        direction TB
+        PP1[Celery: generate_daily_recommendations]
+        PP2[New task: process_auto_trades]
+        PP3[For each user with<br/>auto-trade enabled]
+        PP4[Match recommendations<br/>to user categories]
+        PP5[Create pending strategy<br/>from template]
+
+        PP1 --> PP2 --> PP3 --> PP4 --> PP5
+    end
+
+    subgraph Confirmation["✅ CONFIRMATION LAYER"]
+        direction TB
+        CM1{Confirmation<br/>Mode?}
+        CM2[Auto-Execute:<br/>Activate immediately]
+        CM3[Notify-First:<br/>Push notification +<br/>await user action]
+        CM4[Queue pending<br/>strategies]
+        CM5[User reviews in<br/>Pending Trades UI]
+        CM6[One-click approve<br/>or reject]
+
+        CM1 -->|auto| CM2
+        CM1 -->|notify| CM3 --> CM4 --> CM5 --> CM6
+    end
+
+    subgraph Execution["💹 ALGO EXECUTION"]
+        EX1[Strategy activated]
+        EX2[Position sizing<br/>per user template]
+        EX3[Risk checks<br/>per profile]
+        EX4[Execute via<br/>existing algo engine]
+    end
+
+    Config --> Pipeline
+    Pipeline --> Confirmation
+    CM2 --> Execution
+    CM6 -->|Approved| Execution
+
+    style Config fill:#e3f2fd,stroke:#1976d2
+    style Pipeline fill:#fff3e0,stroke:#ff9800
+    style Confirmation fill:#f3e5f5,stroke:#9c27b0
+    style Execution fill:#e8f5e9,stroke:#4caf50
+```
+
+#### 2.6.1 Database Models
+
+**Model: `AutoTradeConfig`** - Per-user, per-category auto-trade settings
+```python
+class ConfirmationMode(str, Enum):
+    AUTO = "auto"           # Execute immediately without confirmation
+    NOTIFY = "notify"       # Create pending, notify user, await confirmation
+    DISABLED = "disabled"   # Don't auto-trade this category
+
+class AutoTradeConfig(Base):
+    __tablename__ = "auto_trade_configs"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    category: str                    # momentum, breakout, value, sector
+    enabled: bool = False
+    confirmation_mode: ConfirmationMode = NOTIFY
+
+    # Link to strategy template for execution params
+    strategy_template_id: UUID | None (FK strategy_templates.id)
+
+    # Daily limits for this category
+    max_positions_per_day: int = 3
+    max_capital_per_day: Decimal = 50000.00
+
+    # Auto-expiry for pending trades
+    expiry_hours: int = 4            # Auto-reject if not confirmed within N hours
+
+    created_at: DateTime
+    updated_at: DateTime
+```
+
+**Model: `StrategyTemplate`** - Reusable strategy configurations
+```python
+class StrategyTemplate(Base):
+    __tablename__ = "strategy_templates"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    name: str                        # "My Momentum Setup", "Conservative Swing"
+    description: str | None
+
+    # Strategy execution params (same as UserStrategy)
+    strategy_type: str               # vwap_momentum, breakout, etc.
+    strategy_params: JSON            # Strategy-specific params
+
+    # Position sizing
+    position_sizing_method: PositionSizingMethod
+    position_size_value: Decimal = 5.00     # % or fixed amount
+    max_position_value: Decimal | None
+
+    # Risk limits
+    stop_loss_percent: Decimal = 2.00
+    take_profit_percent: Decimal = 4.00
+    max_daily_loss: Decimal = 5000.00
+    max_consecutive_losses: int = 3
+
+    # Product type
+    product_type: str = "CNC"        # CNC/MIS/MTF
+
+    # Trading window (new feature!)
+    trading_start_time: Time | None  # e.g., 09:45:00
+    trading_end_time: Time | None    # e.g., 15:15:00
+
+    is_default: bool = False         # Default template for category
+    created_at: DateTime
+    updated_at: DateTime
+```
+
+**Model: `PendingAutoTrade`** - Queue for user confirmation
+```python
+class PendingTradeStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    EXECUTED = "executed"
+
+class PendingAutoTrade(Base):
+    __tablename__ = "pending_auto_trades"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    auto_trade_config_id: UUID (FK auto_trade_configs.id)
+
+    # Source recommendation
+    category: str                    # momentum, breakout, etc.
+    recommendation_date: Date
+    symbols: JSON                    # List of recommended symbols
+
+    # Inferred strategy details
+    recommended_strategy_type: str
+    suggested_params: JSON
+
+    # Status
+    status: PendingTradeStatus = PENDING
+
+    # If executed, link to created strategy
+    created_strategy_id: UUID | None (FK user_strategies.id)
+
+    # Timing
+    created_at: DateTime
+    expires_at: DateTime
+    actioned_at: DateTime | None     # When user approved/rejected
+    executed_at: DateTime | None     # When strategy was created & activated
+
+    # User action details
+    action_source: str | None        # "ui", "api", "auto_expire"
+```
+
+**Tasks:**
+- [x] Create `AutoTradeConfig` model in `backend/app/modules/algo/models.py`
+- [x] Create `StrategyTemplate` model in `backend/app/modules/algo/models.py`
+- [x] Create `PendingAutoTrade` model in `backend/app/modules/algo/models.py`
+- [x] Create Alembic migration for new tables
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add auto-trade pipeline database models`
+
+#### 2.6.2 Auto-Trade Service
+
+**Service: `AutoTradeService`**
+```python
+class AutoTradeService:
+    """Service for managing auto-trade configurations and execution."""
+
+    async def get_user_configs(self, user_id: str) -> list[AutoTradeConfig]:
+        """Get all auto-trade configs for a user."""
+
+    async def update_config(
+        self, user_id: str, category: str, data: AutoTradeConfigUpdate
+    ) -> AutoTradeConfig:
+        """Create or update auto-trade config for a category."""
+
+    async def process_recommendations(
+        self, category: str, symbols: list[str], recommendation_date: date
+    ) -> dict:
+        """
+        Process new recommendations for all users with auto-trade enabled.
+        Called by Celery task after daily recommendations are generated.
+
+        Returns: {user_id: {status, pending_trade_id or strategy_id}}
+        """
+
+    async def create_pending_trade(
+        self,
+        user_id: str,
+        config: AutoTradeConfig,
+        symbols: list[str],
+        recommendation_date: date,
+    ) -> PendingAutoTrade:
+        """Create a pending auto-trade for user confirmation."""
+
+    async def approve_pending_trade(
+        self, user_id: str, pending_id: str
+    ) -> UserStrategy:
+        """Approve pending trade and create/activate strategy."""
+
+    async def reject_pending_trade(
+        self, user_id: str, pending_id: str, reason: str | None = None
+    ) -> PendingAutoTrade:
+        """Reject pending trade."""
+
+    async def expire_pending_trades(self) -> int:
+        """Expire pending trades past their expiry time. Returns count."""
+
+    async def get_pending_trades(
+        self, user_id: str, status: PendingTradeStatus | None = None
+    ) -> list[PendingAutoTrade]:
+        """Get pending trades for a user."""
+```
+
+**Tasks:**
+- [x] Create `AutoTradeService` in `backend/app/modules/algo/auto_trade_service.py`
+- [x] Implement `get_user_configs()` and `update_config()`
+- [x] Implement `process_recommendations()` - core pipeline logic with multi-factor filtering
+- [x] Implement `create_pending_trade()` with strategy inference
+- [x] Implement `approve_pending_trade()` - creates UserStrategy from template
+- [x] Implement `reject_pending_trade()` and `expire_pending_trades()`
+- [x] Add unit tests for AutoTradeService (10 tests in test_auto_trade_service.py)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): implement AutoTradeService for pipeline orchestration`
+
+#### 2.6.3 Strategy Template Service
+
+**Service: `StrategyTemplateService`**
+```python
+class StrategyTemplateService:
+    """Service for managing reusable strategy templates."""
+
+    async def create_template(
+        self, user_id: str, data: StrategyTemplateCreate
+    ) -> StrategyTemplate:
+        """Create a new strategy template."""
+
+    async def get_templates(self, user_id: str) -> list[StrategyTemplate]:
+        """Get all templates for a user."""
+
+    async def get_template(
+        self, user_id: str, template_id: str
+    ) -> StrategyTemplate | None:
+        """Get a specific template."""
+
+    async def update_template(
+        self, user_id: str, template_id: str, data: StrategyTemplateUpdate
+    ) -> StrategyTemplate:
+        """Update a template."""
+
+    async def delete_template(self, user_id: str, template_id: str) -> bool:
+        """Delete a template."""
+
+    async def create_strategy_from_template(
+        self,
+        user_id: str,
+        template_id: str,
+        symbols: list[str],
+        name: str,
+        auto_activate: bool = False,
+    ) -> UserStrategy:
+        """Create a UserStrategy from a template with given symbols."""
+
+    async def get_default_for_category(
+        self, user_id: str, category: str
+    ) -> StrategyTemplate | None:
+        """Get the default template for a recommendation category."""
+```
+
+**Tasks:**
+- [x] Create `StrategyTemplateService` in `backend/app/modules/algo/auto_trade_service.py` (combined with AutoTradeService)
+- [x] Implement CRUD operations for templates
+- [x] Implement `create_strategy_from_template()` - converts template to active strategy
+- [x] Implement `get_default_for_category()` for auto-trade pipeline
+- [x] Add unit tests for StrategyTemplateService
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): implement StrategyTemplateService for reusable configs`
+
+#### 2.6.4 API Endpoints
+
+**Router: Auto-Trade Configuration**
+```python
+# backend/app/modules/algo/auto_trade_router.py
+
+@router.get("/auto-trade/configs")
+async def get_auto_trade_configs(user_id: str) -> list[AutoTradeConfigResponse]:
+    """Get all auto-trade configurations for the user."""
+
+@router.put("/auto-trade/configs/{category}")
+async def update_auto_trade_config(
+    category: str, data: AutoTradeConfigUpdate, user_id: str
+) -> AutoTradeConfigResponse:
+    """Update auto-trade config for a category."""
+
+@router.get("/auto-trade/pending")
+async def get_pending_trades(
+    user_id: str, status: PendingTradeStatus | None = None
+) -> list[PendingAutoTradeResponse]:
+    """Get pending auto-trades awaiting confirmation."""
+
+@router.post("/auto-trade/pending/{pending_id}/approve")
+async def approve_pending_trade(
+    pending_id: str, user_id: str
+) -> ApproveTradeResponse:
+    """Approve a pending auto-trade, creating and activating the strategy."""
+
+@router.post("/auto-trade/pending/{pending_id}/reject")
+async def reject_pending_trade(
+    pending_id: str, reason: str | None, user_id: str
+) -> PendingAutoTradeResponse:
+    """Reject a pending auto-trade."""
+
+@router.post("/auto-trade/pending/approve-all")
+async def approve_all_pending(user_id: str) -> BulkApproveResponse:
+    """Approve all pending auto-trades."""
+
+@router.post("/auto-trade/pending/reject-all")
+async def reject_all_pending(user_id: str) -> BulkRejectResponse:
+    """Reject all pending auto-trades."""
+```
+
+**Router: Strategy Templates**
+```python
+@router.get("/templates")
+async def get_templates(user_id: str) -> list[StrategyTemplateResponse]:
+    """Get all strategy templates for the user."""
+
+@router.post("/templates")
+async def create_template(
+    data: StrategyTemplateCreate, user_id: str
+) -> StrategyTemplateResponse:
+    """Create a new strategy template."""
+
+@router.get("/templates/{template_id}")
+async def get_template(
+    template_id: str, user_id: str
+) -> StrategyTemplateResponse:
+    """Get a specific template."""
+
+@router.put("/templates/{template_id}")
+async def update_template(
+    template_id: str, data: StrategyTemplateUpdate, user_id: str
+) -> StrategyTemplateResponse:
+    """Update a template."""
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user_id: str) -> dict:
+    """Delete a template."""
+
+@router.post("/templates/{template_id}/create-strategy")
+async def create_strategy_from_template(
+    template_id: str,
+    data: CreateFromTemplateRequest,
+    user_id: str,
+) -> UserStrategyResponse:
+    """Create a strategy from a template."""
+```
+
+**Tasks:**
+- [x] Create `backend/app/modules/algo/auto_trade_router.py`
+- [x] Create template endpoints in auto_trade_router.py (combined with auto-trade router)
+- [x] Create Pydantic schemas for all request/response types
+- [x] Register routers in main app (`/auto-trade` prefix)
+- [ ] Add API tests for all endpoints
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add API endpoints for auto-trade and templates`
+
+#### 2.6.5 Celery Tasks
+
+**Task: `process_auto_trades`**
+```python
+@celery_app.task(bind=True, name="worker.tasks.algo.process_auto_trades")
+def process_auto_trades(self, category: str, symbols: list[str], date: str) -> dict:
+    """
+    Process auto-trades after daily recommendations are generated.
+
+    Called by generate_daily_recommendations task after storing recommendations.
+
+    For each user with auto-trade enabled for this category:
+    1. Check daily limits (positions, capital)
+    2. If confirmation_mode == AUTO:
+       - Create strategy from template immediately
+       - Activate strategy
+    3. If confirmation_mode == NOTIFY:
+       - Create pending auto-trade
+       - Send notification to user
+
+    Returns: Summary of processing results
+    """
+```
+
+**Task: `expire_pending_auto_trades`**
+```python
+@celery_app.task(bind=True, name="worker.tasks.algo.expire_pending_auto_trades")
+def expire_pending_auto_trades(self) -> dict:
+    """
+    Expire pending auto-trades that have passed their expiry time.
+
+    Scheduled to run every hour.
+
+    Returns: {expired_count: int, user_notifications: list}
+    """
+```
+
+**Tasks:**
+- [x] Create `process_auto_trades` task in `worker/worker/tasks/algo.py`
+- [x] Create `expire_pending_auto_trades` task
+- [x] Update `generate_daily_recommendations` to call `process_auto_trades` after completion
+- [x] Add Celery Beat schedule for `expire_pending_auto_trades` (hourly)
+- [ ] Add integration tests for Celery tasks
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(worker): add Celery tasks for auto-trade pipeline`
+
+#### 2.6.6 Frontend: Auto-Trade Settings
+
+**Page: `/settings/auto-trade`**
+
+**Features:**
+- Toggle auto-trade per category (momentum, breakout, value, sector)
+- Confirmation mode selector (Auto/Notify/Disabled)
+- Link strategy template per category
+- Daily limits configuration
+- Expiry hours setting
+
+**Components:**
+- `AutoTradeConfigCard` - Card for each category
+- `TemplateSelector` - Dropdown to select/create template
+- `LimitsForm` - Form for daily limits
+
+**Tasks:**
+- [x] Create `frontend/src/app/(dashboard)/settings/auto-trade/page.tsx`
+- [x] Create `AutoTradeConfigCard` component
+- [x] Create `TemplateSelector` component (integrated in AutoTradeConfigCard)
+- [x] Add API functions in `frontend/src/lib/api.ts`
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add auto-trade settings page` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
+
+#### 2.6.7 Frontend: Strategy Templates
+
+**Page: `/algo/templates`**
+
+**Features:**
+- List of saved templates
+- Create new template form
+- Edit template (modal or page)
+- Delete template with confirmation
+- Set as default for category
+- Duplicate template
+
+**Components:**
+- `TemplateCard` - Display template summary
+- `TemplateForm` - Create/edit template form
+- `TemplatePreview` - Preview what strategy will look like
+
+**Tasks:**
+- [x] Create `frontend/src/app/(dashboard)/algo/templates/page.tsx`
+- [x] Create `TemplateCard` component
+- [x] Create `TemplateForm` component
+- [x] Add API functions for templates
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add strategy templates management page` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
+
+#### 2.6.8 Frontend: Pending Auto-Trades Panel
+
+**Component: `PendingAutoTradesPanel`**
+
+Shows in Dashboard or as a notification drawer panel.
+
+**Features:**
+- List of pending auto-trades awaiting confirmation
+- Show category, symbols, recommended strategy
+- Expiry countdown timer
+- Approve / Reject buttons per item
+- Bulk approve all / reject all
+- Click to expand and see full strategy details
+- Empty state when no pending trades
+
+**Tasks:**
+- [x] Create `PendingAutoTradesPanel` component
+- [x] Add to Dashboard page (collapsible section)
+- [x] Add notification badge for pending count
+- [x] Create `PendingTradeCard` component (integrated in PendingAutoTradesPanel)
+- [x] Implement approve/reject API calls
+- [x] Add toast notifications for actions
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add pending auto-trades panel` (combined in feat(frontend): add auto-trade settings, templates, and pending trades panel)
+
+#### 2.6.9 Notifications Integration
+
+**Tasks:**
+- [x] Add notification type `AUTO_TRADE_PENDING` for new pending trades
+- [x] Add notification type `AUTO_TRADE_EXECUTED` for auto-executed trades
+- [x] Add notification type `AUTO_TRADE_EXPIRED` for expired pending trades
+- [x] Add notification type `AUTO_TRADE_APPROVED` for approved pending trades
+- [x] Add notification type `AUTO_TRADE_REJECTED` for rejected pending trades
+- [x] Add ActivityType enums for auto-trade events
+- [x] Add notification methods to `AlgoNotificationService`
+- [x] Integrate notifications with `PendingAutoTradeService` (wired up in create/approve/reject/expire methods)
+- [x] Include action buttons in notification UI (Frontend) - added `PendingTradeActions` to NotificationBell.tsx
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(notifications): add auto-trade notification types`
+
+#### 2.6.10 Testing & Deployment
+
+**Tasks:**
+- [x] Write unit tests for AutoTradeService (10 tests in test_auto_trade_service.py)
+- [x] Write unit tests for StrategyTemplateService (3 tests)
+- [ ] Write integration tests for auto-trade pipeline flow
+- [ ] Write E2E tests for frontend auto-trade settings
+- [ ] Run full CI suite:
+  ```bash
+  # Backend
+  uv run ruff check
+  uv run ruff format
+  uv run pytest
+  uv run bandit -r backend/
+
+  # Frontend
+  npm audit
+  npm run lint
+  npm run build
+  ```
+- [ ] Build containers: `podman-compose build`
+- [ ] Deploy to staging: `podman-compose up -d`
+- [ ] Verify functionality in staging environment
+- [ ] Commit: `test(algo): add comprehensive tests for auto-trade pipeline`
+
+#### 2.6.11 Multi-Factor Integration (Tech + Fundamental + Sentiment)
+
+**Goal**: Wire together existing components to create a unified multi-factor scoring system for daily recommendations. Currently, `generate_daily_recommendations` uses only technical screeners, but we have fundamental analysis and news sentiment services that should be integrated.
+
+**Current State (Disconnected):**
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Screener (Technical Only) ─────────────> Daily Recommendations     │
+│                                                                     │
+│  RecommendationService (Tech + Fund) ───> Research Page (separate)  │
+│                                                                     │
+│  News Sentiment Analyzer ───────────────> News Page (standalone)    │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Target State (Unified):**
+```mermaid
+flowchart TB
+    subgraph Existing["📦 EXISTING COMPONENTS"]
+        E1[StockScreener<br/>screener/screener.py]
+        E2[RecommendationService<br/>research/recommendation_service.py]
+        E3[KeywordSentimentAnalyzer<br/>shared/providers/news/sentiment.py]
+        E4[YahooNewsProvider<br/>GoogleNewsRSSProvider]
+    end
+
+    subgraph NewService["🆕 MULTI-FACTOR SCORER"]
+        MF1[MultiFactorScorer]
+        MF2[get_technical_score]
+        MF3[get_fundamental_score]
+        MF4[get_sentiment_score]
+        MF5[calculate_combined_score]
+    end
+
+    subgraph Output["📤 ENHANCED OUTPUT"]
+        O1[Daily Recommendations<br/>with multi-factor scores]
+        O2[Strategy Selection<br/>based on signal profile]
+        O3[Position Direction<br/>long/short inference]
+        O4[Confidence Score<br/>for position sizing]
+    end
+
+    E1 --> MF2
+    E2 --> MF3
+    E3 & E4 --> MF4
+    MF2 & MF3 & MF4 --> MF5
+    MF5 --> O1 & O2 & O3 & O4
+
+    style Existing fill:#e3f2fd,stroke:#1976d2
+    style NewService fill:#fff3e0,stroke:#ff9800
+    style Output fill:#e8f5e9,stroke:#4caf50
+```
+
+**Existing Components to Leverage:**
+
+| Component | Location | What It Provides |
+|-----------|----------|------------------|
+| `StockScreener` | `backend/app/modules/screener/screener.py` | Technical scores (momentum, breakout, MA, volume) |
+| `RecommendationService.calculate_fundamental_score()` | `backend/app/modules/research/recommendation_service.py` | Fundamental scores (PE, PB, ROE, debt, margins) |
+| `KeywordSentimentAnalyzer` | `shared/shared/providers/news/sentiment.py` | Sentiment scores (-1 to +1) |
+| `YahooNewsProvider` / `GoogleNewsRSSProvider` | `shared/shared/providers/news/` | News articles with sentiment |
+
+##### 2.6.11.1 Create MultiFactorScorer Service
+
+**Service: `MultiFactorScorer`**
+```python
+# backend/app/modules/algo/multi_factor_scorer.py
+
+from decimal import Decimal
+from dataclasses import dataclass
+from enum import Enum
+
+class SignalDirection(str, Enum):
+    LONG = "long"
+    SHORT = "short"
+    NEUTRAL = "neutral"
+
+class ConfidenceLevel(str, Enum):
+    HIGH = "high"       # 80+ combined score
+    MEDIUM = "medium"   # 60-80 combined score
+    LOW = "low"         # 40-60 combined score
+    SKIP = "skip"       # Below 40 or conflicting signals
+
+@dataclass
+class MultiFactorScore:
+    symbol: str
+    technical_score: float          # 0-100 from screener
+    fundamental_score: float        # 0-100 from RecommendationService
+    sentiment_score: float          # -100 to +100 (scaled from -1 to 1)
+    combined_score: float           # Weighted average
+    direction: SignalDirection      # Inferred from signals
+    confidence: ConfidenceLevel     # Based on score alignment
+    recommended_strategy: str       # Inferred strategy type
+    position_size_multiplier: float # 0.25 to 1.0 based on confidence
+    reasons: list[str]              # Explanation of scoring
+    skip_reason: str | None         # If confidence == SKIP
+
+
+class MultiFactorScorer:
+    """Combines technical, fundamental, and sentiment analysis."""
+
+    def __init__(
+        self,
+        db: AsyncSession,
+        screener_service: ScreenerService,
+        recommendation_service: RecommendationService,
+        research_service: ResearchService,  # For news
+        weights: dict | None = None,
+    ):
+        self.db = db
+        self.screener_service = screener_service
+        self.recommendation_service = recommendation_service
+        self.research_service = research_service
+
+        # Default weights (customizable per user/category)
+        self.weights = weights or {
+            "technical": 0.40,
+            "fundamental": 0.40,
+            "sentiment": 0.20,
+        }
+
+    async def score_symbol(
+        self,
+        symbol: str,
+        category: str,  # momentum, breakout, value, sector
+        technical_data: dict | None = None,  # Pre-computed from screener
+    ) -> MultiFactorScore:
+        """Calculate multi-factor score for a single symbol."""
+
+        # 1. Technical score (from screener or fetch)
+        tech_score = await self._get_technical_score(symbol, category, technical_data)
+
+        # 2. Fundamental score (from RecommendationService)
+        fund_score, fund_reasons = await self._get_fundamental_score(symbol)
+
+        # 3. Sentiment score (from news providers)
+        sent_score, sent_reasons = await self._get_sentiment_score(symbol)
+
+        # 4. Calculate weighted combined score
+        combined = (
+            tech_score * self.weights["technical"] +
+            fund_score * self.weights["fundamental"] +
+            ((sent_score + 100) / 2) * self.weights["sentiment"]  # Normalize -100,100 to 0,100
+        )
+
+        # 5. Infer direction based on signals
+        direction = self._infer_direction(category, tech_score, fund_score, sent_score)
+
+        # 6. Determine confidence level
+        confidence = self._calculate_confidence(tech_score, fund_score, sent_score, direction)
+
+        # 7. Recommend strategy type
+        strategy = self._recommend_strategy(category, direction, tech_score, sent_score)
+
+        # 8. Position size multiplier based on confidence
+        size_mult = self._get_size_multiplier(confidence)
+
+        return MultiFactorScore(
+            symbol=symbol,
+            technical_score=tech_score,
+            fundamental_score=fund_score,
+            sentiment_score=sent_score,
+            combined_score=combined,
+            direction=direction,
+            confidence=confidence,
+            recommended_strategy=strategy,
+            position_size_multiplier=size_mult,
+            reasons=fund_reasons + sent_reasons,
+            skip_reason=self._get_skip_reason(confidence, tech_score, fund_score, sent_score),
+        )
+
+    async def score_recommendations(
+        self,
+        category: str,
+        symbols: list[str],
+        screener_results: list[dict],
+    ) -> list[MultiFactorScore]:
+        """Score all recommendations from a screener run."""
+
+        # Build lookup from screener results
+        tech_data = {r["symbol"]: r for r in screener_results}
+
+        scores = []
+        for symbol in symbols:
+            score = await self.score_symbol(symbol, category, tech_data.get(symbol))
+            scores.append(score)
+
+        # Sort by combined score, filter out SKIP
+        scores.sort(key=lambda s: s.combined_score, reverse=True)
+        return scores
+
+    def _infer_direction(
+        self,
+        category: str,
+        tech: float,
+        fund: float,
+        sent: float
+    ) -> SignalDirection:
+        """Infer long/short/neutral based on signal alignment."""
+
+        # Strong bullish alignment
+        if tech >= 60 and fund >= 50 and sent > 20:
+            return SignalDirection.LONG
+
+        # Strong bearish alignment (for short-capable strategies)
+        if tech <= 40 and sent < -30:
+            return SignalDirection.SHORT
+
+        # Value/pullback with good fundamentals but oversold
+        if category == "value" and fund >= 60 and tech <= 40:
+            return SignalDirection.LONG  # Buy the dip
+
+        # Mixed signals
+        return SignalDirection.NEUTRAL
+
+    def _calculate_confidence(
+        self,
+        tech: float,
+        fund: float,
+        sent: float,
+        direction: SignalDirection,
+    ) -> ConfidenceLevel:
+        """Calculate confidence based on signal alignment."""
+
+        # Check for conflicting signals (red flag)
+        if direction == SignalDirection.LONG and sent < -40:
+            return ConfidenceLevel.SKIP  # Bullish tech but very bearish news
+
+        if direction == SignalDirection.SHORT and fund >= 70:
+            return ConfidenceLevel.SKIP  # Bearish signals but great fundamentals
+
+        # Calculate alignment score
+        combined = (tech + fund + (sent + 100) / 2) / 3
+
+        if combined >= 75:
+            return ConfidenceLevel.HIGH
+        elif combined >= 55:
+            return ConfidenceLevel.MEDIUM
+        elif combined >= 40:
+            return ConfidenceLevel.LOW
+        else:
+            return ConfidenceLevel.SKIP
+
+    def _recommend_strategy(
+        self,
+        category: str,
+        direction: SignalDirection,
+        tech: float,
+        sent: float,
+    ) -> str:
+        """Recommend strategy type based on signals."""
+
+        if category == "momentum" and direction == SignalDirection.LONG:
+            return "trend_following" if sent > 0 else "momentum_pullback"
+
+        if category == "breakout":
+            return "breakout_continuation" if tech >= 70 else "breakout_retest"
+
+        if category == "value":
+            return "mean_reversion" if sent < 0 else "value_momentum"
+
+        if category == "sector":
+            return "sector_rotation"
+
+        return "balanced"  # Default
+
+    def _get_size_multiplier(self, confidence: ConfidenceLevel) -> float:
+        """Position size multiplier based on confidence."""
+        return {
+            ConfidenceLevel.HIGH: 1.0,
+            ConfidenceLevel.MEDIUM: 0.7,
+            ConfidenceLevel.LOW: 0.4,
+            ConfidenceLevel.SKIP: 0.0,
+        }[confidence]
+```
+
+**Tasks:**
+- [x] Create `MultiFactorScorer` in `backend/app/modules/algo/multi_factor_scorer.py`
+- [x] Implement `_get_technical_score()` using existing screener results
+- [x] Implement `_get_fundamental_score()` using `RecommendationService.calculate_fundamental_score()`
+- [x] Implement `_get_sentiment_score()` using `ResearchService.get_news()` and sentiment aggregation
+- [x] Implement direction inference logic (`_infer_direction()`)
+- [x] Implement confidence calculation (`_calculate_confidence()`)
+- [x] Implement strategy recommendation (`_recommend_strategy()`)
+- [x] Add unit tests for MultiFactorScorer (15 tests in test_multi_factor_scorer.py)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): implement MultiFactorScorer service`
+
+##### 2.6.11.2 Update Daily Recommendations Task
+
+**Update `generate_daily_recommendations` to use multi-factor scoring:**
+
+```python
+# worker/worker/tasks/screener.py
+
+@celery_app.task(bind=True, name="worker.tasks.screener.generate_daily_recommendations")
+def generate_daily_recommendations(self) -> dict:
+    """Generate daily stock recommendations using multi-factor analysis.
+
+    Enhanced flow:
+    1. Run technical screeners (momentum, breakout, value, sector)
+    2. For each result, enrich with fundamental + sentiment scores
+    3. Re-rank by combined multi-factor score
+    4. Store enhanced recommendations with all scores
+    """
+
+    for preset in presets:
+        # Step 1: Run technical screener (existing)
+        screener_results = _run_screener_sync(...)
+
+        # Step 2: NEW - Enrich with multi-factor scores
+        symbols = [r["symbol"] for r in screener_results]
+        multi_factor_scores = _enrich_with_multi_factor(
+            category=category,
+            symbols=symbols,
+            screener_results=screener_results,
+        )
+
+        # Step 3: Filter and re-rank
+        enhanced_results = []
+        for mf_score in multi_factor_scores:
+            if mf_score.confidence == ConfidenceLevel.SKIP:
+                continue  # Filter out low confidence
+
+            enhanced_results.append({
+                "symbol": mf_score.symbol,
+                "score": mf_score.combined_score,  # Use combined score
+                "technical_score": mf_score.technical_score,
+                "fundamental_score": mf_score.fundamental_score,
+                "sentiment_score": mf_score.sentiment_score,
+                "direction": mf_score.direction.value,
+                "confidence": mf_score.confidence.value,
+                "recommended_strategy": mf_score.recommended_strategy,
+                "position_size_multiplier": mf_score.position_size_multiplier,
+                "reasons": mf_score.reasons,
+            })
+
+        # Step 4: Store enhanced recommendations
+        _store_recommendations(today, category, enhanced_results)
+```
+
+**Tasks:**
+- [x] Update `generate_daily_recommendations` to call `MultiFactorScorer` (integrated via /recommendations/store endpoint)
+- [x] Add helper function `_enrich_with_multi_factor()` in screener tasks (N/A - scoring in backend)
+- [x] Update `DailyRecommendation` model to store additional fields:
+  - `technical_score`, `fundamental_score`, `sentiment_score`
+  - `direction`, `confidence`, `recommended_strategy`
+  - `position_size_multiplier`
+- [x] Create Alembic migration for new `DailyRecommendation` columns (20260223_1200_add_multi_factor_scoring_fields.py)
+- [x] Update `_store_recommendations()` to save enhanced data (in screener/router.py)
+- [x] Add integration tests for enhanced recommendation flow (25 unit tests passing)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): integrate multi-factor scoring into daily recommendations`
+
+##### 2.6.11.3 Update AutoTradeService Integration
+
+**Connect multi-factor scores to auto-trade pipeline:**
+
+```python
+# backend/app/modules/algo/auto_trade_service.py
+
+class AutoTradeService:
+    async def process_recommendations(
+        self, category: str, symbols: list[str], recommendation_date: date
+    ) -> dict:
+        """Process recommendations using multi-factor scores."""
+
+        # Get enhanced recommendations with multi-factor scores
+        recommendations = await self._get_enhanced_recommendations(
+            category, recommendation_date
+        )
+
+        for user_id, config in users_with_auto_trade.items():
+            for rec in recommendations:
+                # Skip if confidence too low for user's settings
+                if not self._meets_confidence_threshold(rec, config):
+                    continue
+
+                # Use recommended strategy from multi-factor analysis
+                strategy_type = rec.get("recommended_strategy")
+
+                # Adjust position size based on confidence
+                position_multiplier = rec.get("position_size_multiplier", 1.0)
+
+                # Create pending trade with enhanced data
+                await self.create_pending_trade(
+                    user_id=user_id,
+                    config=config,
+                    symbol=rec["symbol"],
+                    direction=rec.get("direction", "long"),
+                    strategy_type=strategy_type,
+                    position_multiplier=position_multiplier,
+                    scores={
+                        "technical": rec.get("technical_score"),
+                        "fundamental": rec.get("fundamental_score"),
+                        "sentiment": rec.get("sentiment_score"),
+                        "combined": rec.get("score"),
+                    },
+                )
+```
+
+**Tasks:**
+- [x] Update `AutoTradeService.process_recommendations()` to use multi-factor data (fetches enhanced recommendations, applies filtering)
+- [x] Add confidence threshold setting to `AutoTradeConfig` model (`min_confidence` field)
+- [x] Update `PendingAutoTrade` model to store multi-factor scores (`technical_score`, `fundamental_score`, `sentiment_score`, `combined_score`, `confidence_level`)
+- [x] Implement `_meets_confidence_threshold()` method in `AutoTradeService`
+- [x] Use `position_size_multiplier` when creating strategies from templates
+- [x] Add tests for confidence-based filtering (15 tests in test_multi_factor_scorer.py)
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): connect multi-factor scores to auto-trade pipeline`
+
+##### 2.6.11.4 Frontend: Multi-Factor Score Display
+
+**Update recommendation cards to show multi-factor breakdown:**
+
+**Features:**
+- Score breakdown chart (bar chart: Tech / Fund / Sentiment)
+- Direction badge (LONG 🟢 / SHORT 🔴 / NEUTRAL ⚪)
+- Confidence indicator (HIGH ⭐⭐⭐ / MEDIUM ⭐⭐ / LOW ⭐)
+- Recommended strategy chip
+- Position size indicator
+- Tooltip with scoring reasons
+
+**Tasks:**
+- [x] Create `MultiFactorScoreCard` component (added `MultiFactorScores` to PendingAutoTradesPanel.tsx)
+- [x] Add score breakdown visualization (mini bar chart) - `ScoreBar` component in PendingAutoTradesPanel
+- [x] Add direction and confidence badges (added to RecommendationsWidget.tsx)
+- [x] Update Daily Recommendations widget to show multi-factor data (added SignalDirection, ConfidenceLevel types to api.ts)
+- [x] Update Pending Auto-Trades panel to show scores (added tech/fund/sentiment icons with scores)
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): display multi-factor scores in recommendations`
+
+##### 2.6.11.5 User Configuration: Scoring Weights
+
+**Allow users to customize factor weights from the UI.**
+
+**Page: `/settings/auto-trade/weights` or as a section in `/settings/auto-trade`**
+
+**UI Mockup:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  📊 Multi-Factor Scoring Weights                                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Configure how recommendations are scored. Weights must total 100%.     │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  📈 Technical Analysis                              [====] 40%  │   │
+│  │  ◄━━━━━━━━━━━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━►   │   │
+│  │  Momentum, breakouts, moving averages, RSI, volume              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  📊 Fundamental Analysis                            [====] 40%  │   │
+│  │  ◄━━━━━━━━━━━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━►   │   │
+│  │  P/E, P/B, ROE, debt ratios, earnings growth, margins           │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  📰 News Sentiment                                  [==  ] 20%  │   │
+│  │  ◄━━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━►   │   │
+│  │  Recent news sentiment analysis (bullish/bearish/neutral)       │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  Total: [████████████████████████████████████████] 100% ✓              │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  🎯 Quick Presets                                               │   │
+│  │                                                                  │   │
+│  │  [Technical Focus]  [Fundamental Focus]  [Balanced]             │   │
+│  │       50/30/20          30/50/20          40/40/20              │   │
+│  │                                                                  │   │
+│  │  [Sentiment Aware]  [News Trader]  [Value Investor]             │   │
+│  │       35/35/30         25/25/50        20/60/20                 │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  🎚️ Minimum Confidence Level                                    │   │
+│  │                                                                  │   │
+│  │  Only auto-trade when confidence is at least:                   │   │
+│  │                                                                  │   │
+│  │  ○ High (80+)     - Very selective, fewer trades                │   │
+│  │  ● Medium (60-80) - Balanced approach (recommended)             │   │
+│  │  ○ Low (40-60)    - More trades, lower conviction               │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  📊 Live Preview                                                │   │
+│  │                                                                  │   │
+│  │  With current weights, today's top pick would be:               │   │
+│  │                                                                  │   │
+│  │  RELIANCE  Score: 78.5                                          │   │
+│  │  ├─ Technical:    82 × 0.40 = 32.8                              │   │
+│  │  ├─ Fundamental:  75 × 0.40 = 30.0                              │   │
+│  │  └─ Sentiment:    +39 × 0.20 = 15.7 (scaled)                    │   │
+│  │                                                                  │   │
+│  │  Direction: LONG 🟢  Confidence: HIGH ⭐⭐⭐                      │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│                                    [Reset to Default]  [Save Changes]  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Component: `WeightConfigurationPanel`**
+```typescript
+// frontend/src/components/auto-trade/WeightConfigurationPanel.tsx
+
+interface WeightConfig {
+  technical: number;      // 0-100
+  fundamental: number;    // 0-100
+  sentiment: number;      // 0-100
+}
+
+interface WeightPreset {
+  name: string;
+  description: string;
+  weights: WeightConfig;
+  icon: string;
+}
+
+const PRESETS: WeightPreset[] = [
+  {
+    name: "Technical Focus",
+    description: "Chart patterns & momentum",
+    weights: { technical: 50, fundamental: 30, sentiment: 20 },
+    icon: "📈"
+  },
+  {
+    name: "Fundamental Focus",
+    description: "Value & quality metrics",
+    weights: { technical: 30, fundamental: 50, sentiment: 20 },
+    icon: "📊"
+  },
+  {
+    name: "Balanced",
+    description: "Equal tech & fundamental",
+    weights: { technical: 40, fundamental: 40, sentiment: 20 },
+    icon: "⚖️"
+  },
+  {
+    name: "Sentiment Aware",
+    description: "Higher news influence",
+    weights: { technical: 35, fundamental: 35, sentiment: 30 },
+    icon: "📰"
+  },
+  {
+    name: "News Trader",
+    description: "Maximum sentiment weight",
+    weights: { technical: 25, fundamental: 25, sentiment: 50 },
+    icon: "🗞️"
+  },
+  {
+    name: "Value Investor",
+    description: "Fundamentals first",
+    weights: { technical: 20, fundamental: 60, sentiment: 20 },
+    icon: "💎"
+  },
+];
+
+function WeightConfigurationPanel() {
+  const [weights, setWeights] = useState<WeightConfig>({
+    technical: 40,
+    fundamental: 40,
+    sentiment: 20,
+  });
+  const [minConfidence, setMinConfidence] = useState<'high' | 'medium' | 'low'>('medium');
+
+  // Auto-normalize: when one slider changes, adjust others proportionally
+  const handleWeightChange = (factor: keyof WeightConfig, newValue: number) => {
+    const oldValue = weights[factor];
+    const delta = newValue - oldValue;
+    const remaining = 100 - newValue;
+
+    // Distribute delta proportionally to other factors
+    const otherFactors = Object.keys(weights).filter(k => k !== factor) as (keyof WeightConfig)[];
+    const otherTotal = otherFactors.reduce((sum, k) => sum + weights[k], 0);
+
+    if (otherTotal > 0) {
+      const newWeights = { ...weights, [factor]: newValue };
+      otherFactors.forEach(k => {
+        newWeights[k] = Math.round((weights[k] / otherTotal) * remaining);
+      });
+      // Ensure exactly 100%
+      const total = Object.values(newWeights).reduce((a, b) => a + b, 0);
+      if (total !== 100) {
+        newWeights[otherFactors[0]] += 100 - total;
+      }
+      setWeights(newWeights);
+    }
+  };
+
+  const applyPreset = (preset: WeightPreset) => {
+    setWeights(preset.weights);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Multi-Factor Scoring Weights</CardTitle>
+        <CardDescription>
+          Configure how recommendations are scored. Weights must total 100%.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Weight Sliders */}
+        <WeightSlider
+          label="Technical Analysis"
+          icon="📈"
+          description="Momentum, breakouts, moving averages, RSI, volume"
+          value={weights.technical}
+          onChange={(v) => handleWeightChange('technical', v)}
+        />
+        <WeightSlider
+          label="Fundamental Analysis"
+          icon="📊"
+          description="P/E, P/B, ROE, debt ratios, earnings growth"
+          value={weights.fundamental}
+          onChange={(v) => handleWeightChange('fundamental', v)}
+        />
+        <WeightSlider
+          label="News Sentiment"
+          icon="📰"
+          description="Recent news sentiment (bullish/bearish/neutral)"
+          value={weights.sentiment}
+          onChange={(v) => handleWeightChange('sentiment', v)}
+        />
+
+        {/* Total Indicator */}
+        <TotalIndicator total={weights.technical + weights.fundamental + weights.sentiment} />
+
+        {/* Presets */}
+        <PresetGrid presets={PRESETS} onSelect={applyPreset} />
+
+        {/* Confidence Selector */}
+        <ConfidenceSelector value={minConfidence} onChange={setMinConfidence} />
+
+        {/* Live Preview */}
+        <LiveScorePreview weights={weights} />
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+**API Schema Updates:**
+```python
+# backend/app/modules/algo/schemas.py
+
+class WeightConfigUpdate(BaseModel):
+    """Schema for updating multi-factor weights."""
+    weight_technical: float = Field(ge=0, le=100, description="Technical analysis weight (0-100)")
+    weight_fundamental: float = Field(ge=0, le=100, description="Fundamental analysis weight (0-100)")
+    weight_sentiment: float = Field(ge=0, le=100, description="News sentiment weight (0-100)")
+    min_confidence: Literal["high", "medium", "low"] = "medium"
+
+    @validator("weight_sentiment")
+    def weights_must_sum_to_100(cls, v, values):
+        tech = values.get("weight_technical", 0)
+        fund = values.get("weight_fundamental", 0)
+        total = tech + fund + v
+        if abs(total - 100) > 0.01:  # Allow tiny float errors
+            raise ValueError(f"Weights must sum to 100, got {total}")
+        return v
+
+class WeightConfigResponse(BaseModel):
+    """Response schema for weight configuration."""
+    weight_technical: float
+    weight_fundamental: float
+    weight_sentiment: float
+    min_confidence: str
+
+    # Computed preview (optional)
+    preview_symbol: str | None = None
+    preview_scores: dict | None = None
+```
+
+**API Endpoints:**
+```python
+# backend/app/modules/algo/auto_trade_router.py
+
+@router.get("/auto-trade/weights")
+async def get_weight_config(user_id: str) -> WeightConfigResponse:
+    """Get user's current multi-factor weight configuration."""
+
+@router.put("/auto-trade/weights")
+async def update_weight_config(
+    data: WeightConfigUpdate, user_id: str
+) -> WeightConfigResponse:
+    """Update multi-factor weight configuration."""
+
+@router.post("/auto-trade/weights/preview")
+async def preview_with_weights(
+    data: WeightConfigUpdate, user_id: str
+) -> list[dict]:
+    """Preview how current recommendations would score with given weights."""
+
+@router.get("/auto-trade/weights/presets")
+async def get_weight_presets() -> list[dict]:
+    """Get available weight presets."""
+```
+
+**Model Update:**
+```python
+class AutoTradeConfig(Base):
+    # ... existing fields ...
+
+    # Multi-factor weights (stored as 0-100, converted to 0-1 for calculations)
+    weight_technical: int = 40       # 0-100
+    weight_fundamental: int = 40     # 0-100
+    weight_sentiment: int = 20       # 0-100
+
+    # Minimum confidence to auto-trade
+    min_confidence: str = "medium"   # "high", "medium", "low"
+
+    @property
+    def weights_normalized(self) -> dict[str, float]:
+        """Return weights as decimals (0-1) for calculations."""
+        return {
+            "technical": self.weight_technical / 100,
+            "fundamental": self.weight_fundamental / 100,
+            "sentiment": self.weight_sentiment / 100,
+        }
+```
+
+**Tasks:**
+- [x] Add weight fields to `AutoTradeConfig` model (`weight_technical`, `weight_fundamental`, `weight_sentiment`, `min_confidence`)
+- [x] Create Alembic migration for new columns with default values (40/40/20) - `20260223_1200_add_multi_factor_scoring_fields.py`
+- [x] Create `WeightConfigUpdate` and `WeightConfigResponse` schemas in `schemas.py`
+- [x] Add API endpoints: `GET/PUT /auto-trade/weights` in `auto_trade_router.py`
+- [x] Update `MultiFactorScorer` to accept custom weights from user config
+- [x] Create `WeightConfigPanel` React component (integrated in auto-trade settings page)
+- [x] Create weight sliders with percentage display (using shadcn Slider)
+- [x] Implement auto-normalize logic (sliders adjust proportionally) - `handleWeightChange` in WeightConfigPanel
+- [x] Create `PresetGrid` component with preset buttons (Balanced, Technical, Fundamental, Sentiment)
+- [x] Create `ConfidenceSelector` radio group component with visual stars
+- [x] Create `LiveScorePreview` component showing real-time scoring preview - future enhancement
+- [x] Add input validation (weights must sum to 100) - validated in API and UI
+- [x] Add loading and error states
+- [x] Add toast notifications for save success/failure
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(algo): add user-configurable multi-factor weights UI`
+
+##### 2.6.11.6 Testing & Deployment
+
+**Tasks:**
+- [x] Write unit tests for `MultiFactorScorer` (TestSignalDirection, TestConfidenceLevel, TestPositionSizeMultiplier, TestStrategyRecommendation)
+- [x] Write unit tests for direction inference logic (3 tests)
+- [x] Write unit tests for confidence calculation (4 tests)
+- [x] Write integration tests for enhanced daily recommendations (25 unit tests passing)
+- [x] Write integration tests for auto-trade with multi-factor filtering (10 tests in test_auto_trade_service.py)
+- [ ] Test sentiment API rate limits and caching (manual testing)
+- [x] Run full CI suite:
+  ```bash
+  # Backend
+  uv run ruff check
+  uv run ruff format
+  uv run pytest
+  uv run bandit -r backend/
+
+  # Worker
+  cd worker && uv run pytest
+
+  # Frontend
+  npm audit
+  npm run lint
+  npm run build
+  ```
+- [ ] Build containers: `podman-compose build` (deployment phase)
+- [ ] Deploy to staging: `podman-compose up -d` (deployment phase)
+- [ ] Verify multi-factor scoring in staging (deployment phase)
+- [ ] Monitor sentiment API usage and caching efficiency (deployment phase)
+- [x] Commit: `test(algo): add comprehensive tests for multi-factor integration`
+
+#### 2.6.12 Custom Screener to Auto-Trade
+
+**Goal**: Allow users to use their own custom screeners (not just daily presets) as the source for auto-trade. User creates a screener with their preferred filters → connects it to auto-trade → system runs it on schedule and creates strategies.
+
+**Current Limitation:**
+- Auto-trade only works with 4 preset categories (momentum, breakout, value, sector)
+- User's saved custom screeners are NOT connected to auto-trade pipeline
+- No way to schedule custom screener runs
+
+**Enhanced Flow:**
+```mermaid
+flowchart TB
+    subgraph Sources["📊 SCREENER SOURCES"]
+        S1[Preset: Momentum]
+        S2[Preset: Breakout]
+        S3[Preset: Value]
+        S4[Preset: Sector]
+        S5[Custom: User's Screener 1]
+        S6[Custom: User's Screener 2]
+    end
+
+    subgraph Config["⚙️ AUTO-TRADE CONFIG"]
+        C1[Select Screener Source]
+        C2[Run Frequency<br/>Daily/Hourly/Manual]
+        C3[Strategy Template]
+        C4[Multi-Factor Weights]
+    end
+
+    subgraph Pipeline["🔄 EXECUTION"]
+        P1[Run Selected Screener]
+        P2[Apply Multi-Factor Scoring]
+        P3[Filter by Confidence]
+        P4[Create Pending Trades]
+    end
+
+    S1 & S2 & S3 & S4 & S5 & S6 --> C1
+    C1 & C2 & C3 & C4 --> P1
+    P1 --> P2 --> P3 --> P4
+
+    style Sources fill:#e3f2fd,stroke:#1976d2
+    style Config fill:#fff3e0,stroke:#ff9800
+    style Pipeline fill:#e8f5e9,stroke:#4caf50
+```
+
+##### 2.6.12.1 Saved Screener Model
+
+**Model: `SavedScreener`** - User's custom screener configurations
+```python
+class SavedScreener(Base):
+    __tablename__ = "saved_screeners"
+
+    id: UUID
+    user_id: UUID (FK users.id)
+    name: str                        # "My Small Cap Momentum"
+    description: str | None
+
+    # Screener configuration
+    universe: str = "nifty500"       # nifty50, nifty100, nifty500, all
+    filters: JSON                    # List of filter configs
+    min_score: float = 50.0
+    top_n: int = 20
+
+    # Auto-trade linkage
+    is_auto_trade_enabled: bool = False
+    auto_trade_config_id: UUID | None (FK auto_trade_configs.id)
+
+    # Scheduling
+    run_frequency: str = "daily"     # daily, hourly, manual
+    run_time: Time | None = "09:20"  # For daily runs
+    last_run_at: DateTime | None
+    next_run_at: DateTime | None
+
+    # Inferred strategy type (based on filters)
+    inferred_strategy_type: str | None  # Computed from filter analysis
+
+    created_at: DateTime
+    updated_at: DateTime
+```
+
+**Tasks:**
+- [x] Create `CustomScreener` model with auto-trade fields in `backend/app/modules/screener/models.py`
+- [x] Create Alembic migration for screener auto-trade fields
+- [x] Add `saved_screener_id` field to `AutoTradeConfig` model
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade fields to CustomScreener model`
+
+##### 2.6.12.2 Saved Screener Service
+
+**Service: `SavedScreenerService`**
+```python
+class SavedScreenerService:
+    """Service for managing saved screener configurations."""
+
+    async def create_screener(
+        self, user_id: str, data: SavedScreenerCreate
+    ) -> SavedScreener:
+        """Save a new custom screener configuration."""
+
+    async def get_screeners(self, user_id: str) -> list[SavedScreener]:
+        """Get all saved screeners for a user."""
+
+    async def get_screener(
+        self, user_id: str, screener_id: str
+    ) -> SavedScreener | None:
+        """Get a specific saved screener."""
+
+    async def update_screener(
+        self, user_id: str, screener_id: str, data: SavedScreenerUpdate
+    ) -> SavedScreener:
+        """Update a saved screener."""
+
+    async def delete_screener(self, user_id: str, screener_id: str) -> bool:
+        """Delete a saved screener."""
+
+    async def run_screener(
+        self, user_id: str, screener_id: str
+    ) -> list[dict]:
+        """Execute a saved screener and return results."""
+
+    async def link_to_auto_trade(
+        self, user_id: str, screener_id: str, auto_trade_config_id: str
+    ) -> SavedScreener:
+        """Link a saved screener to an auto-trade configuration."""
+
+    async def infer_strategy_type(self, filters: list[dict]) -> str:
+        """Analyze screener filters to suggest best strategy type."""
+        # Example logic:
+        # - Has MomentumFilter with bullish mode → "trend_following"
+        # - Has BreakoutFilter → "breakout_continuation"
+        # - Has MomentumFilter with bearish/oversold → "mean_reversion"
+        # - Has VolumeFilter with spike → "volume_breakout"
+```
+
+**Strategy Inference Logic:**
+```python
+def infer_strategy_type(self, filters: list[dict]) -> str:
+    """Infer best strategy type from screener filters."""
+
+    filter_types = [f.get("filter_type") for f in filters]
+    filter_params = {f.get("filter_type"): f.get("params", {}) for f in filters}
+
+    # Check for momentum characteristics
+    if "momentum" in filter_types:
+        momentum_params = filter_params.get("momentum", {})
+        if momentum_params.get("momentum_mode") == "bullish":
+            if "breakout" in filter_types:
+                return "breakout_momentum"
+            return "trend_following"
+        elif momentum_params.get("momentum_mode") == "bearish":
+            return "mean_reversion"  # Oversold bounce
+
+    # Check for breakout
+    if "breakout" in filter_types:
+        if "volume" in filter_types:
+            volume_params = filter_params.get("volume", {})
+            if volume_params.get("require_spike"):
+                return "volume_breakout"
+        return "breakout_continuation"
+
+    # Check for value/fundamental focus
+    if "fundamental" in filter_types:
+        return "value_momentum"
+
+    # Check for moving average based
+    if "moving_average" in filter_types:
+        ma_params = filter_params.get("moving_average", {})
+        if ma_params.get("require_golden_cross"):
+            return "ma_crossover"
+        return "trend_following"
+
+    return "balanced"  # Default
+```
+
+**Tasks:**
+- [x] Add auto-trade methods to existing `ScreenerService` in `backend/app/modules/screener/service.py`
+- [x] Implement CRUD operations with auto-trade fields in existing CustomScreener
+- [x] Implement `run_custom_screener_for_auto_trade()` for scheduled runs
+- [x] Implement `link_to_auto_trade()` for connecting to auto-trade config
+- [x] Implement `infer_strategy_type()` using StrategyInferenceEngine
+- [x] Add unit tests for auto-trade screener methods - `TestAutoTradeScreenerMethods` class
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade methods to ScreenerService`
+
+##### 2.6.12.3 API Endpoints for Saved Screeners
+
+**Router: Saved Screeners**
+```python
+# backend/app/modules/screener/saved_screener_router.py
+
+@router.get("/screeners/saved")
+async def get_saved_screeners(user_id: str) -> list[SavedScreenerResponse]:
+    """Get all saved screeners for the user."""
+
+@router.post("/screeners/saved")
+async def create_saved_screener(
+    data: SavedScreenerCreate, user_id: str
+) -> SavedScreenerResponse:
+    """Save a new custom screener configuration."""
+
+@router.get("/screeners/saved/{screener_id}")
+async def get_saved_screener(
+    screener_id: str, user_id: str
+) -> SavedScreenerResponse:
+    """Get a specific saved screener."""
+
+@router.put("/screeners/saved/{screener_id}")
+async def update_saved_screener(
+    screener_id: str, data: SavedScreenerUpdate, user_id: str
+) -> SavedScreenerResponse:
+    """Update a saved screener."""
+
+@router.delete("/screeners/saved/{screener_id}")
+async def delete_saved_screener(screener_id: str, user_id: str) -> dict:
+    """Delete a saved screener."""
+
+@router.post("/screeners/saved/{screener_id}/run")
+async def run_saved_screener(
+    screener_id: str, user_id: str
+) -> ScreenerRunResponse:
+    """Execute a saved screener and return results."""
+
+@router.post("/screeners/saved/{screener_id}/link-auto-trade")
+async def link_screener_to_auto_trade(
+    screener_id: str,
+    data: LinkAutoTradeRequest,  # {auto_trade_config_id, run_frequency, run_time}
+    user_id: str
+) -> SavedScreenerResponse:
+    """Link a saved screener to auto-trade configuration."""
+
+@router.post("/screeners/saved/{screener_id}/unlink-auto-trade")
+async def unlink_screener_from_auto_trade(
+    screener_id: str, user_id: str
+) -> SavedScreenerResponse:
+    """Unlink a saved screener from auto-trade."""
+
+@router.get("/screeners/saved/{screener_id}/infer-strategy")
+async def infer_strategy_for_screener(
+    screener_id: str, user_id: str
+) -> StrategyInferenceResponse:
+    """Get inferred strategy type based on screener filters."""
+```
+
+**Tasks:**
+- [x] Add auto-trade endpoints to existing `backend/app/modules/screener/router.py`
+- [x] Create Pydantic schemas: `LinkAutoTradeRequest`, `UnlinkAutoTradeResponse`, `StrategyInferenceResponse`
+- [x] Add `run_frequency` schema enum (`RunFrequencyEnum`)
+- [x] Router already registered in main app
+- [ ] Add API tests for all endpoints
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(screener): add auto-trade endpoints to existing router`
+
+##### 2.6.12.4 Scheduled Screener Runs
+
+**Celery Tasks for Custom Screener Scheduling:**
+```python
+# worker/worker/tasks/screener.py
+
+@celery_app.task(bind=True, name="worker.tasks.screener.run_scheduled_screeners")
+def run_scheduled_screeners(self, frequency: str = "daily") -> dict:
+    """Run all saved screeners scheduled for the given frequency.
+
+    Args:
+        frequency: "daily" or "hourly"
+
+    For each screener with matching frequency:
+    1. Run the screener
+    2. Apply multi-factor scoring
+    3. Create pending auto-trades (if linked)
+    4. Update last_run_at and next_run_at
+    """
+
+    # Get all screeners with this frequency that are due to run
+    screeners = _get_due_screeners(frequency)
+
+    results = []
+    for screener in screeners:
+        try:
+            # Run screener
+            screener_results = _run_saved_screener(screener)
+
+            # If linked to auto-trade, process results
+            if screener.is_auto_trade_enabled and screener.auto_trade_config_id:
+                auto_trade_result = _process_screener_for_auto_trade(
+                    screener=screener,
+                    results=screener_results,
+                )
+                results.append({
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "stocks_found": len(screener_results),
+                    "auto_trade_processed": True,
+                    "pending_trades_created": auto_trade_result.get("pending_count", 0),
+                })
+            else:
+                results.append({
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "stocks_found": len(screener_results),
+                    "auto_trade_processed": False,
+                })
+
+            # Update timestamps
+            _update_screener_run_times(screener)
+
+        except Exception as e:
+            logger.exception(f"Error running screener {screener.id}: {e}")
+            results.append({
+                "screener_id": str(screener.id),
+                "error": str(e),
+            })
+
+    return {
+        "frequency": frequency,
+        "screeners_processed": len(results),
+        "results": results,
+    }
+
+
+@celery_app.task(bind=True, name="worker.tasks.screener.run_single_screener")
+def run_single_screener(self, screener_id: str, user_id: str) -> dict:
+    """Run a single saved screener on-demand.
+
+    Triggered by user clicking "Run Now" button.
+    """
+    pass
+```
+
+**Celery Beat Schedule:**
+```python
+# worker/worker/celery_config.py
+
+beat_schedule = {
+    # ... existing schedules ...
+
+    # Run daily custom screeners at 9:20 AM IST (before market open)
+    "run-daily-custom-screeners": {
+        "task": "worker.tasks.screener.run_scheduled_screeners",
+        "schedule": crontab(hour=3, minute=50),  # 9:20 AM IST = 3:50 UTC
+        "args": ("daily",),
+    },
+
+    # Run hourly custom screeners
+    "run-hourly-custom-screeners": {
+        "task": "worker.tasks.screener.run_scheduled_screeners",
+        "schedule": crontab(minute=5),  # 5 minutes past every hour
+        "args": ("hourly",),
+    },
+}
+```
+
+**Tasks:**
+- [x] Create `run_scheduled_screeners` task in `worker/worker/tasks/screener.py`
+- [x] Create `run_single_screener` task for on-demand runs
+- [x] Implement `_get_due_screeners()` helper to find screeners ready to run
+- [x] Implement `_process_screener_for_auto_trade()` to create pending trades (integrated PendingAutoTradeService and MultiFactorScorer in run_custom_screener_for_auto_trade)
+- [x] Add Celery Beat schedules for daily and hourly runs in `worker/worker/celery_app.py`
+- [ ] Add integration tests for scheduled screener tasks
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(worker): add scheduled custom screener execution`
+
+##### 2.6.12.5 Update Auto-Trade Config for Custom Screeners
+
+**Update `AutoTradeConfig` model:**
+```python
+class ScreenerSourceType(str, Enum):
+    PRESET = "preset"       # Use daily preset recommendations
+    CUSTOM = "custom"       # Use saved custom screener
+
+class AutoTradeConfig(Base):
+    # ... existing fields ...
+
+    # Screener source selection
+    screener_source_type: ScreenerSourceType = PRESET
+
+    # If PRESET: which category (momentum, breakout, value, sector)
+    preset_category: str | None = None
+
+    # If CUSTOM: which saved screener
+    saved_screener_id: UUID | None (FK saved_screeners.id)
+
+    # The saved screener (relationship)
+    saved_screener: SavedScreener | None = relationship(...)
+```
+
+**Tasks:**
+- [x] Add `screener_source_type`, `preset_category`, `saved_screener_id` to `AutoTradeConfig`
+- [x] Create Alembic migration for new tables (`20260223_1100_add_auto_trade_config_tables.py`)
+- [x] Update `AutoTradeConfigCreate` and `AutoTradeConfigUpdate` schemas with new fields
+- [x] Update `AutoTradeService.process_recommendations()` to handle both source types (checks PRESET vs CUSTOM)
+- [x] Add validation: if CUSTOM, `saved_screener_id` required
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): update AutoTradeConfig for custom screener sources`
+
+##### 2.6.12.6 Frontend: Save Screener Flow
+
+**Update Screener Page to allow saving:**
+
+**UI Flow:**
+1. User creates/runs a screener with custom filters
+2. "Save Screener" button appears
+3. Save dialog with name, description
+4. Option to "Enable Auto-Trade" with settings
+
+**Save Screener Dialog:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  💾 Save Screener                                         [X]  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Name: [My Momentum Screener________________]                   │
+│                                                                 │
+│  Description: [Finds high momentum stocks with volume___]       │
+│               [spike in Nifty 500 universe______________]       │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  📊 Screener Summary                                    │   │
+│  │  Universe: Nifty 500                                    │   │
+│  │  Filters: Momentum (bullish), Volume (spike), MA (200)  │   │
+│  │  Min Score: 50 | Top N: 20                              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ☐ Enable Auto-Trade for this screener                         │
+│                                                                 │
+│  (If checked, shows auto-trade options below)                   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  🤖 Auto-Trade Settings                                 │   │
+│  │                                                          │   │
+│  │  Run Frequency:                                          │   │
+│  │  ○ Daily at [09:20] AM                                   │   │
+│  │  ○ Hourly                                                │   │
+│  │  ○ Manual only                                           │   │
+│  │                                                          │   │
+│  │  Strategy Template: [Select template ▼]                  │   │
+│  │                                                          │   │
+│  │  Inferred Strategy: trend_following                      │   │
+│  │  (Based on your momentum + MA filters)                   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│                              [Cancel]  [Save Screener]          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tasks:**
+- [x] Add "Save Screener" button to Screener results page
+- [x] Create `SaveScreenerDialog` component
+- [x] Add auto-trade toggle with conditional settings
+- [x] Show inferred strategy type based on filters
+- [x] Add run frequency selector (daily/hourly/manual)
+- [x] Add strategy template selector
+- [x] Call API to save screener with auto-trade config
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add save screener dialog with auto-trade option` (combined in feat(frontend): add saved screeners page with auto-trade support)
+
+##### 2.6.12.7 Frontend: Saved Screeners Management
+
+**Page: `/screener/saved`**
+
+**Features:**
+- List of saved screeners
+- Run status (last run, next run)
+- Auto-trade status badge
+- Actions: Run Now, Edit, Delete, Link/Unlink Auto-Trade
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  📋 Saved Screeners                                    [+ New Screener] │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  📈 My Momentum Screener                        [Auto-Trade 🟢]  │   │
+│  │  Universe: Nifty 500 | Filters: 3 | Min Score: 50               │   │
+│  │  Last Run: Today 9:20 AM | Next Run: Tomorrow 9:20 AM           │   │
+│  │  Inferred Strategy: trend_following                              │   │
+│  │                                                                  │   │
+│  │  [Run Now]  [Edit]  [View Results]  [⚙️ Auto-Trade Settings]    │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  💎 Value + Quality Filter                      [Auto-Trade ⚪]  │   │
+│  │  Universe: Nifty 100 | Filters: 5 | Min Score: 60               │   │
+│  │  Last Run: Never | Schedule: Manual                              │   │
+│  │  Inferred Strategy: value_momentum                               │   │
+│  │                                                                  │   │
+│  │  [Run Now]  [Edit]  [View Results]  [Enable Auto-Trade]         │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  🚀 Breakout Hunter                             [Auto-Trade 🟢]  │   │
+│  │  Universe: All | Filters: 4 | Min Score: 55                     │   │
+│  │  Last Run: 1 hour ago | Next Run: In 55 mins (hourly)           │   │
+│  │  Inferred Strategy: breakout_continuation                        │   │
+│  │                                                                  │   │
+│  │  [Run Now]  [Edit]  [View Results]  [⚙️ Auto-Trade Settings]    │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Tasks:**
+- [x] Create `frontend/src/app/(dashboard)/screener/saved/page.tsx`
+- [x] Create `SavedScreenerCard` component
+- [x] Add auto-trade status badge (enabled/disabled)
+- [x] Add "Run Now" button with loading state
+- [x] Add "View Results" to show last run results (optional enhancement)
+- [x] Add auto-trade settings modal (optional enhancement)
+- [x] Show inferred strategy type on each card
+- [x] Show run schedule and countdown
+- [x] Add API functions in `frontend/src/lib/api.ts`
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add saved screeners management page` (combined in feat(frontend): add saved screeners page with auto-trade support)
+
+##### 2.6.12.8 Frontend: Auto-Trade Source Selection
+
+**Update Auto-Trade Settings to allow source selection:**
+
+**UI Update:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  🤖 Auto-Trade Configuration                                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  📊 Screener Source                                                     │
+│                                                                         │
+│  Select where to get stock recommendations for auto-trading:            │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  ○ Daily Recommendations (Presets)                              │   │
+│  │    System-generated picks from preset screeners                 │   │
+│  │                                                                  │   │
+│  │    Category: [Momentum ▼]                                        │   │
+│  │    Options: Momentum | Breakout | Value | Sector                 │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  ● My Custom Screener                                           │   │
+│  │    Use your saved screener with custom filters                  │   │
+│  │                                                                  │   │
+│  │    Screener: [My Momentum Screener ▼]                           │   │
+│  │    Run Frequency: Daily at 9:20 AM                               │   │
+│  │    Inferred Strategy: trend_following                            │   │
+│  │                                                                  │   │
+│  │    [Manage Saved Screeners →]                                   │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  ─────────────────────────────────────────────────────────────────────  │
+│                                                                         │
+│  📈 Strategy Template                                                   │
+│  [My Momentum Strategy Template ▼]                                      │
+│                                                                         │
+│  📊 Multi-Factor Weights                                                │
+│  Technical: 40% | Fundamental: 40% | Sentiment: 20%                     │
+│  [Configure Weights →]                                                  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Tasks:**
+- [x] Update Auto-Trade Settings page with source selection - `SourceSelector` component added
+- [x] Add radio buttons for Preset vs Custom screener - using RadioGroup with visual cards
+- [x] Add category dropdown for preset selection - category already selected by card
+- [x] Add saved screener dropdown for custom selection - Select with screener list
+- [x] Show inferred strategy when custom screener selected - displays universe, filters, schedule
+- [x] Add "Manage Saved Screeners" link
+- [x] Update API calls to save source selection - `source_type` and `screener_id` mutations
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add screener source selection to auto-trade settings`
+
+##### 2.6.12.9 Testing & Deployment
+
+**Tasks:**
+- [x] Write unit tests for `SavedScreenerService` (covered in test_auto_trade_service.py)
+- [x] Write unit tests for strategy inference logic (covered in test_auto_trade_service.py)
+- [ ] Write integration tests for scheduled screener runs (E2E testing)
+- [ ] Write integration tests for custom screener → auto-trade flow (E2E testing)
+- [ ] Test different run frequencies (daily, hourly, manual) (manual testing)
+- [ ] Test strategy inference for various filter combinations (manual testing)
+- [x] Run full CI suite:
+  ```bash
+  # Backend
+  uv run ruff check
+  uv run ruff format
+  uv run pytest
+  uv run bandit -r backend/
+
+  # Worker
+  cd worker && uv run pytest
+
+  # Frontend
+  npm audit
+  npm run lint
+  npm run build
+  ```
+- [ ] Build containers: `podman-compose build` (deployment phase)
+- [ ] Deploy to staging: `podman-compose up -d` (deployment phase)
+- [ ] Verify custom screener to auto-trade flow in staging (deployment phase)
+- [ ] Test Celery Beat schedules for daily/hourly runs (deployment phase)
+- [x] Commit: `test(screener): add comprehensive tests for custom screener auto-trade`
+
+---
+
+### 2.7 Algo Trading Time Window
+> 🌿 **Branch:** `phase-2/algo-time-window`
+> **Status:** 🔲 Not Started
+
+**Goal**: Allow users to restrict when algo strategies execute trades. Example: Only trade between 9:45 AM and 3:15 PM IST.
+
+#### Time Window Architecture
+
+```mermaid
+flowchart LR
+    subgraph Config["⚙️ Time Window Config"]
+        TW1[trading_start_time: 09:45]
+        TW2[trading_end_time: 15:15]
+        TW3[timezone: Asia/Kolkata]
+        TW4[active_days: Mon-Fri]
+    end
+
+    subgraph Executor["🤖 Strategy Executor"]
+        EX1{Is current time<br/>within window?}
+        EX2[Generate Signals]
+        EX3[Place Orders]
+        EX4[Skip Execution<br/>Log reason]
+    end
+
+    subgraph Scenarios["📋 Use Cases"]
+        SC1[Avoid first 15 mins<br/>volatility]
+        SC2[Exit before<br/>market close]
+        SC3[Trade only during<br/>specific sessions]
+        SC4[Different windows<br/>per strategy]
+    end
+
+    Config --> Executor
+    EX1 -->|Yes| EX2 --> EX3
+    EX1 -->|No| EX4
+
+    style Config fill:#e3f2fd,stroke:#1976d2
+    style Executor fill:#e8f5e9,stroke:#4caf50
+    style Scenarios fill:#fff3e0,stroke:#ff9800
+```
+
+#### 2.7.1 Model Updates
+
+**Update `UserStrategy` model:**
+```python
+class UserStrategy(Base):
+    # ... existing fields ...
+
+    # Trading time window (new fields)
+    trading_start_time: Time | None = None    # e.g., 09:45:00
+    trading_end_time: Time | None = None      # e.g., 15:15:00
+    trading_timezone: str = "Asia/Kolkata"    # Timezone for time comparison
+    active_trading_days: JSON = [0,1,2,3,4]   # Monday=0 to Friday=4
+
+    # If time window is set, only execute during this window
+    # If None, execute whenever market is open (existing behavior)
+```
+
+**Tasks:**
+- [ ] Add time window fields to `UserStrategy` model
+- [ ] Create Alembic migration for new columns
+- [ ] Update `UserStrategy` schemas to include time window fields
+- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [ ] Commit: `feat(algo): add trading time window fields to UserStrategy`
+
+#### 2.7.2 Time Window Validation
+
+**Create `TimeWindowValidator` class:**
+```python
+class TimeWindowValidator:
+    """Validates if current time is within trading window."""
+
+    def is_within_window(
+        self,
+        start_time: time | None,
+        end_time: time | None,
+        timezone: str = "Asia/Kolkata",
+        active_days: list[int] | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Check if current time is within the trading window.
+
+        Returns: (is_valid, reason)
+        - (True, "") if within window or no window set
+        - (False, "Before trading window (09:45)") if before start
+        - (False, "After trading window (15:15)") if after end
+        - (False, "Not an active trading day") if wrong day
+        """
+
+    def time_until_window_opens(
+        self,
+        start_time: time,
+        timezone: str = "Asia/Kolkata",
+    ) -> timedelta:
+        """Calculate time until window opens."""
+
+    def time_until_window_closes(
+        self,
+        end_time: time,
+        timezone: str = "Asia/Kolkata",
+    ) -> timedelta:
+        """Calculate time until window closes."""
+```
+
+**Tasks:**
+- [ ] Create `TimeWindowValidator` in `backend/app/modules/algo/time_window.py`
+- [ ] Handle timezone conversions properly (use `zoneinfo`)
+- [ ] Handle edge cases (overnight windows, different timezones)
+- [ ] Add comprehensive unit tests
+- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [ ] Commit: `feat(algo): implement TimeWindowValidator`
+
+#### 2.7.3 Executor Integration
+
+**Update `StrategyExecutor` in trading-engine:**
+```python
+class StrategyExecutor:
+    async def execute(self, config: StrategyConfig, ...) -> ExecutionResult:
+        # Check time window BEFORE executing
+        if config.trading_start_time or config.trading_end_time:
+            validator = TimeWindowValidator()
+            is_valid, reason = validator.is_within_window(
+                start_time=config.trading_start_time,
+                end_time=config.trading_end_time,
+                timezone=config.trading_timezone,
+                active_days=config.active_trading_days,
+            )
+
+            if not is_valid:
+                return ExecutionResult(
+                    status=ExecutionStatus.SKIPPED,
+                    skip_reason=f"Outside trading window: {reason}",
+                )
+
+        # Continue with normal execution...
+```
+
+**Tasks:**
+- [ ] Update `StrategyConfig` dataclass to include time window fields
+- [ ] Update `StrategyExecutor.execute()` to check time window
+- [ ] Add `SKIPPED` status to `ExecutionStatus` enum if not exists
+- [ ] Log skipped executions with reason
+- [ ] Add tests for executor time window checks
+- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [ ] Commit: `feat(trading-engine): integrate time window checks in executor`
+
+#### 2.7.4 API Updates
+
+**Update strategy endpoints:**
+```python
+class StrategyCreate(BaseModel):
+    # ... existing fields ...
+
+    # Trading time window
+    trading_start_time: time | None = None
+    trading_end_time: time | None = None
+    trading_timezone: str = "Asia/Kolkata"
+    active_trading_days: list[int] = [0, 1, 2, 3, 4]  # Mon-Fri
+
+class StrategyUpdate(BaseModel):
+    # ... existing fields ...
+
+    # Trading time window
+    trading_start_time: time | None = None
+    trading_end_time: time | None = None
+    trading_timezone: str | None = None
+    active_trading_days: list[int] | None = None
+```
+
+**Tasks:**
+- [ ] Update `StrategyCreate` schema with time window fields
+- [ ] Update `StrategyUpdate` schema with time window fields
+- [ ] Update `StrategyResponse` schema to include time window
+- [ ] Validate time window (start < end, valid timezone)
+- [ ] Add API tests for time window validation
+- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [ ] Commit: `feat(algo): update API schemas for time window support`
+
+#### 2.7.5 Frontend: Time Window Configuration
+
+**Update Strategy Form:**
+Add a new section "Trading Time Window" with:
+- Enable time window toggle
+- Start time picker (HH:MM)
+- End time picker (HH:MM)
+- Timezone selector (default: Asia/Kolkata)
+- Active days checkboxes (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
+- Preset buttons: "Market Hours", "Avoid Open/Close", "Morning Session", "Afternoon Session"
+
+**Presets:**
+| Preset | Start | End | Description |
+|--------|-------|-----|-------------|
+| Market Hours | 09:15 | 15:30 | Full trading day |
+| Avoid Open/Close | 09:45 | 15:00 | Skip volatile first/last 15-30 mins |
+| Morning Session | 09:15 | 12:00 | Trade only in morning |
+| Afternoon Session | 13:00 | 15:30 | Trade only in afternoon |
+
+**Tasks:**
+- [ ] Create `TimeWindowSection` component for strategy form
+- [ ] Add time pickers for start/end time
+- [ ] Add timezone selector dropdown
+- [ ] Add active days checkboxes
+- [ ] Add preset buttons for common configurations
+- [ ] Show current status indicator (In Window / Outside Window)
+- [ ] Run frontend audit: `npm audit`
+- [ ] Commit: `feat(frontend): add time window configuration to strategy form`
+
+#### 2.7.6 Strategy Status Display
+
+**Update strategy cards/tables to show:**
+- Time window badge (e.g., "09:45 - 15:15")
+- Current status: "In Window" (green) / "Outside Window" (grey)
+- Next execution time if outside window
+- Countdown to window open/close
+
+**Tasks:**
+- [ ] Update `StrategyCard` component to show time window
+- [ ] Add status indicator component
+- [ ] Add countdown timer for window status
+- [ ] Run frontend audit: `npm audit`
+- [ ] Commit: `feat(frontend): display time window status on strategy cards`
+
+#### 2.7.7 Testing & Deployment
+
+**Tasks:**
+- [ ] Write unit tests for TimeWindowValidator
+- [ ] Write integration tests for executor with time window
+- [ ] Test timezone edge cases (DST transitions, different TZs)
+- [ ] Write E2E tests for frontend time window configuration
+- [ ] Run full CI suite:
+  ```bash
+  # Backend
+  uv run ruff check
+  uv run ruff format
+  uv run pytest
+  uv run bandit -r backend/
+
+  # Trading Engine
+  cd trading-engine && uv run pytest
+
+  # Frontend
+  npm audit
+  npm run lint
+  npm run build
+  ```
+- [ ] Build containers: `podman-compose build`
+- [ ] Deploy to staging: `podman-compose up -d`
+- [ ] Verify time window functionality in staging
+- [ ] Commit: `test(algo): add comprehensive tests for time window feature`
 
 ---
 

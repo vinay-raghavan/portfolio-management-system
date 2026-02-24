@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.modules.activity.router import router as activity_router
+from app.modules.algo.auto_trade_router import router as auto_trade_router
 from app.modules.algo.router import router as algo_router
 from app.modules.analysis.router import router as analysis_router
 from app.modules.auth.router import router as auth_router
@@ -34,6 +35,7 @@ api_router.include_router(watchlist_router, prefix="/watchlist", tags=["Watchlis
 api_router.include_router(instruments_router, prefix="/instruments", tags=["Instruments"])
 api_router.include_router(risk_router, prefix="/risk", tags=["Risk Management"])
 api_router.include_router(algo_router, prefix="/algo", tags=["Algo Trading"])
+api_router.include_router(auto_trade_router, prefix="/auto-trade", tags=["Auto-Trade"])
 api_router.include_router(screener_router, prefix="/screener", tags=["Stock Screener"])
 api_router.include_router(research_router, prefix="/research", tags=["Stock Research"])
 api_router.include_router(settings_router, prefix="/settings", tags=["User Settings"])

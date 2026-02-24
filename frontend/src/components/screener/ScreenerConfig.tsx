@@ -1,7 +1,8 @@
 'use client';
 
-import { Zap, TrendingUp, Target, BarChart3, Layers, Award, Database, Play, Settings2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Link from 'next/link';
+import { Zap, TrendingUp, Target, BarChart3, Layers, Award, Database, Play, Settings2, Bot, Info } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { FilterBuilder } from './FilterBuilder';
 import { UniverseSelector, type UniverseType } from './UniverseSelector';
@@ -83,6 +85,15 @@ export function ScreenerConfig({
           <Settings2 className="h-5 w-5" />
           Screener Configuration
         </CardTitle>
+        <CardDescription className="flex items-center gap-2 mt-1">
+          <Bot className="h-4 w-4" />
+          <span>
+            Save screeners to{' '}
+            <Link href="/screener/saved" className="text-primary hover:underline">
+              enable auto-trading
+            </Link>
+          </span>
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Step 1: Universe */}

@@ -250,3 +250,130 @@ def check_stop_monitors(self) -> dict:
     """
     logger.info("Starting stop monitor check")
     return _check_stop_monitors_sync()
+
+
+# =============================================================================
+# Auto-Trade Pipeline Tasks
+# =============================================================================
+
+
+def _process_auto_trades_sync(category: str, symbols: list[str], date_str: str) -> dict:
+    """Process auto-trades for a category after recommendations are generated.
+
+    Calls the backend's internal API to process auto-trades for all users
+    with auto-trade enabled for this category.
+    """
+    from worker.config import settings as worker_settings
+
+    backend_url = worker_settings.BACKEND_API_URL
+    logger.info(f"Processing auto-trades for category '{category}' with {len(symbols)} symbols")
+
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(
+                f"{backend_url}/auto-trade/internal/process",
+                headers=_get_internal_headers(),
+                json={
+                    "category": category,
+                    "symbols": symbols,
+                    "date": date_str,
+                },
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"Auto-trade processing error: {response.status_code} - {response.text}"
+                )
+                return {
+                    "status": "error",
+                    "message": f"Backend returned {response.status_code}",
+                }
+
+            result = response.json()
+            logger.info(
+                f"Auto-trade processing complete: "
+                f"{result.get('users_processed', 0)} users processed, "
+                f"{result.get('status', 'unknown')} status"
+            )
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout processing auto-trades")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error processing auto-trades: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.algo.process_auto_trades")
+def process_auto_trades(self, category: str, symbols: list[str], date_str: str) -> dict:
+    """Process auto-trades after daily recommendations are generated.
+
+    Called by generate_daily_recommendations task after storing recommendations.
+
+    For each user with auto-trade enabled for this category:
+    1. Check daily limits (positions, capital)
+    2. If confirmation_mode == AUTO:
+       - Create strategy from template immediately
+       - Activate strategy
+    3. If confirmation_mode == NOTIFY:
+       - Create pending auto-trade
+       - Send notification to user
+
+    Args:
+        category: Recommendation category (momentum, breakout, value, sector)
+        symbols: List of recommended symbols
+        date_str: Date string in ISO format
+
+    Returns:
+        Summary of processing results
+    """
+    logger.info(f"Starting auto-trade processing for {category}")
+    return _process_auto_trades_sync(category, symbols, date_str)
+
+
+def _expire_pending_auto_trades_sync() -> dict:
+    """Expire pending auto-trades that have passed their expiry time."""
+    from worker.config import settings as worker_settings
+
+    backend_url = worker_settings.BACKEND_API_URL
+    logger.info("Checking for expired pending auto-trades")
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                f"{backend_url}/auto-trade/internal/expire-pending",
+                headers=_get_internal_headers(),
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Expire pending error: {response.status_code} - {response.text}")
+                return {
+                    "status": "error",
+                    "message": f"Backend returned {response.status_code}",
+                }
+
+            result = response.json()
+            if result.get("expired_count", 0) > 0:
+                logger.info(f"Expired {result['expired_count']} pending auto-trades")
+            return {"status": "success", **result}
+
+    except httpx.TimeoutException:
+        logger.error("Timeout expiring pending auto-trades")
+        return {"status": "error", "message": "Request timeout"}
+    except Exception as e:
+        logger.exception(f"Error expiring pending auto-trades: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(bind=True, name="worker.tasks.algo.expire_pending_auto_trades")
+def expire_pending_auto_trades(self) -> dict:
+    """Expire pending auto-trades that have passed their expiry time.
+
+    Scheduled to run every hour.
+
+    Returns:
+        {expired_count: int, notifications_sent: list}
+    """
+    logger.info("Starting pending auto-trade expiration check")
+    return _expire_pending_auto_trades_sync()

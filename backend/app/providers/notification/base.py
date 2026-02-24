@@ -32,6 +32,13 @@ class NotificationType(str, Enum):
     STRATEGY_STOPPED = "strategy_stopped"
     STRATEGY_ERROR = "strategy_error"
 
+    # Auto-Trade
+    AUTO_TRADE_PENDING = "auto_trade_pending"
+    AUTO_TRADE_EXECUTED = "auto_trade_executed"
+    AUTO_TRADE_EXPIRED = "auto_trade_expired"
+    AUTO_TRADE_APPROVED = "auto_trade_approved"
+    AUTO_TRADE_REJECTED = "auto_trade_rejected"
+
     # Risk
     RISK_LIMIT_WARNING = "risk_limit_warning"
     RISK_LIMIT_BREACH = "risk_limit_breach"

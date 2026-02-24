@@ -7,10 +7,10 @@ import {
   TopMovers,
   RecentTrades,
   MarketOverview,
-  AlgoSummary,
   FundsSummary,
   RecommendationsCarousel,
   TotalAccountValue,
+  AlgoCarousel,
 } from '@/components/dashboard';
 import { SectorHeatmap } from '@/components/research';
 
@@ -40,10 +40,10 @@ export default function DashboardPage() {
       {/* Top Movers */}
       <TopMovers positions={positions} isLoading={isLoading} />
 
-      {/* Funds, Algo Summary and Market Overview */}
+      {/* Funds, Algo Carousel (Summary + Pending Trades) and Market Overview */}
       <div className="grid gap-4 md:grid-cols-3">
         <FundsSummary />
-        <AlgoSummary />
+        <AlgoCarousel />
         <MarketOverview />
       </div>
 

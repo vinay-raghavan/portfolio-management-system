@@ -214,9 +214,17 @@ class TestPositionTrackerUnit:
         existing.realized_pnl = Decimal("0")
         existing.exit_quantity = None
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
-        mock_db.execute.return_value = mock_result
+        # Mock strategy for exit_only cleanup call
+        mock_strategy = MagicMock()
+        mock_strategy.exit_only_symbols = []
+        mock_strategy.name = "Test Strategy"
+
+        # First call returns position, second call returns strategy
+        mock_result_position = MagicMock()
+        mock_result_position.scalar_one_or_none.return_value = existing
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = mock_strategy
+        mock_db.execute.side_effect = [mock_result_position, mock_result_strategy]
 
         result = await tracker.close_position(
             strategy_id="strat-1",
@@ -242,9 +250,17 @@ class TestPositionTrackerUnit:
         existing.realized_pnl = Decimal("0")
         existing.exit_quantity = None
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
-        mock_db.execute.return_value = mock_result
+        # Mock strategy for exit_only cleanup call
+        mock_strategy = MagicMock()
+        mock_strategy.exit_only_symbols = []
+        mock_strategy.name = "Test Strategy"
+
+        # First call returns position, second call returns strategy
+        mock_result_position = MagicMock()
+        mock_result_position.scalar_one_or_none.return_value = existing
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = mock_strategy
+        mock_db.execute.side_effect = [mock_result_position, mock_result_strategy]
 
         result = await tracker.close_position(
             strategy_id="strat-1",
@@ -294,9 +310,22 @@ class TestPositionTrackerUnit:
         existing.realized_pnl = Decimal("0")
         existing.exit_quantity = None
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
-        mock_db.execute.return_value = mock_result
+        # Mock strategy for exit_only cleanup call
+        mock_strategy = MagicMock()
+        mock_strategy.exit_only_symbols = []
+        mock_strategy.name = "Test Strategy"
+
+        # First two calls return position (get_open_position + close_position),
+        # third call returns strategy for cleanup
+        mock_result_position = MagicMock()
+        mock_result_position.scalar_one_or_none.return_value = existing
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = mock_strategy
+        mock_db.execute.side_effect = [
+            mock_result_position,  # get_open_position in process_order_fill
+            mock_result_position,  # get_open_position in close_position
+            mock_result_strategy,  # _cleanup_exit_only_symbol
+        ]
 
         result, stats = await tracker.process_order_fill(
             strategy_id="strat-1",
@@ -334,14 +363,27 @@ class TestPositionTrackerUnit:
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        # Mock strategy for exit_only cleanup
+        mock_strategy_cleanup = MagicMock()
+        mock_strategy_cleanup.exit_only_symbols = []
+        mock_strategy_cleanup.name = "Test Strategy"
+        mock_result_strategy_cleanup = MagicMock()
+        mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
+
+        # Mock strategy query (first), get_all_open_positions (second),
+        # get_open_position (third), and cleanup strategy (fourth)
         mock_result_strategy = MagicMock()
         mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [
+            mock_result_strategy,
+            mock_result_all,
+            mock_result_one,
+            mock_result_strategy_cleanup,
+        ]
 
         current_prices = {"RELIANCE": Decimal("940.00")}  # Below stop loss
 
@@ -378,14 +420,27 @@ class TestPositionTrackerUnit:
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        # Mock strategy for exit_only cleanup
+        mock_strategy_cleanup = MagicMock()
+        mock_strategy_cleanup.exit_only_symbols = []
+        mock_strategy_cleanup.name = "Test Strategy"
+        mock_result_strategy_cleanup = MagicMock()
+        mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
+
+        # Mock strategy query (first), get_all_open_positions (second),
+        # get_open_position (third), and cleanup strategy (fourth)
         mock_result_strategy = MagicMock()
         mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [
+            mock_result_strategy,
+            mock_result_all,
+            mock_result_one,
+            mock_result_strategy_cleanup,
+        ]
 
         current_prices = {"INFY": Decimal("1650.00")}  # Above take profit
 
@@ -422,14 +477,27 @@ class TestPositionTrackerUnit:
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
 
-        # Mock strategy query (first), get_all_open_positions (second), and get_open_position (third)
+        # Mock strategy for exit_only cleanup
+        mock_strategy_cleanup = MagicMock()
+        mock_strategy_cleanup.exit_only_symbols = []
+        mock_strategy_cleanup.name = "Test Strategy"
+        mock_result_strategy_cleanup = MagicMock()
+        mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
+
+        # Mock strategy query (first), get_all_open_positions (second),
+        # get_open_position (third), and cleanup strategy (fourth)
         mock_result_strategy = MagicMock()
         mock_result_strategy.scalar_one_or_none.return_value = None  # No strategy defaults
         mock_result_all = MagicMock()
         mock_result_all.scalars.return_value.all.return_value = [position]
         mock_result_one = MagicMock()
         mock_result_one.scalar_one_or_none.return_value = position
-        mock_db.execute.side_effect = [mock_result_strategy, mock_result_all, mock_result_one]
+        mock_db.execute.side_effect = [
+            mock_result_strategy,
+            mock_result_all,
+            mock_result_one,
+            mock_result_strategy_cleanup,
+        ]
 
         current_prices = {"TCS": Decimal("3650.00")}  # Above stop loss
 

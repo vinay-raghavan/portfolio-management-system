@@ -33,9 +33,13 @@ from app.modules.screener.schemas import (
     FilterConfig,
     InferStrategyRequest,
     InferStrategyResponse,
+    LinkAutoTradeRequest,
     OverallPerformanceStats,
     RecommendationCategory,
     RecommendationItem,
+    RunAutoTradeScreenerResponse,
+    RunScheduledScreenersRequest,
+    RunScheduledScreenersResponse,
     ScreenerAlertCreate,
     ScreenerAlertListResponse,
     ScreenerAlertResponse,
@@ -45,7 +49,9 @@ from app.modules.screener.schemas import (
     ScreenerRunRequest,
     ScreenerRunResponse,
     StoreRecommendationsRequest,
+    StrategyInferenceResponse,
     StrategyRecommendationResponse,
+    UnlinkAutoTradeResponse,
     UpdateReturnsResponse,
 )
 from app.modules.screener.service import ScreenerService
@@ -358,6 +364,263 @@ async def run_custom_screener(
 
 
 # =============================================================================
+# Custom Screener Auto-Trade Endpoints
+# =============================================================================
+
+
+@router.post("/custom/{screener_id}/link-auto-trade", response_model=CustomScreenerResponse)
+async def link_auto_trade(
+    screener_id: str,
+    data: LinkAutoTradeRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CustomScreenerResponse:
+    """Link a custom screener to auto-trade configuration.
+
+    This enables automated trading based on the screener results.
+    The screener will run on the specified schedule and create trades.
+    """
+    from datetime import time
+
+    from app.modules.algo.strategy_inference import StrategyInferenceEngine
+
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Parse run_time
+    run_time_obj = None
+    if data.run_time:
+        h, m = map(int, data.run_time.split(":"))
+        run_time_obj = time(hour=h, minute=m)
+
+    # Infer strategy type from filters
+    filters = [FilterConfig(**f) for f in screener.filters]
+    inference_engine = StrategyInferenceEngine()
+    inference_result = inference_engine.infer(filters)
+    inferred_type = inference_result.recommended_strategy.strategy_type
+
+    # Update screener with auto-trade settings
+    screener.is_auto_trade_enabled = True
+    screener.run_frequency = data.run_frequency.value
+    screener.run_time = run_time_obj
+    screener.strategy_template_id = data.strategy_template_id
+    screener.inferred_strategy_type = inferred_type
+
+    await db.commit()
+    await db.refresh(screener)
+
+    return _screener_to_response(screener)
+
+
+@router.post("/custom/{screener_id}/unlink-auto-trade", response_model=UnlinkAutoTradeResponse)
+async def unlink_auto_trade(
+    screener_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> UnlinkAutoTradeResponse:
+    """Unlink a custom screener from auto-trade.
+
+    This disables automated trading for the screener.
+    """
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Disable auto-trade
+    screener.is_auto_trade_enabled = False
+
+    await db.commit()
+
+    return UnlinkAutoTradeResponse(
+        id=screener.id,
+        name=screener.name,
+        is_auto_trade_enabled=False,
+        message="Auto-trade has been disabled for this screener",
+    )
+
+
+@router.get("/custom/{screener_id}/infer-strategy", response_model=StrategyInferenceResponse)
+async def infer_strategy_from_screener(
+    screener_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> StrategyInferenceResponse:
+    """Infer the optimal strategy type from a screener's filters.
+
+    This analyzes the screener's filter configuration and recommends
+    the best algo strategy type (e.g., trend_following, mean_reversion).
+    """
+    from app.modules.algo.strategy_inference import StrategyInferenceEngine
+
+    service = ScreenerService(db)
+    screener = await service.get_custom_screener(current_user.id, screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    # Run strategy inference
+    filters = [FilterConfig(**f) for f in screener.filters]
+    inference_engine = StrategyInferenceEngine()
+    result = inference_engine.infer(filters)
+
+    return StrategyInferenceResponse(
+        screener_id=screener.id,
+        screener_name=screener.name,
+        inferred_strategy_type=result.recommended_strategy.strategy_type,
+        confidence=result.recommended_strategy.confidence,
+        reasoning=result.recommended_strategy.reasoning,
+        suggested_params=result.recommended_strategy.suggested_params,
+    )
+
+
+@router.post("/custom/run-scheduled", response_model=RunScheduledScreenersResponse)
+async def run_scheduled_screeners(
+    data: RunScheduledScreenersRequest,
+    db: DbSession,
+    internal_user: InternalOrCurrentUser,
+) -> RunScheduledScreenersResponse:
+    """Run all scheduled custom screeners with the given frequency.
+
+    This endpoint is called by the Celery beat scheduler:
+    - Daily at 9:20 AM IST for frequency='daily'
+    - Hourly during market hours for frequency='hourly'
+
+    For each screener with matching frequency and auto-trade enabled:
+    1. Run the screener against its configured universe
+    2. Apply multi-factor scoring (if configured)
+    3. Create pending trades or auto-execute (based on config)
+    4. Update last_run_at and next_run_at timestamps
+    """
+    service = ScreenerService(db)
+    frequency = data.frequency.value
+
+    # Get all screeners due to run with this frequency
+    screeners = await service.get_screeners_by_frequency(frequency)
+
+    results = []
+    errors = []
+    auto_trades_triggered = 0
+    screeners_succeeded = 0
+
+    for screener in screeners:
+        try:
+            # Skip if not enabled for auto-trade
+            if not screener.is_auto_trade_enabled:
+                continue
+
+            # Run the screener
+            run_result = await service.run_custom_screener_for_auto_trade(
+                user_id=screener.user_id,
+                screener_id=str(screener.id),
+            )
+
+            if run_result.get("status") == "success":
+                screeners_succeeded += 1
+                auto_trades_triggered += run_result.get("trades_created", 0)
+                auto_trades_triggered += run_result.get("pending_trades_created", 0)
+
+            results.append(
+                {
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "user_id": str(screener.user_id),
+                    "status": run_result.get("status", "error"),
+                    "passed_count": run_result.get("passed_count", 0),
+                    "trades_created": run_result.get("trades_created", 0),
+                }
+            )
+
+        except Exception as e:
+            logger.exception(f"Error running scheduled screener {screener.id}: {e}")
+            errors.append(f"Screener {screener.id}: {str(e)}")
+            results.append(
+                {
+                    "screener_id": str(screener.id),
+                    "screener_name": screener.name,
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
+
+    return RunScheduledScreenersResponse(
+        status="completed" if screeners_succeeded > 0 else "no_screeners",
+        frequency=frequency,
+        screeners_processed=len(results),
+        screeners_succeeded=screeners_succeeded,
+        screeners_failed=len(errors),
+        auto_trades_triggered=auto_trades_triggered,
+        results=results,
+        errors=errors,
+    )
+
+
+@router.post(
+    "/custom/{screener_id}/run-auto-trade",
+    response_model=RunAutoTradeScreenerResponse,
+)
+async def run_screener_auto_trade(
+    screener_id: str,
+    db: DbSession,
+    current_user: InternalOrCurrentUser,
+) -> RunAutoTradeScreenerResponse:
+    """Run a specific custom screener and trigger auto-trade.
+
+    This endpoint can be called:
+    - By the scheduled Celery task for a specific screener
+    - Manually by the user to trigger an immediate run
+
+    The screener must have auto-trade enabled. Results flow through
+    the auto-trade pipeline based on the user's confirmation mode:
+    - AUTO: Strategies are created and activated immediately
+    - NOTIFY: Pending trades are created for user approval
+    """
+    service = ScreenerService(db)
+
+    # Get the screener
+    screener = await service.get_custom_screener(str(current_user.id), screener_id)
+    if not screener:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Custom screener not found",
+        )
+
+    if not screener.is_auto_trade_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auto-trade is not enabled for this screener",
+        )
+
+    # Run the screener for auto-trade
+    result = await service.run_custom_screener_for_auto_trade(
+        user_id=str(current_user.id),
+        screener_id=screener_id,
+    )
+
+    return RunAutoTradeScreenerResponse(
+        status=result.get("status", "success"),
+        screener_id=screener_id,
+        screener_name=screener.name,
+        passed_count=result.get("passed_count", 0),
+        total_screened=result.get("total_screened", 0),
+        trades_created=result.get("trades_created", 0),
+        pending_trades_created=result.get("pending_trades_created", 0),
+        results=result.get("results", []),
+        message=result.get("message"),
+    )
+
+
+# =============================================================================
 # Recommendations Endpoints
 # =============================================================================
 
@@ -462,6 +725,16 @@ async def get_recommendations(
                 return_1d=r.return_1d,
                 return_1w=r.return_1w,
                 return_1m=r.return_1m,
+                # Multi-factor scoring fields
+                technical_score=r.technical_score,
+                fundamental_score=r.fundamental_score,
+                sentiment_score=r.sentiment_score,
+                combined_score=r.combined_score,
+                signal_direction=r.signal_direction,
+                confidence_level=r.confidence_level,
+                recommended_strategy=r.recommended_strategy,
+                position_size_multiplier=r.position_size_multiplier,
+                skip_reason=r.skip_reason,
             )
             for r in recs
         ]
@@ -491,9 +764,16 @@ async def store_recommendations(
 
     Called by the Celery task to persist recommendations.
     Accepts JSON body with date, category, and results.
+
+    Enriches recommendations with multi-factor scoring:
+    - Technical score (from screener data)
+    - Fundamental score (from RecommendationService)
+    - Sentiment score (from news analysis)
+    - Combined score, direction, confidence, and strategy recommendation
     """
     from datetime import datetime
 
+    from app.modules.algo.multi_factor_scorer import MultiFactorScorer
     from app.modules.screener.models import DailyRecommendation
 
     # Parse date
@@ -526,12 +806,55 @@ async def store_recommendations(
             except Exception:
                 pass  # Price will default to 0.0 if fetch fails
 
-    # Store new recommendations
+    # Prepare technical and fundamental data for multi-factor scoring
+    technical_data: dict[str, dict] = {}
+    fundamental_data: dict[str, dict] = {}
+
+    for result in data.results:
+        symbol = result.get("symbol", "")
+        if symbol:
+            # Technical data from screener result
+            technical_data[symbol] = {
+                "score": result.get("score", 50.0),
+                "momentum_score": result.get("filter_scores", {}).get("momentum", 0),
+                "volume_ratio": result.get("metadata", {}).get("volume_ratio", 1.0),
+                "breakout_score": result.get("filter_scores", {}).get("breakout", 0),
+                "ma_position": result.get("metadata", {}).get("ma_position", "unknown"),
+            }
+            # Fundamental data will be fetched by scorer if not provided
+            fund_score = result.get("metadata", {}).get("fundamental_score")
+            if fund_score is not None:
+                fundamental_data[symbol] = {
+                    "fundamental_score": fund_score,
+                    "reasons": result.get("metadata", {}).get("fundamental_reasons", []),
+                }
+
+    # Calculate multi-factor scores
+    scorer = MultiFactorScorer(db)
+    multi_factor_scores: dict[str, dict] = {}
+
+    try:
+        scores = await scorer.score_symbols(
+            symbols=symbols,
+            category=data.category,
+            technical_data=technical_data,
+            fundamental_data=fundamental_data,
+        )
+        for score in scores:
+            multi_factor_scores[score.symbol] = score.to_dict()
+    except Exception as e:
+        logger.warning(f"Multi-factor scoring failed: {e}. Storing without scores.")
+
+    # Store new recommendations with multi-factor data
     stored_count = 0
     for i, result in enumerate(data.results):
         symbol = result.get("symbol", "")
         # Use fetched price, or fallback to metadata, or 0.0
         price_at_rec = price_map.get(symbol, result.get("metadata", {}).get("current_price", 0.0))
+
+        # Get multi-factor score data if available
+        mf_data = multi_factor_scores.get(symbol, {})
+
         rec = DailyRecommendation(
             date=rec_date,
             category=data.category,
@@ -540,8 +863,18 @@ async def store_recommendations(
             score=result.get("score", 0.0),
             price_at_rec=price_at_rec,
             filter_scores=result.get("filter_scores", {}),
-            reasons=result.get("reasons", []),
+            reasons=mf_data.get("reasons", result.get("reasons", [])),
             extra_data=result.get("metadata", {}),
+            # Multi-factor scoring fields
+            technical_score=mf_data.get("technical_score"),
+            fundamental_score=mf_data.get("fundamental_score"),
+            sentiment_score=mf_data.get("sentiment_score"),
+            combined_score=mf_data.get("combined_score"),
+            signal_direction=mf_data.get("direction"),
+            confidence_level=mf_data.get("confidence"),
+            recommended_strategy=mf_data.get("recommended_strategy"),
+            position_size_multiplier=mf_data.get("position_size_multiplier"),
+            skip_reason=mf_data.get("skip_reason"),
         )
         db.add(rec)
         stored_count += 1
@@ -553,6 +886,7 @@ async def store_recommendations(
         "date": data.date,
         "category": data.category,
         "stored_count": stored_count,
+        "multi_factor_scored": len(multi_factor_scores),
     }
 
 
@@ -949,6 +1283,11 @@ async def get_screener_performance(
 # Helper functions
 def _screener_to_response(screener) -> CustomScreenerResponse:
     """Convert CustomScreener model to response."""
+    # Format run_time as HH:MM string if it exists
+    run_time_str = None
+    if screener.run_time:
+        run_time_str = screener.run_time.strftime("%H:%M")
+
     return CustomScreenerResponse(
         id=screener.id,
         name=screener.name,
@@ -959,6 +1298,14 @@ def _screener_to_response(screener) -> CustomScreenerResponse:
         top_n=screener.top_n,
         created_at=screener.created_at,
         updated_at=screener.updated_at,
+        # Auto-trade fields
+        is_auto_trade_enabled=screener.is_auto_trade_enabled or False,
+        run_frequency=screener.run_frequency or "manual",
+        run_time=run_time_str,
+        last_run_at=screener.last_run_at,
+        next_run_at=screener.next_run_at,
+        inferred_strategy_type=screener.inferred_strategy_type,
+        strategy_template_id=screener.strategy_template_id,
     )
 
 
