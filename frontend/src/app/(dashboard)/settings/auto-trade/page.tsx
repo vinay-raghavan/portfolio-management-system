@@ -28,12 +28,20 @@ const WEIGHT_PRESETS = [
   { name: 'Sentiment', tech: 30, fund: 30, sent: 40, icon: Newspaper, description: 'Higher weight on market sentiment' },
 ];
 
-// Confidence level options
+// Confidence level options - using string values to match backend ('low', 'medium', 'high')
 const CONFIDENCE_LEVELS = [
-  { value: 40, label: 'Low', description: 'Include more trades with lower confidence', stars: 1, color: 'text-yellow-500' },
-  { value: 60, label: 'Medium', description: 'Balanced confidence threshold', stars: 2, color: 'text-blue-500' },
-  { value: 80, label: 'High', description: 'Only high-confidence opportunities', stars: 3, color: 'text-green-500' },
-];
+  { value: 'low', threshold: 40, label: 'Low', description: 'Include more trades with lower confidence', stars: 1, color: 'text-yellow-500' },
+  { value: 'medium', threshold: 60, label: 'Medium', description: 'Balanced confidence threshold', stars: 2, color: 'text-blue-500' },
+  { value: 'high', threshold: 80, label: 'High', description: 'Only high-confidence opportunities', stars: 3, color: 'text-green-500' },
+] as const;
+
+type ConfidenceLevel = 'low' | 'medium' | 'high';
+
+// Helper to get numeric threshold from string confidence level
+const getConfidenceThreshold = (level: string): number => {
+  const found = CONFIDENCE_LEVELS.find(l => l.value === level);
+  return found?.threshold ?? 60;
+};
 
 const CATEGORIES = [
   { value: 'momentum', label: 'Momentum', description: 'High momentum stocks with strong price trends' },
@@ -134,7 +142,7 @@ function SourceSelector({
           {selectedScreener && (
             <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
               <p><strong>Universe:</strong> {selectedScreener.universe}</p>
-              <p><strong>Filters:</strong> {selectedScreener.filters.length}</p>
+              <p><strong>{selectedScreener.preset ? 'Preset' : 'Filters'}:</strong> {selectedScreener.preset || `${selectedScreener.filters?.length ?? 0} filters`}</p>
               {selectedScreener.run_frequency && (
                 <p><strong>Schedule:</strong> {selectedScreener.run_frequency} {selectedScreener.run_time && `at ${selectedScreener.run_time}`}</p>
               )}
@@ -209,16 +217,16 @@ function AutoTradeConfigCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Bot className={`h-5 w-5 ${config.is_enabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+            <Bot className={`h-5 w-5 ${config.enabled ? 'text-green-500' : 'text-muted-foreground'}`} />
             {category.label}
           </CardTitle>
           <div className="flex items-center gap-2">
             <Switch
-              checked={config.is_enabled}
-              onCheckedChange={(checked) => updateMutation.mutate({ is_enabled: checked })}
+              checked={config.enabled}
+              onCheckedChange={(checked) => updateMutation.mutate({ enabled: checked })}
             />
-            <Badge variant={config.is_enabled ? 'default' : 'secondary'}>
-              {config.is_enabled ? 'Active' : 'Inactive'}
+            <Badge variant={config.enabled ? 'default' : 'secondary'}>
+              {config.enabled ? 'Active' : 'Inactive'}
             </Badge>
           </div>
         </div>
@@ -230,7 +238,7 @@ function AutoTradeConfigCard({
             <Label>Confirmation Mode</Label>
             <Select
               value={config.confirmation_mode}
-              onValueChange={(v) => updateMutation.mutate({ confirmation_mode: v as ConfirmationMode })}
+              onValueChange={(v) => updateMutation.mutate({ confirmation_mode: v })}
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -261,34 +269,37 @@ function AutoTradeConfigCard({
 
         {/* Source Selection (Preset vs Custom Screener) */}
         <SourceSelector
-          sourceType={config.source_type || 'PRESET'}
-          screenerId={config.screener_id}
+          sourceType={(config.screener_source_type || 'PRESET') as ScreenerSourceType}
+          screenerId={config.saved_screener_id}
           customScreeners={customScreeners}
           categoryValue={category.value}
-          onSourceChange={(type) => updateMutation.mutate({ source_type: type, screener_id: type === 'PRESET' ? null : config.screener_id })}
-          onScreenerChange={(id) => updateMutation.mutate({ screener_id: id })}
+          onSourceChange={(type) => updateMutation.mutate({ screener_source_type: type as string, saved_screener_id: type === 'PRESET' ? null : config.saved_screener_id })}
+          onScreenerChange={(id) => updateMutation.mutate({ saved_screener_id: id })}
         />
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <Label>Max Trades Per Day</Label>
+            <Label>Max Positions Per Day</Label>
             <Input
               type="number"
               min={1}
               max={20}
-              value={config.max_trades_per_day}
-              onChange={(e) => updateMutation.mutate({ max_trades_per_day: parseInt(e.target.value) || 5 })}
+              value={config.max_positions_per_day}
+              onChange={(e) => updateMutation.mutate({ max_positions_per_day: parseInt(e.target.value) || 5 })}
             />
           </div>
           <div className="space-y-2">
-            <Label>Min Confidence (%)</Label>
-            <Slider
-              value={[config.min_confidence]}
-              min={0}
-              max={100}
-              step={5}
-              onValueCommit={(v) => updateMutation.mutate({ min_confidence: v[0] })}
-            />
-            <p className="text-sm text-muted-foreground">{config.min_confidence}%</p>
+            <Label>Min Confidence</Label>
+            <Select
+              value={config.min_confidence}
+              onValueChange={(v) => updateMutation.mutate({ min_confidence: v })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low (40%)</SelectItem>
+                <SelectItem value="medium">Medium (60%)</SelectItem>
+                <SelectItem value="high">High (80%)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label className="flex items-center gap-1">
@@ -338,7 +349,7 @@ function ScoreBreakdownChart({ weights }: { weights: { technical: number; fundam
 // Live score preview showing real-time calculation example
 function LiveScorePreview({ weights, minConfidence }: {
   weights: { technical: number; fundamental: number; sentiment: number };
-  minConfidence: string;
+  minConfidence: string; // 'low' | 'medium' | 'high'
 }) {
   // Example stock data for preview
   const examples = [
@@ -347,7 +358,8 @@ function LiveScorePreview({ weights, minConfidence }: {
     { name: 'Borderline', technical: 45, fundamental: 70, sentiment: 30 },
   ];
 
-  const confidenceThreshold = minConfidence === 'high' ? 80 : minConfidence === 'medium' ? 60 : 40;
+  // Convert string confidence level to numeric threshold
+  const confidenceThreshold = getConfidenceThreshold(minConfidence);
 
   const calculateScore = (tech: number, fund: number, sent: number) => {
     // Normalize sentiment from -100 to 100 range to 0-100 for display
@@ -397,7 +409,7 @@ function LiveScorePreview({ weights, minConfidence }: {
         })}
       </div>
       <p className="text-xs text-muted-foreground pt-1 border-t">
-        Threshold: {confidenceThreshold}+ → {minConfidence.toUpperCase()} confidence
+        Threshold: {confidenceThreshold}+ → {confidenceThreshold >= 80 ? 'HIGH' : confidenceThreshold >= 60 ? 'MEDIUM' : 'LOW'} confidence
       </p>
     </div>
   );
@@ -454,17 +466,11 @@ function ConfidenceSelector({
   value,
   onChange,
 }: {
-  value: number;
-  onChange: (value: number) => void;
+  value: string; // 'low' | 'medium' | 'high'
+  onChange: (value: string) => void;
 }) {
-  // Find closest confidence level
-  const getClosestLevel = (v: number) => {
-    return CONFIDENCE_LEVELS.reduce((prev, curr) =>
-      Math.abs(curr.value - v) < Math.abs(prev.value - v) ? curr : prev
-    );
-  };
-
-  const currentLevel = getClosestLevel(value);
+  // Find confidence level by string value
+  const currentLevel = CONFIDENCE_LEVELS.find(l => l.value === value) || CONFIDENCE_LEVELS[1]; // default medium
 
   return (
     <div className="space-y-2">
@@ -473,14 +479,14 @@ function ConfidenceSelector({
         Minimum Confidence Level
       </Label>
       <RadioGroup
-        value={currentLevel.value.toString()}
-        onValueChange={(v) => onChange(parseInt(v))}
+        value={currentLevel.value}
+        onValueChange={(v) => onChange(v)}
         className="grid grid-cols-3 gap-2"
       >
         {CONFIDENCE_LEVELS.map((level) => (
           <div key={level.value} className="flex items-center">
             <RadioGroupItem
-              value={level.value.toString()}
+              value={level.value}
               id={`confidence-${level.value}`}
               className="peer sr-only"
             />
@@ -497,7 +503,7 @@ function ConfidenceSelector({
                 ))}
               </div>
               <span className="font-medium text-sm">{level.label}</span>
-              <span className="text-[10px] text-muted-foreground text-center">{level.value}%+</span>
+              <span className="text-[10px] text-muted-foreground text-center">{level.threshold}%+</span>
             </Label>
           </div>
         ))}

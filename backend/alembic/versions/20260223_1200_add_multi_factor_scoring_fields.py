@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20260223_1200"
-down_revision = "228fbbcc60c3"  # Previous migration
+down_revision = "auto_trade_config_001"  # Points to 20260223_1100_add_auto_trade_config_tables.py
 branch_labels = None
 depends_on = None
 

@@ -22,6 +22,11 @@ import {
 } from '@/lib/api';
 import { useNotificationStore, useTradingStore, useUIStore } from '@/store';
 import { useRouter } from 'next/navigation';
+import {
+  DataSourceErrorBanner,
+  parseDataSourceError,
+  type DataSourceError,
+} from '@/components/shared';
 
 export default function ScreenerPage() {
   const router = useRouter();
@@ -38,6 +43,27 @@ export default function ScreenerPage() {
   const [totalScreened, setTotalScreened] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [mode, setMode] = useState<'preset' | 'custom'>('preset');
+  const [dataSourceError, setDataSourceError] = useState<DataSourceError | null>(null);
+
+  // Helper to handle screener errors with data source detection
+  const handleScreenerError = (error: unknown) => {
+    const dsError = parseDataSourceError(error);
+    if (dsError) {
+      setDataSourceError(dsError);
+      addNotification({
+        type: 'error',
+        title: `${dsError.provider} Connection Issue`,
+        message: dsError.message,
+      });
+    } else {
+      setDataSourceError(null);
+      addNotification({
+        type: 'error',
+        title: 'Screener Failed',
+        message: (error as Record<string, Record<string, Record<string, string>>>)?.response?.data?.detail || 'Failed to run screener',
+      });
+    }
+  };
 
   // Run custom screener
   const runCustomMutation = useMutation({
@@ -49,18 +75,13 @@ export default function ScreenerPage() {
         top_n: 50,
       }),
     onSuccess: (res) => {
+      setDataSourceError(null);
       setResults(res.data.results);
       setTotalScreened(res.data.total_screened);
       setDuration(res.data.duration_ms);
       addNotification({ type: 'success', title: 'Screener Complete', message: `Found ${res.data.passed_count} stocks` });
     },
-    onError: (error: any) => {
-      addNotification({
-        type: 'error',
-        title: 'Screener Failed',
-        message: error.response?.data?.detail || 'Failed to run screener',
-      });
-    },
+    onError: handleScreenerError,
   });
 
   // Run preset screener with strictness
@@ -74,18 +95,13 @@ export default function ScreenerPage() {
         top_n: 50,
       }),
     onSuccess: (res) => {
+      setDataSourceError(null);
       setResults(res.data.results);
       setTotalScreened(res.data.total_screened);
       setDuration(res.data.duration_ms);
       addNotification({ type: 'success', title: 'Screener Complete', message: `Found ${res.data.passed_count} stocks` });
     },
-    onError: (error: any) => {
-      addNotification({
-        type: 'error',
-        title: 'Screener Failed',
-        message: error.response?.data?.detail || 'Failed to run screener',
-      });
-    },
+    onError: handleScreenerError,
   });
 
   const handlePresetSelect = (preset: ScreenerPresetType) => {
@@ -124,7 +140,7 @@ export default function ScreenerPage() {
   };
 
   const handleLoadScreener = (screener: CustomScreener) => {
-    setFilters(screener.filters);
+    setFilters(screener.filters ?? []);
     setUniverse(screener.universe as UniverseType);
     setMode('custom');
     addNotification({ type: 'info', title: 'Screener Loaded', message: `Loaded "${screener.name}"` });
@@ -290,8 +306,24 @@ export default function ScreenerPage() {
           filters={filters}
           universe={universe}
           preset={selectedPreset}
+          strictness={strictness}
         />
       </div>
+
+      {/* Data Source Error Banner */}
+      {dataSourceError && (
+        <DataSourceErrorBanner
+          error={dataSourceError}
+          onRetry={() => {
+            if (mode === 'preset' && selectedPreset) {
+              runPresetMutation.mutate({ preset: selectedPreset, level: strictness });
+            } else if (mode === 'custom' && filters.length > 0) {
+              runCustomMutation.mutate();
+            }
+          }}
+          isRetrying={isLoading}
+        />
+      )}
 
       {/* Main Layout */}
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">

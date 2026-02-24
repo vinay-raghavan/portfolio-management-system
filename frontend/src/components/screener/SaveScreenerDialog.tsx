@@ -14,13 +14,14 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
-import { screenerApi, autoTradeApi, type FilterConfig, type RunFrequency } from '@/lib/api';
+import { screenerApi, autoTradeApi, type FilterConfig, type RunFrequency, type StrictnessLevel } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface SaveScreenerDialogProps {
   filters: FilterConfig[];
   universe: string;
   preset?: string | null;
+  strictness?: StrictnessLevel | null;
   onSaved?: () => void;
   trigger?: React.ReactNode;
 }
@@ -35,6 +36,7 @@ export function SaveScreenerDialog({
   filters,
   universe,
   preset,
+  strictness,
   onSaved,
   trigger,
 }: SaveScreenerDialogProps) {
@@ -71,7 +73,10 @@ export function SaveScreenerDialog({
       name,
       description: description || undefined,
       universe,
-      filters,
+      // Include preset if available, otherwise use filters
+      preset: preset || undefined,
+      strictness: preset && strictness ? strictness : undefined,
+      filters: filters.length > 0 ? filters : undefined,
       is_auto_trade_enabled: isAutoTradeEnabled,
       run_frequency: isAutoTradeEnabled ? runFrequency : 'manual',
       run_time: isAutoTradeEnabled && runFrequency === 'daily' ? runTime : undefined,
@@ -109,13 +114,14 @@ export function SaveScreenerDialog({
   };
 
   const templates = templatesData?.templates || [];
-  const canSave = name.trim() && filters.length > 0;
+  // Allow saving if name is provided AND (has filters OR has preset)
+  const canSave = name.trim() && (filters.length > 0 || !!preset);
 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button variant="outline" size="sm" disabled={filters.length === 0}>
+          <Button variant="outline" size="sm" disabled={filters.length === 0 && !preset}>
             <Save className="h-4 w-4 mr-2" /> Save Screener
           </Button>
         )}
@@ -142,7 +148,11 @@ export function SaveScreenerDialog({
           </div>
 
           <div className="text-sm text-muted-foreground">
-            <span className="font-medium">{filters.length}</span> filters • Universe: <span className="font-medium">{universe}</span>
+            {preset ? (
+              <>Preset: <span className="font-medium capitalize">{preset}</span>{strictness && <> (<span className="font-medium">{strictness}</span>)</>} • Universe: <span className="font-medium">{universe}</span></>
+            ) : (
+              <><span className="font-medium">{filters.length}</span> filters • Universe: <span className="font-medium">{universe}</span></>
+            )}
           </div>
 
           {/* Auto-Trade Section */}

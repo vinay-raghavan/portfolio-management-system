@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class FilterTypeEnum(str, Enum):
@@ -165,12 +165,22 @@ class RunFrequencyEnum(str, Enum):
 
 
 class CustomScreenerCreate(BaseModel):
-    """Request to create/save a custom screener."""
+    """Request to create/save a custom screener.
+
+    Can be created with either:
+    - preset: A preset screener name (minervini, momentum, etc.)
+    - filters: Custom filter configurations
+    At least one of preset or filters must be provided.
+    """
 
     name: str = Field(min_length=1, max_length=100)
     description: str | None = None
     universe: str = Field(default="nifty500")
-    filters: list[FilterConfig] = Field(min_length=1)
+    # Preset screener name (alternative to custom filters)
+    preset: str | None = Field(default=None, max_length=50)
+    strictness: StrictnessLevel | None = Field(default=StrictnessLevel.MODERATE)
+    # Custom filters (optional if preset is provided)
+    filters: list[FilterConfig] | None = Field(default=None)
     min_score: float = Field(default=50.0, ge=0, le=100)
     top_n: int = Field(default=50, ge=1, le=500)
 
@@ -187,6 +197,13 @@ class CustomScreenerCreate(BaseModel):
         description="ID of strategy template to use for auto-trade execution",
     )
 
+    @model_validator(mode="after")
+    def validate_preset_or_filters(self) -> "CustomScreenerCreate":
+        """Ensure either preset or filters is provided."""
+        if not self.preset and not self.filters:
+            raise ValueError("Either preset or filters must be provided")
+        return self
+
 
 class CustomScreenerUpdate(BaseModel):
     """Request to update a custom screener."""
@@ -194,6 +211,8 @@ class CustomScreenerUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     description: str | None = None
     universe: str | None = None
+    preset: str | None = Field(None, max_length=50)
+    strictness: StrictnessLevel | None = None
     filters: list[FilterConfig] | None = None
     min_score: float | None = Field(None, ge=0, le=100)
     top_n: int | None = Field(None, ge=1, le=500)
@@ -216,7 +235,9 @@ class CustomScreenerResponse(BaseModel):
     name: str
     description: str | None
     universe: str
-    filters: list[FilterConfig]
+    preset: str | None = None
+    strictness: str | None = None
+    filters: list[FilterConfig] | None = None
     min_score: float
     top_n: int
     created_at: datetime

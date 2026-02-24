@@ -770,7 +770,12 @@ class AutoTradeConfig(Base):
     # Enabled and confirmation mode
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     confirmation_mode: Mapped[ConfirmationMode] = mapped_column(
-        SQLEnum(ConfirmationMode, name="confirmationmode", create_type=True),
+        SQLEnum(
+            ConfirmationMode,
+            name="confirmationmode",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=ConfirmationMode.NOTIFY,
     )
@@ -801,7 +806,12 @@ class AutoTradeConfig(Base):
 
     # Screener source selection (from Section 2.6.12.5)
     screener_source_type: Mapped[ScreenerSourceType] = mapped_column(
-        SQLEnum(ScreenerSourceType, name="screenersourcetype", create_type=True),
+        SQLEnum(
+            ScreenerSourceType,
+            name="screenersourcetype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=ScreenerSourceType.PRESET,
     )

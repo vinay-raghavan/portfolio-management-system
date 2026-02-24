@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "add_run_time_config"
-down_revision: Union[str, None] = "add_multi_factor_fields"
+down_revision: Union[str, None] = "20260223_1200"  # Points to add_multi_factor_scoring_fields
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

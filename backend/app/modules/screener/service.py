@@ -545,7 +545,12 @@ class ScreenerService:
     async def create_custom_screener(
         self, user_id: str, data: CustomScreenerCreate
     ) -> CustomScreener:
-        """Create a new custom screener."""
+        """Create a new custom screener.
+
+        Supports both:
+        - Preset screeners (preset field set, filters optional)
+        - Custom screeners (filters provided, preset optional)
+        """
         from datetime import time
 
         # Parse run_time if provided
@@ -554,12 +559,17 @@ class ScreenerService:
             h, m = map(int, data.run_time.split(":"))
             run_time_obj = time(hour=h, minute=m)
 
+        # Build filters dict - can be empty for preset screeners
+        filters_dict = [f.model_dump() for f in data.filters] if data.filters else []
+
         screener = CustomScreener(
             user_id=user_id,
             name=data.name,
             description=data.description,
             universe=data.universe,
-            filters=[f.model_dump() for f in data.filters],
+            preset=data.preset,
+            strictness=data.strictness.value if data.strictness else "moderate",
+            filters=filters_dict,
             min_score=data.min_score,
             top_n=data.top_n,
             # Auto-trade fields
@@ -589,6 +599,10 @@ class ScreenerService:
             screener.description = data.description
         if data.universe is not None:
             screener.universe = data.universe
+        if data.preset is not None:
+            screener.preset = data.preset
+        if data.strictness is not None:
+            screener.strictness = data.strictness.value
         if data.filters is not None:
             screener.filters = [f.model_dump() for f in data.filters]
         if data.min_score is not None:

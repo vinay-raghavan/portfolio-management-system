@@ -143,7 +143,11 @@ export function SavedScreenersList({
                 <div>
                   <div className="font-medium text-sm">{screener.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {screener.filters.length} filters • {screener.universe}
+                    {screener.preset ? (
+                      <span className="capitalize">{screener.preset}</span>
+                    ) : (
+                      <span>{screener.filters?.length ?? 0} filters</span>
+                    )} • {screener.universe}
                   </div>
                 </div>
                 <div className="flex gap-1">

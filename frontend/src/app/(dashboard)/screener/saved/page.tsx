@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -103,8 +103,8 @@ function SavedScreenerCard({
       <CardContent>
         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
           <div>
-            <p className="text-muted-foreground">Filters</p>
-            <p className="font-medium">{screener.filters.length}</p>
+            <p className="text-muted-foreground">{screener.preset ? 'Preset' : 'Filters'}</p>
+            <p className="font-medium capitalize">{screener.preset || (screener.filters?.length ?? 0)}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Universe</p>
@@ -276,12 +276,26 @@ function ViewResultsModal({
   );
 }
 
-// Auto-trade settings modal for quick configuration
-const RUN_FREQUENCIES: { value: RunFrequency; label: string }[] = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'manual', label: 'Manual' },
+// Auto-trade settings modal - comprehensive all-in-one configuration
+const RUN_FREQUENCIES: { value: RunFrequency; label: string; description: string }[] = [
+  { value: 'daily', label: 'Daily', description: 'Scan once per day at specified time' },
+  { value: 'hourly', label: 'Hourly', description: 'Scan every hour during market hours' },
+  { value: 'manual', label: 'Manual Only', description: 'Only scan when you click "Run Now"' },
 ];
+
+const CONFIRMATION_MODES = [
+  { value: 'auto', label: 'Auto-Execute', description: 'Create and activate strategies immediately' },
+  { value: 'notify', label: 'Require Approval', description: 'Create pending trades for your review' },
+] as const;
+
+const CONFIDENCE_LEVELS = [
+  { value: 'low', label: 'Low (40%)', description: 'More trades, lower confidence' },
+  { value: 'medium', label: 'Medium (60%)', description: 'Balanced approach' },
+  { value: 'high', label: 'High (80%)', description: 'Fewer trades, higher confidence' },
+] as const;
+
+type ConfirmationModeValue = 'auto' | 'notify';
+type ConfidenceLevelValue = 'low' | 'medium' | 'high';
 
 function AutoTradeSettingsModal({
   screener,
@@ -295,17 +309,97 @@ function AutoTradeSettingsModal({
   onSaved: () => void;
 }) {
   const { toast } = useToast();
-  const [isEnabled, setIsEnabled] = useState(screener?.is_auto_trade_enabled ?? false);
-  const [frequency, setFrequency] = useState<RunFrequency>((screener?.run_frequency as RunFrequency) ?? 'daily');
-  const [runTime, setRunTime] = useState(screener?.run_time ?? '09:20');
+  const queryClient = useQueryClient();
 
-  // Reset state when screener changes
-  useState(() => {
-    if (screener) {
+  // Fetch existing config for 'custom' category
+  const { data: configsData, isLoading: configLoading } = useQuery({
+    queryKey: ['autoTradeConfigs'],
+    queryFn: () => autoTradeApi.getConfigs().then(res => res.data),
+    enabled: open,
+  });
+
+  // Fetch available templates
+  const { data: templatesData } = useQuery({
+    queryKey: ['strategyTemplates'],
+    queryFn: () => autoTradeApi.getTemplates().then(res => res.data),
+    enabled: open,
+  });
+
+  const existingConfig = configsData?.configs?.find(c => c.category === 'custom');
+  const templates = templatesData?.templates ?? [];
+
+  // Form state
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [frequency, setFrequency] = useState<RunFrequency>('daily');
+  const [runTime, setRunTime] = useState('09:20');
+  const [confirmationMode, setConfirmationMode] = useState<ConfirmationModeValue>('notify');
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [minConfidence, setMinConfidence] = useState<ConfidenceLevelValue>('medium');
+  const [maxPositions, setMaxPositions] = useState(3);
+
+  // Track previous screener ID to detect changes
+  const prevScreenerIdRef = useRef<string | undefined>(undefined);
+
+  // Reset form when screener changes or dialog opens with new screener
+  // This is an intentional synchronization of form state with props
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (screener && open && screener.id !== prevScreenerIdRef.current) {
+      prevScreenerIdRef.current = screener.id;
       setIsEnabled(screener.is_auto_trade_enabled);
       setFrequency((screener.run_frequency as RunFrequency) || 'daily');
       setRunTime(screener.run_time || '09:20');
     }
+  }, [screener, open]);
+
+  // Track if config has been loaded to avoid re-setting on every render
+  const configLoadedRef = useRef(false);
+
+  // Populate from existing config when loaded
+  // This is an intentional one-time initialization from server data
+  useEffect(() => {
+    if (existingConfig && !configLoadedRef.current) {
+      configLoadedRef.current = true;
+      setConfirmationMode((existingConfig.confirmation_mode?.toLowerCase() as ConfirmationModeValue) || 'notify');
+      setTemplateId(existingConfig.strategy_template_id || null);
+      setMinConfidence((existingConfig.min_confidence as ConfidenceLevelValue) || 'medium');
+      setMaxPositions(existingConfig.max_positions_per_day || 3);
+    }
+  }, [existingConfig]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Reset config loaded flag when dialog closes
+  useEffect(() => {
+    if (!open) {
+      configLoadedRef.current = false;
+    }
+  }, [open]);
+
+  // Create or update AutoTradeConfig
+  const configMutation = useMutation({
+    mutationFn: async () => {
+      const configData = {
+        category: 'custom',
+        enabled: true,
+        confirmation_mode: confirmationMode,
+        strategy_template_id: templateId,
+        max_positions_per_day: maxPositions,
+        min_confidence: minConfidence,
+        screener_source_type: 'custom' as const,
+        saved_screener_id: screener!.id,
+        run_time: runTime,
+        // Default weights
+        weight_technical: 50,
+        weight_fundamental: 30,
+        weight_sentiment: 20,
+      };
+
+      if (existingConfig) {
+        return autoTradeApi.updateConfig(existingConfig.id, configData);
+      } else {
+        return autoTradeApi.createConfig(configData);
+      }
+    },
   });
 
   const linkMutation = useMutation({
@@ -313,103 +407,246 @@ function AutoTradeSettingsModal({
       run_frequency: frequency,
       run_time: frequency === 'daily' ? runTime : undefined,
     }),
-    onSuccess: () => {
-      toast({ title: 'Auto-trade enabled', description: `Schedule set to ${frequency}` });
-      onSaved();
-      onClose();
-    },
-    onError: () => toast({ title: 'Error', description: 'Failed to update settings', variant: 'destructive' }),
   });
 
   const unlinkMutation = useMutation({
     mutationFn: () => screenerApi.unlinkAutoTrade(screener!.id),
     onSuccess: () => {
       toast({ title: 'Auto-trade disabled' });
+      queryClient.invalidateQueries({ queryKey: ['autoTradeConfigs'] });
       onSaved();
       onClose();
     },
     onError: () => toast({ title: 'Error', description: 'Failed to disable auto-trade', variant: 'destructive' }),
   });
 
-  const handleSave = () => {
-    if (isEnabled) {
-      linkMutation.mutate();
-    } else {
+  const handleSave = async () => {
+    if (!isEnabled) {
       unlinkMutation.mutate();
+      return;
+    }
+
+    try {
+      // First create/update the AutoTradeConfig
+      await configMutation.mutateAsync();
+      // Then link the screener
+      await linkMutation.mutateAsync();
+
+      toast({
+        title: 'Auto-trade configured!',
+        description: `${confirmationMode === 'auto' ? 'Strategies will be created automatically' : 'Trades will require your approval'}`
+      });
+      queryClient.invalidateQueries({ queryKey: ['autoTradeConfigs'] });
+      onSaved();
+      onClose();
+    } catch {
+      toast({ title: 'Error', description: 'Failed to save auto-trade settings', variant: 'destructive' });
     }
   };
 
+  const isPending = configMutation.isPending || linkMutation.isPending || unlinkMutation.isPending;
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
+            <Zap className="h-5 w-5 text-primary" />
             Auto-Trade Settings
           </DialogTitle>
           <DialogDescription>
-            Configure auto-trading for &quot;{screener?.name}&quot;
+            Configure automatic trading for &quot;{screener?.name}&quot;
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Enable toggle */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Enable Auto-Trade</Label>
-              <p className="text-sm text-muted-foreground">Automatically create trades from this screener</p>
-            </div>
-            <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+        {configLoading ? (
+          <div className="flex justify-center py-8">
+            <BrandedSpinner size="md" />
           </div>
-
-          {isEnabled && (
-            <>
-              {/* Frequency */}
-              <div className="space-y-2">
-                <Label>Run Frequency</Label>
-                <Select value={frequency} onValueChange={(v) => setFrequency(v as RunFrequency)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RUN_FREQUENCIES.map((f) => (
-                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        ) : (
+          <div className="space-y-5 py-4">
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+              <div>
+                <Label className="text-base font-medium">Enable Auto-Trade</Label>
+                <p className="text-sm text-muted-foreground">Create trades when screener finds matches</p>
               </div>
+              <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+            </div>
 
-              {/* Run time (for daily) */}
-              {frequency === 'daily' && (
-                <div className="space-y-2">
-                  <Label>Run Time</Label>
-                  <Input
-                    type="time"
-                    value={runTime}
-                    onChange={(e) => setRunTime(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">Time to run the screener daily</p>
+            {isEnabled && (
+              <>
+                {/* Schedule Section - When to scan for stocks */}
+                <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <Label className="font-medium">Screener Schedule</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    How often to scan for stocks matching your criteria. Found stocks become trading candidates.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Scan Frequency</Label>
+                      <Select value={frequency} onValueChange={(v) => setFrequency(v as RunFrequency)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RUN_FREQUENCIES.map((f) => (
+                            <SelectItem key={f.value} value={f.value}>
+                              <div className="flex flex-col items-start">
+                                <span>{f.label}</span>
+                                <span className="text-xs text-muted-foreground">{f.description}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {frequency === 'daily' && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Scan Time (IST)</Label>
+                        <Input type="time" value={runTime} onChange={(e) => setRunTime(e.target.value)} />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    💡 Tip: Daily at 09:20 AM runs before market opens, giving you time to review.
+                  </p>
                 </div>
-              )}
 
-              {/* Strategy info */}
-              {screener?.inferred_strategy_type && (
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm">
-                    <TrendingUp className="h-4 w-4" />
-                    <span className="text-muted-foreground">Strategy:</span>
-                    <Badge variant="secondary">{screener.inferred_strategy_type}</Badge>
+                {/* Trading Behavior Section - What happens when stocks are found */}
+                <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Bot className="h-4 w-4 text-muted-foreground" />
+                    <Label className="font-medium">Strategy Creation</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    What happens when the screener finds matching stocks. Created strategies run during market hours.
+                  </p>
+
+                  {/* Confirmation Mode */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">When matches are found:</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CONFIRMATION_MODES.map((mode) => (
+                        <button
+                          key={mode.value}
+                          type="button"
+                          onClick={() => setConfirmationMode(mode.value)}
+                          className={`p-3 border rounded-lg text-left transition-all ${
+                            confirmationMode === mode.value
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                              : 'hover:bg-muted/50'
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{mode.label}</div>
+                          <div className="text-xs text-muted-foreground">{mode.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Strategy Template */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Strategy Template (controls how strategies trade)</Label>
+                    <Select value={templateId || 'none'} onValueChange={(v) => setTemplateId(v === 'none' ? null : v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          <span className="text-muted-foreground">Use inferred strategy</span>
+                        </SelectItem>
+                        {templates.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Templates define position sizing, stop-loss, and execution timing for created strategies.
+                    </p>
+                    {templates.length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        No templates yet. <Link href="/algo/templates" className="text-primary hover:underline">Create one</Link> to customize trading behavior.
+                      </p>
+                    )}
                   </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {/* Risk Controls Section - Filtering which stocks become strategies */}
+                <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    <Label className="font-medium">Filters &amp; Limits</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Control which screener results become trading strategies.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Min Confidence */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Min Score Required</Label>
+                      <Select value={minConfidence} onValueChange={(v) => setMinConfidence(v as ConfidenceLevelValue)}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CONFIDENCE_LEVELS.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              <div className="flex flex-col items-start">
+                                <span>{c.label}</span>
+                                <span className="text-xs text-muted-foreground">{c.description}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Max Positions */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Max Strategies/Day</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={maxPositions}
+                        onChange={(e) => setMaxPositions(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Limit new strategies created per day
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Strategy info */}
+                {screener?.inferred_strategy_type && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm">
+                      <TrendingUp className="h-4 w-4 text-blue-600" />
+                      <span className="text-muted-foreground">Strategy Type:</span>
+                      <Badge variant="secondary">{screener.inferred_strategy_type}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Strategies created from this screener will use {screener.inferred_strategy_type} trading logic.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={linkMutation.isPending || unlinkMutation.isPending}>
-            {linkMutation.isPending || unlinkMutation.isPending ? 'Saving...' : 'Save Settings'}
+          <Button onClick={handleSave} disabled={isPending || configLoading}>
+            {isPending ? 'Saving...' : isEnabled ? 'Enable Auto-Trade' : 'Disable Auto-Trade'}
           </Button>
         </DialogFooter>
       </DialogContent>

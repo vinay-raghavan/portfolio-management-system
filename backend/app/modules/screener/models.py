@@ -58,7 +58,12 @@ class CustomScreener(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     universe: Mapped[str] = mapped_column(String(50), nullable=False, default="nifty500")
-    filters: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    # Preset name (if using a preset screener instead of custom filters)
+    preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Strictness level for preset screeners
+    strictness: Mapped[str | None] = mapped_column(String(20), nullable=True, default="moderate")
+    # Custom filters (can be empty if using preset)
+    filters: Mapped[dict | None] = mapped_column(JSONType, nullable=True, default=dict)
     min_score: Mapped[float] = mapped_column(Float, nullable=False, default=50.0)
     top_n: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -77,9 +77,9 @@ function MultiFactorScores({ trade }: { trade: PendingAutoTrade }) {
             S:{trade.sentiment_score > 0 ? '+' : ''}{trade.sentiment_score.toFixed(0)}
           </span>
         )}
-        {trade.combined_score !== null && (
+        {trade.confidence_score !== null && (
           <span className="font-semibold text-primary">
-            ={trade.combined_score.toFixed(0)}
+            ={trade.confidence_score.toFixed(0)}
           </span>
         )}
       </div>

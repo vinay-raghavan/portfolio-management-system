@@ -776,7 +776,10 @@ export interface CustomScreenerCreate {
   name: string;
   description?: string;
   universe?: string;
-  filters: FilterConfig[];
+  // Either preset or filters must be provided
+  preset?: string;
+  strictness?: StrictnessLevel;
+  filters?: FilterConfig[];
   min_score?: number;
   top_n?: number;
   // Auto-trade settings
@@ -790,6 +793,8 @@ export interface CustomScreenerUpdate {
   name?: string;
   description?: string;
   universe?: string;
+  preset?: string;
+  strictness?: StrictnessLevel;
   filters?: FilterConfig[];
   min_score?: number;
   top_n?: number;
@@ -804,7 +809,9 @@ export interface CustomScreener {
   name: string;
   description: string | null;
   universe: string;
-  filters: FilterConfig[];
+  preset: string | null;
+  strictness: string | null;
+  filters: FilterConfig[] | null;
   min_score: number;
   top_n: number;
   created_at: string;

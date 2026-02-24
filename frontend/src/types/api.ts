@@ -1763,17 +1763,19 @@ export interface AutoTradeConfig {
   id: string;
   user_id: string;
   category: string;
-  is_enabled: boolean;
-  confirmation_mode: ConfirmationMode;
+  enabled: boolean;
+  confirmation_mode: string; // 'AUTO' | 'NOTIFY' | 'DISABLED'
   strategy_template_id: string | null;
-  max_trades_per_day: number;
-  max_position_value: number | null;
+  max_positions_per_day: number;
+  max_capital_per_day: number;
+  expiry_hours: number;
   weight_technical: number;
   weight_fundamental: number;
   weight_sentiment: number;
-  min_confidence: number;
-  source_type: ScreenerSourceType;
-  screener_id: string | null;
+  min_confidence: string; // 'high' | 'medium' | 'low'
+  screener_source_type: string; // 'PRESET' | 'CUSTOM'
+  preset_category: string | null;
+  saved_screener_id: string | null;
   run_time: string | null; // HH:MM format for scheduled run time
   created_at: string;
   updated_at: string;
@@ -1782,32 +1784,36 @@ export interface AutoTradeConfig {
 
 export interface AutoTradeConfigCreate {
   category: string;
-  is_enabled?: boolean;
-  confirmation_mode?: ConfirmationMode;
+  enabled?: boolean;
+  confirmation_mode?: string; // 'auto' | 'notify' | 'disabled'
   strategy_template_id?: string | null;
-  max_trades_per_day?: number;
-  max_position_value?: number | null;
+  max_positions_per_day?: number;
+  max_capital_per_day?: number;
+  expiry_hours?: number;
   weight_technical?: number;
   weight_fundamental?: number;
   weight_sentiment?: number;
-  min_confidence?: number;
-  source_type?: ScreenerSourceType;
-  screener_id?: string | null;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
+  screener_source_type?: string; // 'preset' | 'custom'
+  preset_category?: string | null;
+  saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
 }
 
 export interface AutoTradeConfigUpdate {
-  is_enabled?: boolean;
-  confirmation_mode?: ConfirmationMode;
+  enabled?: boolean;
+  confirmation_mode?: string; // 'auto' | 'notify' | 'disabled'
   strategy_template_id?: string | null;
-  max_trades_per_day?: number;
-  max_position_value?: number | null;
+  max_positions_per_day?: number;
+  max_capital_per_day?: number;
+  expiry_hours?: number;
   weight_technical?: number;
   weight_fundamental?: number;
   weight_sentiment?: number;
-  min_confidence?: number;
-  source_type?: ScreenerSourceType;
-  screener_id?: string | null;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
+  screener_source_type?: string; // 'preset' | 'custom'
+  preset_category?: string | null;
+  saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
 }
 
@@ -1815,7 +1821,7 @@ export interface WeightConfigUpdate {
   weight_technical: number;
   weight_fundamental: number;
   weight_sentiment: number;
-  min_confidence?: number;
+  min_confidence?: string; // 'high' | 'medium' | 'low'
 }
 
 export interface WeightConfigResponse {
@@ -1823,8 +1829,10 @@ export interface WeightConfigResponse {
   weight_technical: number;
   weight_fundamental: number;
   weight_sentiment: number;
-  min_confidence: number;
-  total_weight: number;
+  min_confidence: string; // 'high' | 'medium' | 'low'
+  total_weight?: number;
+  preview_symbol?: string | null;
+  preview_scores?: Record<string, unknown> | null;
 }
 
 export interface PendingAutoTrade {
