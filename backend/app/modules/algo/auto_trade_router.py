@@ -409,9 +409,12 @@ async def list_pending_auto_trades(
             )
 
     pending = await service.get_pending_trades(str(current_user.id), filter_status)
+    # Count only PENDING status trades for the badge
+    pending_count = sum(1 for p in pending if p.status == PendingTradeStatus.PENDING)
     return PendingAutoTradeListResponse(
         pending_trades=[PendingAutoTradeResponse.model_validate(p) for p in pending],
         total=len(pending),
+        pending_count=pending_count,
     )
 
 

@@ -1281,7 +1281,7 @@ export const autoTradeApi = {
 
   // Pending Auto-Trades
   getPendingTrades: (status?: string) =>
-    api.get<PendingAutoTradeListResponse>('/auto-trade/pending', { params: { status } }),
+    api.get<PendingAutoTradeListResponse>('/auto-trade/pending', { params: { status_filter: status } }),
 
   getPendingTrade: (id: string) =>
     api.get<PendingAutoTrade>(`/auto-trade/pending/${id}`),

@@ -897,7 +897,12 @@ class PendingAutoTrade(Base):
 
     # Status
     status: Mapped[PendingTradeStatus] = mapped_column(
-        SQLEnum(PendingTradeStatus, name="pendingtradestatus", create_type=True),
+        SQLEnum(
+            PendingTradeStatus,
+            name="pendingtradestatus",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=PendingTradeStatus.PENDING,
     )

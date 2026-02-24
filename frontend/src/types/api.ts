@@ -1838,23 +1838,27 @@ export interface WeightConfigResponse {
 export interface PendingAutoTrade {
   id: string;
   user_id: string;
-  config_id: string;
+  auto_trade_config_id: string;
   category: string;
-  symbol: string;
-  recommended_action: string;
-  strategy_type: string;
-  strategy_params: Record<string, unknown>;
-  quantity: number;
-  estimated_value: number | null;
-  confidence_score: number | null;
-  technical_score: number | null;
-  fundamental_score: number | null;
-  sentiment_score: number | null;
+  recommendation_date: string;
+  symbols: string[];
+  scores: {
+    technical_score?: number;
+    fundamental_score?: number;
+    sentiment_score?: number;
+    combined_score?: number;
+    confidence?: string;
+    direction?: string;
+    position_size_multiplier?: number;
+  } | null;
+  recommended_strategy_type: string;
+  suggested_params: Record<string, unknown> | null;
   status: PendingTradeStatus;
+  created_strategy_id: string | null;
   expires_at: string;
+  actioned_at: string | null;
   created_at: string;
-  reviewed_at: string | null;
-  executed_strategy_id: string | null;
+  updated_at: string;
 }
 
 export interface PendingAutoTradeAction {

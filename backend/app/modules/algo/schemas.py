@@ -1192,6 +1192,7 @@ class PendingAutoTradeListResponse(BaseModel):
 
     pending_trades: list[PendingAutoTradeResponse]
     total: int
+    pending_count: int = 0
 
 
 class PendingAutoTradeAction(BaseModel):

@@ -27,34 +27,86 @@ function ScoreBar({ value, maxValue, color }: { value: number; maxValue: number;
   );
 }
 
+// Scores object can be either flat or per-symbol keyed
+interface SymbolScores {
+  technical_score?: number;
+  fundamental_score?: number;
+  sentiment_score?: number;
+  combined_score?: number;
+  confidence_level?: string;
+  signal_direction?: string;
+  position_size_multiplier?: number;
+}
+
+// Helper to extract aggregated scores from the nested scores object
+// Backend sends scores keyed by symbol - we average them for display
+function getScores(trade: PendingAutoTrade) {
+  const scores = trade.scores as Record<string, SymbolScores> | null;
+  if (!scores) {
+    return { technical: null, fundamental: null, sentiment: null, combined: null, confidence: null, direction: null };
+  }
+
+  // Check if it's per-symbol keyed (object with symbol keys) or flat
+  const symbolKeys = Object.keys(scores).filter(key =>
+    typeof scores[key] === 'object' && 'technical_score' in (scores[key] as object)
+  );
+
+  if (symbolKeys.length > 0) {
+    // Per-symbol scores - average them
+    const symbolScores = symbolKeys.map(k => scores[k] as SymbolScores);
+    const avg = (arr: (number | undefined)[]) => {
+      const valid = arr.filter((v): v is number => v !== undefined);
+      return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    };
+    return {
+      technical: avg(symbolScores.map(s => s.technical_score)),
+      fundamental: avg(symbolScores.map(s => s.fundamental_score)),
+      sentiment: avg(symbolScores.map(s => s.sentiment_score)),
+      combined: avg(symbolScores.map(s => s.combined_score)),
+      confidence: symbolScores[0]?.confidence_level ?? null,
+      direction: symbolScores[0]?.signal_direction ?? null,
+    };
+  }
+
+  // Flat scores format (fallback)
+  const flat = scores as unknown as SymbolScores;
+  return {
+    technical: flat.technical_score ?? null,
+    fundamental: flat.fundamental_score ?? null,
+    sentiment: flat.sentiment_score ?? null,
+    combined: flat.combined_score ?? null,
+    confidence: (scores as { confidence?: string }).confidence ?? null,
+    direction: (scores as { direction?: string }).direction ?? null,
+  };
+}
+
 // Multi-factor score display component with mini bar chart
 function MultiFactorScores({ trade }: { trade: PendingAutoTrade }) {
-  const hasScores = trade.technical_score !== null || trade.fundamental_score !== null || trade.sentiment_score !== null;
+  const { technical, fundamental, sentiment, combined } = getScores(trade);
+  const hasScores = technical !== null || fundamental !== null || sentiment !== null;
   if (!hasScores) return null;
 
   // Normalize sentiment from -100..+100 to 0..100 for bar display
-  const normalizedSentiment = trade.sentiment_score !== null
-    ? (trade.sentiment_score + 100) / 2
-    : null;
+  const normalizedSentiment = sentiment !== null ? (sentiment + 100) / 2 : null;
 
   return (
     <div className="space-y-1.5 mt-1.5 pt-1.5 border-t border-dashed">
       {/* Score bars visualization */}
       <div className="flex items-center gap-2">
-        {trade.technical_score !== null && (
-          <div className="flex items-center gap-1" title={`Technical: ${trade.technical_score.toFixed(0)}`}>
+        {technical !== null && (
+          <div className="flex items-center gap-1" title={`Technical: ${technical.toFixed(0)}`}>
             <TrendingUp className="h-3 w-3 text-blue-500" />
-            <ScoreBar value={trade.technical_score} maxValue={100} color="bg-blue-500" />
+            <ScoreBar value={technical} maxValue={100} color="bg-blue-500" />
           </div>
         )}
-        {trade.fundamental_score !== null && (
-          <div className="flex items-center gap-1" title={`Fundamental: ${trade.fundamental_score.toFixed(0)}`}>
+        {fundamental !== null && (
+          <div className="flex items-center gap-1" title={`Fundamental: ${fundamental.toFixed(0)}`}>
             <BarChart3 className="h-3 w-3 text-purple-500" />
-            <ScoreBar value={trade.fundamental_score} maxValue={100} color="bg-purple-500" />
+            <ScoreBar value={fundamental} maxValue={100} color="bg-purple-500" />
           </div>
         )}
         {normalizedSentiment !== null && (
-          <div className="flex items-center gap-1" title={`Sentiment: ${trade.sentiment_score! > 0 ? '+' : ''}${trade.sentiment_score!.toFixed(0)}`}>
+          <div className="flex items-center gap-1" title={`Sentiment: ${sentiment! > 0 ? '+' : ''}${sentiment!.toFixed(0)}`}>
             <Newspaper className="h-3 w-3 text-orange-500" />
             <ScoreBar value={normalizedSentiment} maxValue={100} color="bg-orange-500" />
           </div>
@@ -62,24 +114,24 @@ function MultiFactorScores({ trade }: { trade: PendingAutoTrade }) {
       </div>
       {/* Text scores */}
       <div className="flex items-center gap-3 text-[10px]">
-        {trade.technical_score !== null && (
-          <span className={cn('font-medium', trade.technical_score >= 70 ? 'text-green-600' : trade.technical_score >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
-            T:{trade.technical_score.toFixed(0)}
+        {technical !== null && (
+          <span className={cn('font-medium', technical >= 70 ? 'text-green-600' : technical >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
+            T:{technical.toFixed(0)}
           </span>
         )}
-        {trade.fundamental_score !== null && (
-          <span className={cn('font-medium', trade.fundamental_score >= 70 ? 'text-green-600' : trade.fundamental_score >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
-            F:{trade.fundamental_score.toFixed(0)}
+        {fundamental !== null && (
+          <span className={cn('font-medium', fundamental >= 70 ? 'text-green-600' : fundamental >= 50 ? 'text-yellow-600' : 'text-muted-foreground')}>
+            F:{fundamental.toFixed(0)}
           </span>
         )}
-        {trade.sentiment_score !== null && (
-          <span className={cn('font-medium', trade.sentiment_score > 0 ? 'text-green-600' : trade.sentiment_score < 0 ? 'text-red-600' : 'text-muted-foreground')}>
-            S:{trade.sentiment_score > 0 ? '+' : ''}{trade.sentiment_score.toFixed(0)}
+        {sentiment !== null && (
+          <span className={cn('font-medium', sentiment > 0 ? 'text-green-600' : sentiment < 0 ? 'text-red-600' : 'text-muted-foreground')}>
+            S:{sentiment > 0 ? '+' : ''}{sentiment.toFixed(0)}
           </span>
         )}
-        {trade.confidence_score !== null && (
+        {combined !== null && (
           <span className="font-semibold text-primary">
-            ={trade.confidence_score.toFixed(0)}
+            ={combined.toFixed(0)}
           </span>
         )}
       </div>
@@ -102,29 +154,45 @@ function PendingTradeCard({
 }) {
   const expiresIn = formatDistanceToNow(new Date(trade.expires_at), { addSuffix: true });
   const isExpiringSoon = new Date(trade.expires_at).getTime() - now < 3600000; // 1 hour
+  const { combined, confidence, direction } = getScores(trade);
+
+  // Display symbols as comma-separated list (max 3 shown inline)
+  const symbolsDisplay = trade.symbols.length > 3
+    ? `${trade.symbols.slice(0, 3).join(', ')} +${trade.symbols.length - 3} more`
+    : trade.symbols.join(', ');
+
+  // Direction badge variant (handle both lowercase and uppercase)
+  const normalizedDirection = direction?.toUpperCase() || 'LONG';
+  const directionVariant = normalizedDirection === 'LONG' ? 'default' : normalizedDirection === 'SHORT' ? 'destructive' : 'secondary';
+  const directionLabel = normalizedDirection;
 
   return (
     <div className="p-3 border rounded-lg bg-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{trade.symbol}</span>
-              <Badge variant={trade.recommended_action === 'BUY' ? 'default' : 'destructive'} className="text-xs">
-                {trade.recommended_action}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium" title={trade.symbols.join(', ')}>{symbolsDisplay}</span>
+              <Badge variant={directionVariant} className="text-xs">
+                {directionLabel}
               </Badge>
               <Badge variant="outline" className="text-xs">{trade.category}</Badge>
-              {trade.confidence_score && (
-                <Badge variant="secondary" className="text-xs">
+              {confidence && (
+                <Badge variant="secondary" className="text-xs capitalize">
                   <Target className="h-3 w-3 mr-1" />
-                  {trade.confidence_score.toFixed(0)}
+                  {confidence}
+                </Badge>
+              )}
+              {combined !== null && (
+                <Badge variant="secondary" className="text-xs">
+                  Score: {combined.toFixed(0)}
                 </Badge>
               )}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-              <span>{trade.strategy_type}</span>
+              <span>{trade.recommended_strategy_type}</span>
               <span>·</span>
-              <span>Qty: {trade.quantity}</span>
+              <span>{trade.symbols.length} symbol{trade.symbols.length > 1 ? 's' : ''}</span>
             </div>
           </div>
         </div>

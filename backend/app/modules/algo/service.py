@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from shared.providers.schemas import ProductType
 from shared.strategies import StrategyRegistry
+from shared.strategies.registry import METADATA_KEYS
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -241,6 +242,21 @@ class AlgoService:
 
         # Validate strategy parameters if being updated
         if data.strategy_config is not None:
+            # Auto-trade metadata keys that should be excluded from validation
+            # These are stored alongside strategy params for traceability
+            auto_trade_metadata_keys = {
+                "screener_id",
+                "pending_trade_id",
+                "recommendation_date",
+                "dominant_confidence",
+                "avg_technical_score",
+                "avg_fundamental_score",
+                "avg_combined_score",
+                "avg_position_size_multiplier",
+            }
+            # Combine with METADATA_KEYS from the registry
+            all_metadata_keys = METADATA_KEYS | auto_trade_metadata_keys
+
             # Check if this is a composite strategy config (has components key)
             if "components" in data.strategy_config:
                 # Composite strategy config - validate component structure
@@ -264,11 +280,16 @@ class AlgoService:
                             )
             else:
                 # Regular strategy parameter validation
-                is_valid, errors = StrategyRegistry.validate_params(
-                    strategy.strategy_name, data.strategy_config
-                )
-                if not is_valid:
-                    raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
+                # Filter out metadata keys before validation
+                config_to_validate = {
+                    k: v for k, v in data.strategy_config.items() if k not in all_metadata_keys
+                }
+                if config_to_validate:
+                    is_valid, errors = StrategyRegistry.validate_params(
+                        strategy.strategy_name, config_to_validate
+                    )
+                    if not is_valid:
+                        raise ValueError(f"Invalid strategy parameters: {'; '.join(errors)}")
 
         update_data = data.model_dump(exclude_unset=True)
 

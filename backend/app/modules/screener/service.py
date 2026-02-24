@@ -815,25 +815,52 @@ class ScreenerService:
             return {"status": "error", "message": "Auto-trade not enabled"}
 
         try:
-            # Get universe symbols
-            from app.modules.algo.universe_service import UniverseService
+            # Get universe symbols using the router's resolve function
+            from app.modules.screener.router import _resolve_universe
 
-            universe_service = UniverseService(self.db)
-            symbols = await universe_service.resolve_universe(screener.universe, user_id)
+            symbols = await _resolve_universe(screener.universe, self.db)
 
             if not symbols:
                 return {"status": "error", "message": f"No symbols in universe {screener.universe}"}
 
             # Convert stored filters to FilterConfig objects
-            from app.modules.screener.schemas import FilterConfig
+            from app.modules.screener.schemas import FilterConfig, StrictnessLevel
 
-            filters = [FilterConfig(**f) for f in screener.filters]
+            # Check if using a preset (filters empty but preset defined)
+            if screener.preset and (not screener.filters or len(screener.filters) == 0):
+                # Load from preset definition
+                try:
+                    preset_type = ScreenerPresetType(screener.preset)
+                    preset_def = PRESET_DEFINITIONS.get(preset_type)
+                    if preset_def:
+                        strictness = StrictnessLevel(screener.strictness or "moderate")
+                        filters = apply_strictness_to_filters(preset_def.filters, strictness)
+                        logger.info(
+                            f"Loaded {len(filters)} filters from preset '{screener.preset}' "
+                            f"with {strictness.value} strictness"
+                        )
+                    else:
+                        logger.warning(f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS")
+                        filters = []
+                except ValueError as e:
+                    logger.warning(f"Invalid preset value '{screener.preset}': {e}")
+                    filters = []
+            else:
+                # Use stored custom filters
+                filters = [FilterConfig(**f) for f in screener.filters]
 
-            # Run the screener
-            stock_screener = StockScreener()
-            results = await stock_screener.screen(
+            # Get user's preferred data provider (required for screening)
+            from app.modules.data.service import get_user_data_provider
+            from shared.providers.data import get_data_provider
+
+            provider = await get_user_data_provider(self.db, user_id)
+            if provider is None:
+                provider = get_data_provider("yahoo")
+
+            # Build the screener with filters and data provider, then run it
+            stock_screener = self._build_screener(filters, data_provider=provider)
+            results = await stock_screener.screen_universe(
                 symbols=symbols,
-                filters=filters,
                 min_score=screener.min_score,
                 top_n=screener.top_n,
             )
@@ -874,17 +901,21 @@ class ScreenerService:
                     )
 
                     if config and config.enabled:
+                        logger.info(
+                            f"Auto-trade config found: enabled={config.enabled}, "
+                            f"mode={config.confirmation_mode}, min_conf={config.min_confidence}"
+                        )
                         # Apply multi-factor scoring
                         scorer = MultiFactorScorer(self.db)
                         scored_results = []
 
                         for r in results:
-                            scores = await scorer.score(
+                            scores = await scorer.score_symbol(
                                 symbol=r.symbol,
-                                technical_score=r.score,  # Use screener score as technical
                                 category="custom",
+                                technical_data={"score": r.score},  # Pass technical score as data
                             )
-                            if scores.confidence_level != "skip":
+                            if scores.confidence.value != "skip":
                                 scored_results.append(
                                     {
                                         "symbol": r.symbol,
@@ -892,22 +923,39 @@ class ScreenerService:
                                         "fundamental_score": scores.fundamental_score,
                                         "sentiment_score": scores.sentiment_score,
                                         "combined_score": scores.combined_score,
-                                        "confidence_level": scores.confidence_level,
-                                        "signal_direction": scores.signal_direction,
+                                        "confidence_level": scores.confidence.value,
+                                        "signal_direction": scores.direction.value,
                                         "recommended_strategy": scores.recommended_strategy,
                                         "position_size_multiplier": scores.position_size_multiplier,
                                         "reasons": r.reasons,
                                     }
                                 )
+                        # Log first few scores for debugging
+                        if scored_results:
+                            sample = scored_results[:3]
+                            logger.info(
+                                f"Sample scores: {[(s['symbol'], s['combined_score'], s['confidence_level']) for s in sample]}"
+                            )
 
                         # Filter by confidence threshold
                         confidence_values = {"high": 80, "medium": 60, "low": 40}
-                        min_conf = confidence_values.get(config.min_confidence, 60)
+                        # Handle both string and enum for min_confidence
+                        min_confidence_str = (
+                            config.min_confidence.value
+                            if hasattr(config.min_confidence, "value")
+                            else config.min_confidence
+                        )
+                        min_conf = confidence_values.get(min_confidence_str, 60)
+                        logger.info(
+                            f"Scored {len(scored_results)} symbols (non-skip). "
+                            f"Min confidence threshold: {min_conf} ({min_confidence_str})"
+                        )
                         filtered_results = [
                             r
                             for r in scored_results
                             if confidence_values.get(r["confidence_level"], 0) >= min_conf
                         ]
+                        logger.info(f"After confidence filter: {len(filtered_results)} symbols passed")
 
                         if filtered_results:
                             # Get strategy type from template or infer
@@ -937,6 +985,7 @@ class ScreenerService:
                                 scores_dict = {r["symbol"]: r for r in filtered_results}
 
                                 pending = await pending_service.create_pending_trade(
+                                    user_id=user_id,
                                     config=config,
                                     symbols=symbols,
                                     scores=scores_dict,

@@ -8,7 +8,7 @@ This service handles:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.modules.algo.models import (
     ConfirmationMode,
     PendingAutoTrade,
     PendingTradeStatus,
+    PositionSizingMethod,
     ScheduleType,
     ScreenerSourceType,
     StrategyStatus,
@@ -458,50 +459,137 @@ class PendingAutoTradeService:
         if pending.status != PendingTradeStatus.PENDING:
             return pending, f"Trade already {pending.status.value}"
 
-        if datetime.utcnow() > pending.expires_at:
+        if datetime.now(UTC) > pending.expires_at:
             pending.status = PendingTradeStatus.EXPIRED
             await self.db.flush()
             return pending, "Trade has expired"
 
-        # Get the auto-trade config to find the template
-        config_result = await self.db.execute(
-            select(AutoTradeConfig).where(AutoTradeConfig.id == pending.auto_trade_config_id)
-        )
-        config = config_result.scalar_one_or_none()
-
+        # Create strategy directly from pending trade data
+        # No template needed - use screener scores to dynamically tune parameters
         created_strategy_id = None
 
-        if config and config.strategy_template_id:
-            # Use the configured template
-            template_service = StrategyTemplateService(self.db)
-            template = await template_service.get_template(user_id, config.strategy_template_id)
+        if pending.scores and pending.symbols:
+            # Calculate aggregated metrics from per-symbol scores
+            scores_list = list(pending.scores.values())
+            num_symbols = len(scores_list)
 
-            if template:
-                # Calculate position size multiplier from scores
-                position_multiplier = 1.0
-                if pending.scores and "position_size_multiplier" in pending.scores:
-                    position_multiplier = float(pending.scores["position_size_multiplier"])
+            # Average position size multiplier across all symbols
+            avg_position_multiplier = (
+                sum(s.get("position_size_multiplier", 1.0) for s in scores_list) / num_symbols
+            )
 
-                # Create strategy from template
-                strategy = await template_service.create_strategy_from_template(
-                    user_id=user_id,
-                    template=template,
-                    symbols=pending.symbols,
-                    name_suffix=f"{pending.category}_{pending.recommendation_date.strftime('%Y%m%d')}",
-                    position_size_multiplier=position_multiplier,
-                )
-                created_strategy_id = strategy.id
-                logger.info(f"Created strategy {strategy.id} from pending trade {trade_id}")
+            # Average scores for strategy tuning
+            avg_technical = sum(s.get("technical_score", 50) for s in scores_list) / num_symbols
+            avg_fundamental = sum(s.get("fundamental_score", 50) for s in scores_list) / num_symbols
+            avg_combined = sum(s.get("combined_score", 50) for s in scores_list) / num_symbols
+
+            # Determine confidence level (most common among symbols)
+            confidence_counts: dict[str, int] = {}
+            for s in scores_list:
+                conf = s.get("confidence_level", "medium")
+                confidence_counts[conf] = confidence_counts.get(conf, 0) + 1
+            dominant_confidence = max(confidence_counts, key=lambda k: confidence_counts[k])
+
+            # Calculate position size based on confidence and scores
+            # Base position: 5%, adjusted by confidence and position multiplier
+            base_position_pct = 5.0
+            if dominant_confidence == "high":
+                confidence_factor = 1.2
+            elif dominant_confidence == "low":
+                confidence_factor = 0.8
             else:
-                logger.warning(
-                    f"Template {config.strategy_template_id} not found for pending trade {trade_id}"
-                )
+                confidence_factor = 1.0
+
+            adjusted_position_pct = base_position_pct * avg_position_multiplier * confidence_factor
+            # Cap at reasonable limits
+            adjusted_position_pct = max(1.0, min(adjusted_position_pct, 10.0))
+
+            # Dynamic stop-loss based on technical score (higher score = tighter stop)
+            # Technical score 80+ -> 1.5% stop, 60 -> 2.5% stop, 40 -> 3.5% stop
+            stop_loss_pct = max(1.5, 4.0 - (avg_technical / 40.0))
+
+            # Dynamic take-profit based on combined score
+            # Higher combined score = more aggressive take profit
+            take_profit_pct = max(3.0, min(8.0, avg_combined / 10.0))
+
+            # Strategy params include source data for traceability
+            strategy_params = {
+                "source": "auto_trade_screener",
+                "screener_id": pending.suggested_params.get("screener_id")
+                if pending.suggested_params
+                else None,
+                "pending_trade_id": str(pending.id),
+                "avg_technical_score": round(avg_technical, 2),
+                "avg_fundamental_score": round(avg_fundamental, 2),
+                "avg_combined_score": round(avg_combined, 2),
+                "dominant_confidence": dominant_confidence,
+                "recommendation_date": pending.recommendation_date.isoformat(),
+            }
+
+            # Create strategy name
+            strategy_name_display = (
+                f"{pending.category}_{pending.recommendation_date.strftime('%Y%m%d')}"
+            )
+
+            # Create the UserStrategy directly
+            from decimal import Decimal
+
+            # Default profit booking rules: 25% at 1%, 25% at 5%, 25% at 10%, 25% at 15%
+            default_profit_booking = [
+                {"profit_percent": 1.0, "book_percent": 25.0},
+                {"profit_percent": 5.0, "book_percent": 25.0},
+                {"profit_percent": 10.0, "book_percent": 25.0},
+                {"profit_percent": 15.0, "book_percent": 25.0},
+            ]
+
+            strategy = UserStrategy(
+                user_id=user_id,
+                name=strategy_name_display,
+                description=f"Auto-generated from screener on {pending.recommendation_date.strftime('%Y-%m-%d')}. "
+                f"Symbols: {len(pending.symbols)}, Avg Score: {avg_combined:.1f}",
+                strategy_name=pending.recommended_strategy_type or "ma_crossover",
+                status=StrategyStatus.DISABLED,  # Start disabled, user can enable
+                is_paper_trading=True,  # Start with paper trading for safety
+                strategy_params=strategy_params,
+                custom_symbols=pending.symbols,
+                # Schedule: CONTINUOUS for real-time monitoring, next_run_at = now for immediate execution
+                schedule_type=ScheduleType.CONTINUOUS,
+                next_run_at=datetime.now(UTC),  # Execute immediately when enabled
+                # Position sizing
+                position_sizing_method=PositionSizingMethod.PERCENT_OF_PORTFOLIO,
+                portfolio_percent=Decimal(str(round(adjusted_position_pct, 2))),
+                risk_per_trade_percent=Decimal(str(round(stop_loss_pct, 2))),
+                # Risk controls
+                max_daily_trades=10,
+                max_daily_loss=Decimal("5000.00"),
+                max_open_positions=min(len(pending.symbols), 5),  # Up to 5 positions
+                max_consecutive_losses=3,
+                max_drawdown_percent=Decimal("10.00"),
+                # Trailing stop: 1%
+                default_trailing_stop_enabled=True,
+                default_trailing_stop_pct=Decimal("0.01"),  # 1%
+                # Profit booking rules
+                default_profit_booking_rules=default_profit_booking,
+            )
+
+            self.db.add(strategy)
+            await self.db.flush()
+            created_strategy_id = strategy.id
+            pending.created_strategy_id = created_strategy_id
+
+            logger.info(
+                f"Created strategy {strategy.id} from pending trade {trade_id} "
+                f"with {len(pending.symbols)} symbols, position={adjusted_position_pct:.2f}%, "
+                f"stop_loss={stop_loss_pct:.2f}%, take_profit={take_profit_pct:.2f}%"
+            )
         else:
-            logger.warning(f"No template configured for pending trade {trade_id}")
+            logger.warning(
+                f"No scores or symbols in pending trade {trade_id}, cannot create strategy"
+            )
 
         # Mark as approved
         pending.status = PendingTradeStatus.APPROVED
-        pending.actioned_at = datetime.utcnow()
+        pending.actioned_at = datetime.now(UTC)
         await self.db.flush()
 
         logger.info(f"Approved pending auto-trade {trade_id}")
