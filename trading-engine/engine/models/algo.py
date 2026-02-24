@@ -264,6 +264,9 @@ class UserStrategy(Base):
     )
     custom_symbols: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # Exit-only symbols: symbols with open positions that should only be exited, not entered
+    exit_only_symbols: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
+
     position_sizing_method: Mapped[PositionSizingMethod] = mapped_column(
         SQLEnum(PositionSizingMethod, name="positionsizingmethod", create_type=False),
         nullable=False,

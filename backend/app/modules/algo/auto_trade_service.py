@@ -10,15 +10,17 @@ This service handles:
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
+    AlgoPosition,
     AutoTradeConfig,
     ConfirmationMode,
     PendingAutoTrade,
     PendingTradeStatus,
     PositionSizingMethod,
+    PositionStatus,
     ScheduleType,
     ScreenerSourceType,
     StrategyStatus,
@@ -444,13 +446,64 @@ class PendingAutoTradeService:
 
         return pending
 
+    async def _find_existing_strategy_for_screener(
+        self, user_id: str, screener_id: str | None
+    ) -> UserStrategy | None:
+        """Find an existing strategy created from the same screener.
+
+        Searches for strategies with matching screener_id in strategy_params.
+        """
+        if not screener_id:
+            return None
+
+        # Query all user strategies with source = auto_trade_screener
+        result = await self.db.execute(
+            select(UserStrategy).where(
+                and_(
+                    UserStrategy.user_id == user_id,
+                    UserStrategy.strategy_params.isnot(None),
+                )
+            )
+        )
+        strategies = result.scalars().all()
+
+        # Filter to find one with matching screener_id
+        for strategy in strategies:
+            params = strategy.strategy_params or {}
+            if (
+                params.get("source") == "auto_trade_screener"
+                and params.get("screener_id") == screener_id
+            ):
+                return strategy
+
+        return None
+
+    async def _get_open_position_symbols(self, strategy_id: str) -> set[str]:
+        """Get symbols with open positions for a strategy."""
+        result = await self.db.execute(
+            select(AlgoPosition.symbol).where(
+                and_(
+                    AlgoPosition.strategy_id == strategy_id,
+                    AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+                )
+            )
+        )
+        return set(result.scalars().all())
+
     async def approve_pending_trade(
         self, user_id: str, trade_id: str
     ) -> tuple[PendingAutoTrade | None, str | None]:
-        """Approve a pending auto-trade and create the strategy.
+        """Approve a pending auto-trade and create or update a strategy.
+
+        If an existing strategy exists for this screener, updates its symbols:
+        - New symbols are added to custom_symbols
+        - Removed symbols with open positions are moved to exit_only_symbols
+        - Removed symbols without positions are dropped
+
+        If no existing strategy, creates a new one.
 
         Returns:
-            Tuple of (updated pending trade, created strategy ID or error message)
+            Tuple of (updated pending trade, created/updated strategy ID or error message)
         """
         pending = await self.get_pending_trade(user_id, trade_id)
         if not pending:
@@ -464,8 +517,14 @@ class PendingAutoTradeService:
             await self.db.flush()
             return pending, "Trade has expired"
 
-        # Create strategy directly from pending trade data
-        # No template needed - use screener scores to dynamically tune parameters
+        # Extract screener_id to check for existing strategy
+        screener_id = (
+            pending.suggested_params.get("screener_id") if pending.suggested_params else None
+        )
+
+        # Check for existing strategy linked to this screener
+        existing_strategy = await self._find_existing_strategy_for_screener(user_id, screener_id)
+
         created_strategy_id = None
 
         if pending.scores and pending.symbols:
@@ -515,9 +574,7 @@ class PendingAutoTradeService:
             # Strategy params include source data for traceability
             strategy_params = {
                 "source": "auto_trade_screener",
-                "screener_id": pending.suggested_params.get("screener_id")
-                if pending.suggested_params
-                else None,
+                "screener_id": screener_id,
                 "pending_trade_id": str(pending.id),
                 "avg_technical_score": round(avg_technical, 2),
                 "avg_fundamental_score": round(avg_fundamental, 2),
@@ -526,62 +583,115 @@ class PendingAutoTradeService:
                 "recommendation_date": pending.recommendation_date.isoformat(),
             }
 
-            # Create strategy name
-            strategy_name_display = (
-                f"{pending.category}_{pending.recommendation_date.strftime('%Y%m%d')}"
-            )
-
-            # Create the UserStrategy directly
             from decimal import Decimal
 
-            # Default profit booking rules: 25% at 1%, 25% at 5%, 25% at 10%, 25% at 15%
-            default_profit_booking = [
-                {"profit_percent": 1.0, "book_percent": 25.0},
-                {"profit_percent": 5.0, "book_percent": 25.0},
-                {"profit_percent": 10.0, "book_percent": 25.0},
-                {"profit_percent": 15.0, "book_percent": 25.0},
-            ]
+            new_symbols = set(pending.symbols)
 
-            strategy = UserStrategy(
-                user_id=user_id,
-                name=strategy_name_display,
-                description=f"Auto-generated from screener on {pending.recommendation_date.strftime('%Y-%m-%d')}. "
-                f"Symbols: {len(pending.symbols)}, Avg Score: {avg_combined:.1f}",
-                strategy_name=pending.recommended_strategy_type or "ma_crossover",
-                status=StrategyStatus.DISABLED,  # Start disabled, user can enable
-                is_paper_trading=True,  # Start with paper trading for safety
-                strategy_params=strategy_params,
-                custom_symbols=pending.symbols,
-                # Schedule: CONTINUOUS for real-time monitoring, next_run_at = now for immediate execution
-                schedule_type=ScheduleType.CONTINUOUS,
-                next_run_at=datetime.now(UTC),  # Execute immediately when enabled
-                # Position sizing
-                position_sizing_method=PositionSizingMethod.PERCENT_OF_PORTFOLIO,
-                portfolio_percent=Decimal(str(round(adjusted_position_pct, 2))),
-                risk_per_trade_percent=Decimal(str(round(stop_loss_pct, 2))),
-                # Risk controls
-                max_daily_trades=10,
-                max_daily_loss=Decimal("5000.00"),
-                max_open_positions=min(len(pending.symbols), 5),  # Up to 5 positions
-                max_consecutive_losses=3,
-                max_drawdown_percent=Decimal("10.00"),
-                # Trailing stop: 1%
-                default_trailing_stop_enabled=True,
-                default_trailing_stop_pct=Decimal("0.01"),  # 1%
-                # Profit booking rules
-                default_profit_booking_rules=default_profit_booking,
-            )
+            if existing_strategy:
+                # UPDATE EXISTING STRATEGY
+                # Calculate symbol transitions
+                current_symbols = set(existing_strategy.custom_symbols or [])
+                current_exit_only = set(existing_strategy.exit_only_symbols or [])
 
-            self.db.add(strategy)
-            await self.db.flush()
-            created_strategy_id = strategy.id
-            pending.created_strategy_id = created_strategy_id
+                # Get symbols with open positions
+                open_position_symbols = await self._get_open_position_symbols(existing_strategy.id)
 
-            logger.info(
-                f"Created strategy {strategy.id} from pending trade {trade_id} "
-                f"with {len(pending.symbols)} symbols, position={adjusted_position_pct:.2f}%, "
-                f"stop_loss={stop_loss_pct:.2f}%, take_profit={take_profit_pct:.2f}%"
-            )
+                # Removed symbols = in current but not in new
+                removed_symbols = current_symbols - new_symbols
+
+                # Symbols to move to exit_only = removed symbols with open positions
+                new_exit_only_symbols = removed_symbols & open_position_symbols
+
+                # Also keep existing exit_only symbols that still have positions
+                retained_exit_only = current_exit_only & open_position_symbols
+
+                # Final exit_only_symbols = new + retained (still with positions)
+                final_exit_only = new_exit_only_symbols | retained_exit_only
+
+                # Update the strategy
+                existing_strategy.custom_symbols = list(new_symbols)
+                existing_strategy.exit_only_symbols = (
+                    list(final_exit_only) if final_exit_only else []
+                )
+
+                # Update strategy params with latest scores
+                existing_params = existing_strategy.strategy_params or {}
+                existing_params.update(strategy_params)
+                existing_strategy.strategy_params = existing_params
+
+                # Update description
+                existing_strategy.description = (
+                    f"Auto-generated from screener, updated on {pending.recommendation_date.strftime('%Y-%m-%d')}. "
+                    f"Symbols: {len(new_symbols)}, Exit-only: {len(final_exit_only)}, Avg Score: {avg_combined:.1f}"
+                )
+
+                # Update next_run_at for immediate execution
+                existing_strategy.next_run_at = datetime.now(UTC)
+
+                await self.db.flush()
+                created_strategy_id = existing_strategy.id
+                pending.created_strategy_id = created_strategy_id
+
+                logger.info(
+                    f"Updated existing strategy {existing_strategy.id} from pending trade {trade_id}. "
+                    f"New symbols: {len(new_symbols)}, removed: {len(removed_symbols)}, "
+                    f"exit_only: {len(final_exit_only)}"
+                )
+            else:
+                # CREATE NEW STRATEGY
+                strategy_name_display = (
+                    f"{pending.category}_{pending.recommendation_date.strftime('%Y%m%d')}"
+                )
+
+                # Default profit booking rules: 25% at 1%, 25% at 5%, 25% at 10%, 25% at 15%
+                default_profit_booking = [
+                    {"profit_percent": 1.0, "book_percent": 25.0},
+                    {"profit_percent": 5.0, "book_percent": 25.0},
+                    {"profit_percent": 10.0, "book_percent": 25.0},
+                    {"profit_percent": 15.0, "book_percent": 25.0},
+                ]
+
+                strategy = UserStrategy(
+                    user_id=user_id,
+                    name=strategy_name_display,
+                    description=f"Auto-generated from screener on {pending.recommendation_date.strftime('%Y-%m-%d')}. "
+                    f"Symbols: {len(pending.symbols)}, Avg Score: {avg_combined:.1f}",
+                    strategy_name=pending.recommended_strategy_type or "ma_crossover",
+                    status=StrategyStatus.DISABLED,  # Start disabled, user can enable
+                    is_paper_trading=True,  # Start with paper trading for safety
+                    strategy_params=strategy_params,
+                    custom_symbols=pending.symbols,
+                    exit_only_symbols=[],  # No exit-only symbols for new strategy
+                    # Schedule: CONTINUOUS for real-time monitoring, next_run_at = now for immediate execution
+                    schedule_type=ScheduleType.CONTINUOUS,
+                    next_run_at=datetime.now(UTC),  # Execute immediately when enabled
+                    # Position sizing
+                    position_sizing_method=PositionSizingMethod.PERCENT_OF_PORTFOLIO,
+                    portfolio_percent=Decimal(str(round(adjusted_position_pct, 2))),
+                    risk_per_trade_percent=Decimal(str(round(stop_loss_pct, 2))),
+                    # Risk controls
+                    max_daily_trades=10,
+                    max_daily_loss=Decimal("5000.00"),
+                    max_open_positions=min(len(pending.symbols), 5),  # Up to 5 positions
+                    max_consecutive_losses=3,
+                    max_drawdown_percent=Decimal("10.00"),
+                    # Trailing stop: 1%
+                    default_trailing_stop_enabled=True,
+                    default_trailing_stop_pct=Decimal("0.01"),  # 1%
+                    # Profit booking rules
+                    default_profit_booking_rules=default_profit_booking,
+                )
+
+                self.db.add(strategy)
+                await self.db.flush()
+                created_strategy_id = strategy.id
+                pending.created_strategy_id = created_strategy_id
+
+                logger.info(
+                    f"Created strategy {strategy.id} from pending trade {trade_id} "
+                    f"with {len(pending.symbols)} symbols, position={adjusted_position_pct:.2f}%, "
+                    f"stop_loss={stop_loss_pct:.2f}%, take_profit={take_profit_pct:.2f}%"
+                )
         else:
             logger.warning(
                 f"No scores or symbols in pending trade {trade_id}, cannot create strategy"

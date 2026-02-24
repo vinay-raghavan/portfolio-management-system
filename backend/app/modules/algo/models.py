@@ -140,6 +140,10 @@ class UserStrategy(Base):
         JSON, nullable=True
     )  # Override universe with custom list
 
+    # Exit-only symbols: symbols with open positions that should only be exited, not entered
+    # Used when screener updates remove symbols that still have open positions
+    exit_only_symbols: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
+
     # Position sizing
     position_sizing_method: Mapped[PositionSizingMethod] = mapped_column(
         SQLEnum(PositionSizingMethod, name="positionsizingmethod", create_type=False),
