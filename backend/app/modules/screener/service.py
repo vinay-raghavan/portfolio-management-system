@@ -907,11 +907,13 @@ class ScreenerService:
                             f"mode={config.confirmation_mode}, min_conf={config.min_confidence}"
                         )
                         # Fetch fundamental data for scoring
+                        # Note: Don't pass provider here - fundamentals come from Yahoo,
+                        # not from user's trading provider (e.g., Fyers)
                         from app.modules.research.recommendation_service import (
                             RecommendationService,
                         )
 
-                        rec_service = RecommendationService(self.db, provider=provider)
+                        rec_service = RecommendationService(self.db)
                         result_symbols = [r.symbol for r in results]
                         fundamentals_list = await rec_service.get_universe_fundamentals(
                             result_symbols
