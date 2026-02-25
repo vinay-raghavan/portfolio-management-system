@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.2 (2026-02-25)
+
+### 🐛 Bug Fixes - Ledger Data Integrity
+
+This patch release fixes critical data integrity issues in the transaction ledger system.
+
+**Fixes:**
+
+- **Automatic DEPOSIT Ledger Entry**: New users now get an automatic DEPOSIT transaction recorded in the ledger when their funds are initialized, ensuring proper audit trail from day one
+- **Duplicate Transaction Prevention**: Added unique index `ix_txn_ledger_unique_ref` on `(reference_type, reference_id, transaction_type)` to prevent duplicate ledger entries
+- **Backfill Script Fix**: Added `NOT EXISTS` check to `backfill_ledger.py` to prevent duplicate entries when re-running the script
+
+**Technical Changes:**
+
+- `FundsService.initialize_funds()` now accepts optional `LedgerService` to record initial DEPOSIT
+- `AuthService` injects `LedgerService` into `FundsService` during user registration
+- Portfolio router endpoints updated to inject `LedgerService` into `FundsService`:
+  - `get_funds`, `deposit_funds`, `withdraw_funds`, `reset_funds`
+
+**Impact:**
+- All new users have proper ledger audit trail starting with initial deposit
+- Enables consistent ledger reconciliation (cash_balance = starting_capital + sum(transactions))
+- Prevents duplicate transactions from causing incorrect balance calculations
+
+---
+
 ## v1.4.1 (2026-02-25)
 
 ### 🐛 Bug Fixes - Multi-Factor Scoring Pipeline
