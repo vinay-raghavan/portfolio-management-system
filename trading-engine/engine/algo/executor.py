@@ -17,6 +17,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pandas as pd
+from shared.utils.time_window import TimeWindowValidator
 
 from engine.algo.notifications import AlgoNotificationService
 from engine.algo.position_tracker import PnLStats, PositionTracker
@@ -139,6 +140,25 @@ class StrategyExecutor:
         )
 
         try:
+            # Check time window BEFORE executing (skip if outside trading window)
+            if config.trading_start_time or config.trading_end_time:
+                validator = TimeWindowValidator()
+                is_valid, reason = validator.is_within_window(
+                    start_time=config.trading_start_time,
+                    end_time=config.trading_end_time,
+                    timezone=config.trading_timezone,
+                    active_days=config.active_trading_days,
+                )
+
+                if not is_valid:
+                    logger.info(
+                        f"Strategy '{config.name}' skipped: Outside trading window - {reason}"
+                    )
+                    result.status = ExecutionStatus.SKIPPED
+                    result.error_message = f"Outside trading window: {reason}"
+                    result.duration_ms = int((time_module.time() - start_time) * 1000)
+                    return result
+
             # Notify strategy started
             await self.notification_service.notify_strategy_started(
                 user_id=config.user_id,
