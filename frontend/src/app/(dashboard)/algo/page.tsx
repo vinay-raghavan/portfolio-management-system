@@ -52,6 +52,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { algoApi, portfolioApi } from '@/lib/api';
+import { isWithinTradingWindow } from '@/lib/utils';
 import { useCurrency } from '@/hooks';
 import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, DSLStrategyBuilder } from '@/components/algo';
@@ -526,20 +527,36 @@ export default function AlgoTradingPage() {
                               Combined
                             </span>
                           )}
-                          {strategy.trading_start_time && strategy.trading_end_time && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {strategy.trading_start_time.slice(0, 5)}-{strategy.trading_end_time.slice(0, 5)}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Trading Window: {strategy.trading_start_time.slice(0, 5)} - {strategy.trading_end_time.slice(0, 5)}</p>
-                                <p className="text-xs text-muted-foreground">{strategy.trading_timezone || 'Asia/Kolkata'}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                          {strategy.trading_start_time && strategy.trading_end_time && (() => {
+                            const inWindow = isWithinTradingWindow(
+                              strategy.trading_start_time,
+                              strategy.trading_end_time,
+                              strategy.trading_timezone,
+                              strategy.active_trading_days
+                            );
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                    inWindow
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                  }`}>
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {strategy.trading_start_time.slice(0, 5)}-{strategy.trading_end_time.slice(0, 5)}
+                                    <span className={`ml-0.5 w-1.5 h-1.5 rounded-full ${inWindow ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Trading Window: {strategy.trading_start_time.slice(0, 5)} - {strategy.trading_end_time.slice(0, 5)}</p>
+                                  <p className="text-xs text-muted-foreground">{strategy.trading_timezone || 'Asia/Kolkata'}</p>
+                                  <p className={`text-xs font-medium mt-1 ${inWindow ? 'text-emerald-500' : 'text-slate-500'}`}>
+                                    {inWindow ? '● In Trading Window' : '○ Outside Window'}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })()}
                           <span className="text-xs text-muted-foreground">{strategy.strategy_type}</span>
                         </div>
                       </div>
