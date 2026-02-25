@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 async def get_filled_orders(conn, days: int) -> list[dict]:
-    """Get all FILLED algo_orders from the last N days."""
+    """Get all FILLED algo_orders from the last N days that are NOT already in ledger."""
     cutoff = datetime.now(UTC) - timedelta(days=days)
 
     query = text("""
@@ -43,6 +43,10 @@ async def get_filled_orders(conn, days: int) -> list[dict]:
         LEFT JOIN orders o ON ao.order_id = o.id
         WHERE ao.order_status = 'FILLED'
           AND ao.filled_at >= :cutoff
+          AND NOT EXISTS (
+              SELECT 1 FROM transaction_ledger tl
+              WHERE tl.reference_id = ao.id AND tl.reference_type = 'algo_order'
+          )
         ORDER BY ao.filled_at ASC
     """)
 
