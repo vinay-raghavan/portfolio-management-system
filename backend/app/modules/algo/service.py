@@ -94,6 +94,11 @@ class AlgoService:
                 if data.default_profit_booking_rules
                 else None
             ),
+            # Trading time window fields
+            trading_start_time=data.trading_start_time,
+            trading_end_time=data.trading_end_time,
+            trading_timezone=data.trading_timezone,
+            active_trading_days=data.active_trading_days,
             status=StrategyStatus.DISABLED,
         )
         self.db.add(strategy)
