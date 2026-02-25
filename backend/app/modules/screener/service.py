@@ -906,15 +906,35 @@ class ScreenerService:
                             f"Auto-trade config found: enabled={config.enabled}, "
                             f"mode={config.confirmation_mode}, min_conf={config.min_confidence}"
                         )
+                        # Fetch fundamental data for scoring
+                        from app.modules.research.recommendation_service import (
+                            RecommendationService,
+                        )
+
+                        rec_service = RecommendationService(self.db, provider=provider)
+                        result_symbols = [r.symbol for r in results]
+                        fundamentals_list = await rec_service.get_universe_fundamentals(
+                            result_symbols
+                        )
+                        # Convert to dict keyed by symbol for easy lookup
+                        fundamentals_by_symbol: dict[str, dict] = {
+                            f["symbol"]: f for f in fundamentals_list
+                        }
+                        logger.info(
+                            f"Fetched fundamentals for {len(fundamentals_by_symbol)}/{len(result_symbols)} symbols"
+                        )
+
                         # Apply multi-factor scoring
                         scorer = MultiFactorScorer(self.db)
                         scored_results = []
 
                         for r in results:
+                            fund_data = fundamentals_by_symbol.get(r.symbol)
                             scores = await scorer.score_symbol(
                                 symbol=r.symbol,
                                 category="custom",
                                 technical_data={"score": r.score},  # Pass technical score as data
+                                fundamental_data=fund_data,  # Pass fundamental data
                             )
                             if scores.confidence.value != "skip":
                                 scored_results.append(
