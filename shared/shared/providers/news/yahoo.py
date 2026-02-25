@@ -1,6 +1,7 @@
 """Yahoo Finance news provider implementation."""
 
 import logging
+import os
 from datetime import UTC, datetime
 
 import yfinance as yf
@@ -21,9 +22,42 @@ class YahooNewsProvider(BaseNewsProvider):
 
     name = "yahoo"
 
-    def __init__(self):
-        """Initialize Yahoo news provider with sentiment analyzer."""
+    def __init__(self, default_market: str | None = None):
+        """Initialize Yahoo news provider with sentiment analyzer.
+
+        Args:
+            default_market: Default market for symbol normalization.
+                           If None, reads from DEFAULT_MARKET env var.
+                           Supported: "IN", "NSE", "INDIA", "BSE", "US"
+        """
         self._sentiment_analyzer = KeywordSentimentAnalyzer()
+        self._default_market = (default_market or os.environ.get("DEFAULT_MARKET", "IN")).upper()
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol for Yahoo Finance API.
+
+        For Indian stocks (NSE/BSE), adds the appropriate suffix.
+        For other markets, returns the symbol as-is.
+
+        Args:
+            symbol: Stock symbol (e.g., "SBIN", "RELIANCE", "AAPL")
+
+        Returns:
+            Normalized symbol with appropriate suffix for Yahoo Finance
+        """
+        symbol = symbol.upper().strip()
+
+        # Already has Yahoo Finance suffix (international)
+        if "." in symbol or symbol.startswith("^"):
+            return symbol
+
+        # Add suffix based on default market
+        if self._default_market in ("NSE", "IN", "INDIA"):
+            return f"{symbol}.NS"
+        elif self._default_market == "BSE":
+            return f"{symbol}.BO"
+
+        return symbol
 
     def analyze_sentiment(self, article: NewsArticle) -> NewsArticle:
         """Analyze sentiment using keyword-based analyzer.
@@ -46,18 +80,24 @@ class YahooNewsProvider(BaseNewsProvider):
         """Get news articles for a specific company/stock.
 
         Args:
-            symbol: Stock symbol (e.g., "AAPL", "MSFT")
+            symbol: Stock symbol (e.g., "SBIN", "RELIANCE", "AAPL")
+                   For Indian stocks, the .NS/.BO suffix is added automatically
+                   based on the default market configuration.
             limit: Maximum number of articles to return
 
         Returns:
             NewsResponse with list of NewsArticle objects
         """
+        # Normalize symbol for Yahoo Finance (add .NS/.BO suffix for Indian stocks)
+        yahoo_symbol = self._normalize_symbol(symbol)
+
         try:
-            ticker = yf.Ticker(symbol)
+            ticker = yf.Ticker(yahoo_symbol)
             news_list = ticker.news or []
 
             articles = []
             for item in news_list:
+                # Use original symbol (without suffix) for the article
                 article = self._parse_yahoo_news_item(item, symbol)
                 if article:
                     # Apply sentiment analysis
@@ -76,14 +116,14 @@ class YahooNewsProvider(BaseNewsProvider):
             articles = articles[:limit]
 
             response = NewsResponse(
-                symbol=symbol,
+                symbol=symbol,  # Use original symbol in response
                 articles=articles,
                 last_updated=datetime.now(UTC),
             )
             return self.aggregate_sentiment(response)
 
         except Exception as e:
-            logger.error(f"Error fetching news for {symbol}: {e}")
+            logger.error(f"Error fetching news for {symbol} (yahoo: {yahoo_symbol}): {e}")
             return NewsResponse(
                 symbol=symbol,
                 articles=[],
