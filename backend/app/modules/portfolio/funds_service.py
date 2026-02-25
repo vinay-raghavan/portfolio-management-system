@@ -76,6 +76,9 @@ class FundsService:
     ) -> UserFunds:
         """Initialize funds for a new user.
 
+        Creates the UserFunds record and records an initial DEPOSIT transaction
+        in the ledger for audit trail.
+
         Args:
             user_id: User identifier
             initial_balance: Optional custom initial balance.
@@ -96,6 +99,22 @@ class FundsService:
         self.db.add(funds)
         await self.db.flush()
         await self.db.refresh(funds)
+
+        # Record initial deposit in transaction ledger for audit trail
+        if self._ledger_service is not None:
+            try:
+                await self._ledger_service.record_transaction(
+                    user_id=user_id,
+                    transaction_type=TransactionType.DEPOSIT,
+                    amount=initial_balance,
+                    description=f"Initial paper trading capital: ₹{initial_balance:,.2f}",
+                    reference_type="initialization",
+                    reference_id=funds.id,
+                )
+                logger.info(f"Recorded initial deposit of {initial_balance} for user {user_id}")
+            except Exception as e:
+                # Log but don't fail - funds are created, ledger entry is nice-to-have
+                logger.warning(f"Failed to record initial deposit in ledger for {user_id}: {e}")
 
         logger.info(f"Initialized funds for user {user_id} with balance {initial_balance}")
         return funds
