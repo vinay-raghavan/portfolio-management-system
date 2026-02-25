@@ -522,6 +522,16 @@ class PendingAutoTradeService:
             pending.suggested_params.get("screener_id") if pending.suggested_params else None
         )
 
+        # Fetch screener name for strategy naming
+        screener_name = None
+        if screener_id:
+            from app.modules.screener.models import CustomScreener
+
+            result = await self.db.execute(
+                select(CustomScreener.name).where(CustomScreener.id == screener_id)
+            )
+            screener_name = result.scalar_one_or_none()
+
         # Check for existing strategy linked to this screener
         existing_strategy = await self._find_existing_strategy_for_screener(user_id, screener_id)
 
@@ -639,8 +649,12 @@ class PendingAutoTradeService:
                 )
             else:
                 # CREATE NEW STRATEGY
+                # Use screener name if available, otherwise fall back to category
+                name_prefix = screener_name or pending.category
+                # Sanitize name: replace spaces with underscores, keep it concise
+                name_prefix = name_prefix.replace(" ", "_")[:30]
                 strategy_name_display = (
-                    f"{pending.category}_{pending.recommendation_date.strftime('%Y%m%d')}"
+                    f"{name_prefix}_{pending.recommendation_date.strftime('%Y%m%d')}"
                 )
 
                 # Default profit booking rules: 25% at 1%, 25% at 5%, 25% at 10%, 25% at 15%
