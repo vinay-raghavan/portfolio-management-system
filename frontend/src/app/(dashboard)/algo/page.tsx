@@ -532,7 +532,7 @@ export default function AlgoTradingPage() {
                               strategy.trading_start_time,
                               strategy.trading_end_time,
                               strategy.trading_timezone,
-                              strategy.active_trading_days
+                              strategy.active_trading_days ?? undefined
                             );
                             return (
                               <Tooltip>
