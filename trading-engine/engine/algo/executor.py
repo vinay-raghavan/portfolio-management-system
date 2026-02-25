@@ -10,9 +10,9 @@ This module handles the execution of trading strategies, including:
 """
 
 import logging
-import time
+import time as time_module
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from uuid import uuid4
 
@@ -77,6 +77,11 @@ class StrategyConfig:
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
     product_type: ProductType = ProductType.DELIVERY
+    # Trading time window fields
+    trading_start_time: time | None = None
+    trading_end_time: time | None = None
+    trading_timezone: str = "Asia/Kolkata"
+    active_trading_days: list[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])
 
 
 class StrategyExecutor:
@@ -125,7 +130,7 @@ class StrategyExecutor:
         Returns:
             ExecutionResult with details of the execution
         """
-        start_time = time.time()
+        start_time = time_module.time()
         execution_id = f"exec_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{config.id}"
 
         result = ExecutionResult(
@@ -157,7 +162,7 @@ class StrategyExecutor:
             if not all_symbols:
                 result.status = ExecutionStatus.NO_SIGNAL
                 result.error_message = "No symbols to analyze"
-                result.duration_ms = int((time.time() - start_time) * 1000)
+                result.duration_ms = int((time_module.time() - start_time) * 1000)
                 return result
 
             result.symbols_analyzed = len(all_symbols)
@@ -196,7 +201,7 @@ class StrategyExecutor:
 
             if not all_signals:
                 result.status = ExecutionStatus.NO_SIGNAL
-                result.duration_ms = int((time.time() - start_time) * 1000)
+                result.duration_ms = int((time_module.time() - start_time) * 1000)
                 return result
 
             # Process signals and place orders
@@ -212,13 +217,13 @@ class StrategyExecutor:
                         result.orders_rejected += 1
 
             result.status = ExecutionStatus.COMPLETED
-            result.duration_ms = int((time.time() - start_time) * 1000)
+            result.duration_ms = int((time_module.time() - start_time) * 1000)
 
         except Exception as e:
             logger.exception(f"Strategy execution failed: {e}")
             result.status = ExecutionStatus.FAILED
             result.error_message = str(e)
-            result.duration_ms = int((time.time() - start_time) * 1000)
+            result.duration_ms = int((time_module.time() - start_time) * 1000)
 
             await self.notification_service.notify_strategy_error(
                 user_id=config.user_id,
