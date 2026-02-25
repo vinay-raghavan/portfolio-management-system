@@ -526,6 +526,20 @@ export default function AlgoTradingPage() {
                               Combined
                             </span>
                           )}
+                          {strategy.trading_start_time && strategy.trading_end_time && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  {strategy.trading_start_time.slice(0, 5)}-{strategy.trading_end_time.slice(0, 5)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Trading Window: {strategy.trading_start_time.slice(0, 5)} - {strategy.trading_end_time.slice(0, 5)}</p>
+                                <p className="text-xs text-muted-foreground">{strategy.trading_timezone || 'Asia/Kolkata'}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                           <span className="text-xs text-muted-foreground">{strategy.strategy_type}</span>
                         </div>
                       </div>

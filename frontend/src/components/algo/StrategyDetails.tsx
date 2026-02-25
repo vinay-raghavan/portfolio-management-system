@@ -299,6 +299,37 @@ export function StrategyDetails({ strategy }: StrategyDetailsProps) {
           {strategy.cron_expression && (
             <p className="text-xs text-muted-foreground font-mono">{strategy.cron_expression}</p>
           )}
+          {/* Trading Time Window */}
+          {strategy.trading_start_time && strategy.trading_end_time && (
+            <div className="mt-2 pt-2 border-t border-dashed">
+              <div className="flex items-center gap-1 text-xs">
+                <Clock className="h-3 w-3 text-amber-500" />
+                <span className="text-muted-foreground">Window:</span>
+                <span className="font-medium">
+                  {strategy.trading_start_time.slice(0, 5)} - {strategy.trading_end_time.slice(0, 5)}
+                </span>
+                <span className="text-muted-foreground">({strategy.trading_timezone || 'Asia/Kolkata'})</span>
+              </div>
+              {strategy.active_trading_days && (
+                <div className="flex items-center gap-1 mt-1 text-xs">
+                  <span className="text-muted-foreground">Days:</span>
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, idx) => (
+                    <Badge
+                      key={day}
+                      variant={strategy.active_trading_days?.includes(idx) ? 'default' : 'outline'}
+                      className={`text-[10px] px-1 py-0 ${
+                        strategy.active_trading_days?.includes(idx)
+                          ? ''
+                          : 'text-muted-foreground opacity-50'
+                      }`}
+                    >
+                      {day.slice(0, 2)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Position Sizing */}
