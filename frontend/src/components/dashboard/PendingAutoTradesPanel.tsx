@@ -235,7 +235,7 @@ export function PendingAutoTradesPanel() {
 
   const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ['pending-auto-trades'],
-    queryFn: () => autoTradeApi.getPendingTrades('PENDING').then(r => r.data),
+    queryFn: () => autoTradeApi.getPendingTrades('pending').then(r => r.data),
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
