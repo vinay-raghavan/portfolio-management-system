@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { algoApi, signalsApi } from '@/lib/api';
 import { StrategyParameterForm } from './StrategyParameterForm';
 import { ComponentParameterForm } from './ComponentParameterForm';
+import { TimeWindowSection } from './TimeWindowSection';
 import type { AlgoStrategy, AlgoStrategyCreate, CompositeStrategyCreate, CompositeStrategyComponent, CombineLogic, ScheduleType, PositionSizingMethod, ProfitCutoffAction, ProfitBookingRule, StrategyProductType } from '@/types';
 
 type StrategyMode = 'single' | 'composite';
@@ -111,6 +112,12 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     { target_pct: 10, quantity_pct: 25 },
     { target_pct: 15, quantity_pct: 50 },
   ]);
+  // Trading time window state
+  const [timeWindowEnabled, setTimeWindowEnabled] = useState(false);
+  const [tradingStartTime, setTradingStartTime] = useState('09:15');
+  const [tradingEndTime, setTradingEndTime] = useState('15:30');
+  const [tradingTimezone, setTradingTimezone] = useState('Asia/Kolkata');
+  const [activeTradingDays, setActiveTradingDays] = useState<number[]>([0, 1, 2, 3, 4]); // Mon-Fri
 
   // Single strategy specific state
   const [strategyType, setStrategyType] = useState('');
@@ -174,6 +181,13 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           { target_pct: 15, quantity_pct: 50 },
         ]);
       }
+      // Trading time window - convert HH:MM:SS to HH:MM for input
+      const hasTimeWindow = strategy.trading_start_time && strategy.trading_end_time;
+      setTimeWindowEnabled(hasTimeWindow);
+      setTradingStartTime(strategy.trading_start_time ? strategy.trading_start_time.slice(0, 5) : '09:15');
+      setTradingEndTime(strategy.trading_end_time ? strategy.trading_end_time.slice(0, 5) : '15:30');
+      setTradingTimezone(strategy.trading_timezone || 'Asia/Kolkata');
+      setActiveTradingDays(strategy.active_trading_days || [0, 1, 2, 3, 4]);
 
       // Check if this is a composite strategy (has components in strategy_config)
       const config = strategy.strategy_config || {};
@@ -244,6 +258,12 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
         { target_pct: 10, quantity_pct: 25 },
         { target_pct: 15, quantity_pct: 50 },
       ]);
+      // Trading time window defaults
+      setTimeWindowEnabled(false);
+      setTradingStartTime('09:15');
+      setTradingEndTime('15:30');
+      setTradingTimezone('Asia/Kolkata');
+      setActiveTradingDays([0, 1, 2, 3, 4]);
       // Strategy parameter customization reset
       setStrategyParams({});
       setParamsExpanded(false);
@@ -354,6 +374,11 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
             executed: [],
           }
         : undefined,
+      // Trading time window fields - convert HH:MM to HH:MM:SS
+      trading_start_time: timeWindowEnabled ? `${tradingStartTime}:00` : undefined,
+      trading_end_time: timeWindowEnabled ? `${tradingEndTime}:00` : undefined,
+      trading_timezone: timeWindowEnabled ? tradingTimezone : undefined,
+      active_trading_days: timeWindowEnabled ? activeTradingDays : undefined,
     };
 
     if (strategyMode === 'composite') {
@@ -884,6 +909,22 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                 </p>
               </div>
             )}
+
+            {/* Trading Time Window */}
+            <div className="border-t pt-4">
+              <TimeWindowSection
+                enabled={timeWindowEnabled}
+                onEnabledChange={setTimeWindowEnabled}
+                startTime={tradingStartTime}
+                onStartTimeChange={setTradingStartTime}
+                endTime={tradingEndTime}
+                onEndTimeChange={setTradingEndTime}
+                timezone={tradingTimezone}
+                onTimezoneChange={setTradingTimezone}
+                activeDays={activeTradingDays}
+                onActiveDaysChange={setActiveTradingDays}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="risk" className="space-y-4 mt-4 max-h-[60vh] overflow-y-auto pr-2">
