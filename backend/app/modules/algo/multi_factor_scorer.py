@@ -258,6 +258,9 @@ class MultiFactorScorer:
     ) -> tuple[float, list[str]]:
         """Get fundamental score from RecommendationService data.
 
+        If fundamental_data is not provided, attempts to fetch it from the
+        RecommendationService automatically.
+
         Args:
             symbol: Stock symbol
             fundamental_data: Pre-computed fundamental data
@@ -267,6 +270,7 @@ class MultiFactorScorer:
         """
         reasons = []
 
+        # If fundamental data provided, use it
         if fundamental_data:
             score = fundamental_data.get("fundamental_score", 50.0)
             # Extract reasons from fundamental data
@@ -276,7 +280,24 @@ class MultiFactorScorer:
                 reasons.append(f"Category: {fundamental_data['category']}")
             return float(score), reasons
 
-        # Default score if no fundamental data
+        # Try to fetch fundamental data if not provided
+        try:
+            from app.modules.research.recommendation_service import RecommendationService
+
+            rec_service = RecommendationService(self.db)
+            fund_list = await rec_service.get_universe_fundamentals([symbol])
+            if fund_list:
+                fund_data = fund_list[0]
+                score = fund_data.get("fundamental_score", 50.0)
+                if "category" in fund_data:
+                    reasons.append(f"Category: {fund_data['category']}")
+                if fund_data.get("pe_ratio"):
+                    reasons.append(f"P/E: {fund_data['pe_ratio']:.1f}")
+                return float(score), reasons
+        except Exception as e:
+            logger.warning(f"Error fetching fundamentals for {symbol}: {e}")
+
+        # Default score if no fundamental data available
         return 50.0, ["Fundamental data not available"]
 
     async def _get_sentiment_score(
