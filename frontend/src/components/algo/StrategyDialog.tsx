@@ -182,7 +182,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
         ]);
       }
       // Trading time window - convert HH:MM:SS to HH:MM for input
-      const hasTimeWindow = strategy.trading_start_time && strategy.trading_end_time;
+      const hasTimeWindow = Boolean(strategy.trading_start_time && strategy.trading_end_time);
       setTimeWindowEnabled(hasTimeWindow);
       setTradingStartTime(strategy.trading_start_time ? strategy.trading_start_time.slice(0, 5) : '09:15');
       setTradingEndTime(strategy.trading_end_time ? strategy.trading_end_time.slice(0, 5) : '15:30');
