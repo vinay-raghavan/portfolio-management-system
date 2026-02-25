@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.4.1 (2026-02-25)
+
+### 🐛 Bug Fixes - Multi-Factor Scoring Pipeline
+
+This patch release fixes critical issues in the multi-factor scoring pipeline that prevented proper data fetching and scoring.
+
+**Fixes:**
+
+- **News/Sentiment Symbol Normalization**: YahooNewsProvider now correctly adds `.NS` suffix for Indian stocks, enabling proper news fetching and sentiment scoring
+- **Fundamental Data Auto-Fetch**: MultiFactorScorer now automatically fetches fundamental data from RecommendationService when not provided, ensuring scores reflect real data
+- **Fundamentals Provider Fix**: Screener service now uses Yahoo provider for fundamentals instead of the user's trading provider (e.g., Fyers), which doesn't have fundamentals API
+- **Pending Trades UI Fix**: Changed frontend status filter from `'PENDING'` (uppercase) to `'pending'` (lowercase) to match backend `PendingTradeStatus` enum
+- **Strategy Naming Convention**: Strategies created from screener recommendations now use `{screener_name}_{YYYYMMDD}` format (e.g., `minervini_nifty50_20260225`) instead of generic `custom_{YYYYMMDD}`
+
+**Impact:**
+- Combined scores now reflect real fundamental and sentiment data (63-77) instead of defaults (47-50)
+- Fundamentals fetch improved from 0/N to N/N symbols
+- Pending trades UI now loads correctly
+- Strategies are now easily identifiable by their source screener
+
+---
+
 ## v1.4.0 (2026-02-24)
 
 ### 🚀 Phase 2 Features
