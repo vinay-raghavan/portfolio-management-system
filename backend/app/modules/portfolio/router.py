@@ -272,7 +272,8 @@ async def get_funds(
     current_user: CurrentUser,
 ) -> FundsResponse:
     """Get current user funds/balance."""
-    service = FundsService(db)
+    ledger_service = LedgerService(db)
+    service = FundsService(db, ledger_service=ledger_service)
     funds = await service.get_or_create_funds(current_user.id)
     return FundsResponse(
         id=funds.id,
@@ -293,7 +294,8 @@ async def deposit_funds(
     request: FundsDepositRequest,
 ) -> FundsResponse:
     """Add funds to account (simulated deposit for paper trading)."""
-    service = FundsService(db)
+    ledger_service = LedgerService(db)
+    service = FundsService(db, ledger_service=ledger_service)
     note = request.note or "Manual deposit"
     funds = await service.add_cash(current_user.id, request.amount, reason=note)
     await db.commit()
@@ -316,7 +318,8 @@ async def withdraw_funds(
     request: FundsWithdrawRequest,
 ) -> FundsResponse:
     """Withdraw funds from account (simulated withdrawal for paper trading)."""
-    service = FundsService(db)
+    ledger_service = LedgerService(db)
+    service = FundsService(db, ledger_service=ledger_service)
     note = request.note or "Manual withdrawal"
     try:
         funds = await service.deduct_cash(current_user.id, request.amount, reason=note)
@@ -349,7 +352,8 @@ async def reset_funds(
     This will reset the balance to the specified amount or the default
     initial balance configured for paper trading.
     """
-    service = FundsService(db)
+    ledger_service = LedgerService(db)
+    service = FundsService(db, ledger_service=ledger_service)
 
     # Get existing funds or create new
     existing_funds = await service.get_funds(current_user.id)

@@ -9,6 +9,7 @@ from app.core.security import create_access_token, get_password_hash, verify_pas
 from app.modules.auth.models import User
 from app.modules.auth.schemas import TokenResponse, UserCreate
 from app.modules.portfolio.funds_service import FundsService
+from app.modules.portfolio.ledger_service import LedgerService
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ class AuthService:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self.funds_service = FundsService(db)
+        self.ledger_service = LedgerService(db)
+        self.funds_service = FundsService(db, ledger_service=self.ledger_service)
 
     async def get_user_by_email(self, email: str) -> User | None:
         """Get user by email address."""
