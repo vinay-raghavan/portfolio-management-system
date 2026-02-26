@@ -11,3 +11,4 @@ export { CompositeStrategyBuilder } from './CompositeStrategyBuilder';
 export { CompositeFlowDiagram } from './CompositeFlowDiagram';
 export { DSLStrategyBuilder } from './DSLStrategyBuilder';
 export { VisualRuleBuilder } from './VisualRuleBuilder';
+export { TimeWindowSection } from './TimeWindowSection';

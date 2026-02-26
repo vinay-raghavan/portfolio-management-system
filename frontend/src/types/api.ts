@@ -656,6 +656,11 @@ export interface AlgoStrategy {
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
   default_profit_booking_rules: ProfitBookingRules | null;
+  // Trading time window fields
+  trading_start_time: string | null; // HH:MM:SS format
+  trading_end_time: string | null; // HH:MM:SS format
+  trading_timezone: string;
+  active_trading_days: number[] | null; // 0=Monday, 6=Sunday
   last_run_at: string | null;
   next_run_at: string | null;
   total_trades: number;
@@ -691,6 +696,11 @@ export interface AlgoStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Trading time window fields
+  trading_start_time?: string; // HH:MM:SS format
+  trading_end_time?: string; // HH:MM:SS format
+  trading_timezone?: string; // IANA timezone, default: Asia/Kolkata
+  active_trading_days?: number[]; // 0=Monday, 6=Sunday
 }
 
 export interface AlgoStrategyUpdate {
@@ -718,6 +728,11 @@ export interface AlgoStrategyUpdate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Trading time window fields
+  trading_start_time?: string | null; // HH:MM:SS format
+  trading_end_time?: string | null; // HH:MM:SS format
+  trading_timezone?: string; // IANA timezone
+  active_trading_days?: number[] | null; // 0=Monday, 6=Sunday
 }
 
 export interface AlgoOrderDetail {
@@ -1011,6 +1026,11 @@ export interface CompositeStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Trading time window fields
+  trading_start_time?: string; // HH:MM:SS format
+  trading_end_time?: string; // HH:MM:SS format
+  trading_timezone?: string; // IANA timezone, default: Asia/Kolkata
+  active_trading_days?: number[]; // 0=Monday, 6=Sunday
 }
 
 export interface CompositeStrategyResponse {
@@ -1101,6 +1121,11 @@ export interface DSLStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Trading time window fields
+  trading_start_time?: string; // HH:MM:SS format
+  trading_end_time?: string; // HH:MM:SS format
+  trading_timezone?: string; // IANA timezone, default: Asia/Kolkata
+  active_trading_days?: number[]; // 0=Monday, 6=Sunday
 }
 
 export interface DSLStrategyResponse {

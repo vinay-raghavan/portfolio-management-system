@@ -270,3 +270,141 @@ class TestScheduledRunLocking:
             headers={"X-Internal-Key": "invalid-key"},
         )
         assert response.status_code == 401
+
+
+class TestStrategyExecutorTimeWindow:
+    """Tests for StrategyExecutor time window checks."""
+
+    @pytest.fixture
+    def mock_broker(self):
+        """Create a mock broker."""
+        broker = MagicMock()
+        broker.place_order = AsyncMock(return_value={"order_id": "test_order"})
+        return broker
+
+    @pytest.fixture
+    def mock_data_provider(self):
+        """Create a mock data provider."""
+        provider = MagicMock()
+        provider.get_historical_data = AsyncMock(return_value=None)
+        return provider
+
+    @pytest.fixture
+    def mock_safety_service(self):
+        """Create a mock safety service."""
+        service = MagicMock()
+        service.check_order = MagicMock(return_value=(True, ""))
+        return service
+
+    @pytest.mark.asyncio
+    async def test_execute_skips_when_before_trading_window(
+        self,
+        mock_broker,
+        mock_data_provider,
+        mock_safety_service,
+    ):
+        """Test that execution is skipped when before trading window."""
+        from datetime import time
+
+        from engine.algo.executor import ExecutionResult, StrategyConfig, StrategyExecutor
+        from engine.models.algo import ExecutionStatus
+
+        executor = StrategyExecutor(
+            broker=mock_broker,
+            data_provider=mock_data_provider,
+            safety_service=mock_safety_service,
+        )
+
+        # Configure a strategy with trading window in the future
+        config = StrategyConfig(
+            id="test-strategy-1",
+            user_id="user-1",
+            name="Test Strategy",
+            strategy_name="SMA_Crossover",
+            symbols=["RELIANCE"],
+            trading_start_time=time(23, 59),  # Far in future
+            trading_end_time=time(23, 59, 59),
+            trading_timezone="Asia/Kolkata",
+            active_trading_days=[0, 1, 2, 3, 4, 5, 6],  # All days
+        )
+
+        result: ExecutionResult = await executor.execute(config)
+
+        assert result.status == ExecutionStatus.SKIPPED
+        assert "Outside trading window" in result.error_message
+        assert "Before trading window" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_execute_skips_when_after_trading_window(
+        self,
+        mock_broker,
+        mock_data_provider,
+        mock_safety_service,
+    ):
+        """Test that execution is skipped when after trading window."""
+        from datetime import time
+
+        from engine.algo.executor import ExecutionResult, StrategyConfig, StrategyExecutor
+        from engine.models.algo import ExecutionStatus
+
+        executor = StrategyExecutor(
+            broker=mock_broker,
+            data_provider=mock_data_provider,
+            safety_service=mock_safety_service,
+        )
+
+        # Configure a strategy with trading window in the past
+        config = StrategyConfig(
+            id="test-strategy-2",
+            user_id="user-1",
+            name="Test Strategy",
+            strategy_name="SMA_Crossover",
+            symbols=["RELIANCE"],
+            trading_start_time=time(0, 0),  # Start of day
+            trading_end_time=time(0, 1),  # 1 minute past midnight
+            trading_timezone="Asia/Kolkata",
+            active_trading_days=[0, 1, 2, 3, 4, 5, 6],  # All days
+        )
+
+        result: ExecutionResult = await executor.execute(config)
+
+        assert result.status == ExecutionStatus.SKIPPED
+        assert "Outside trading window" in result.error_message
+        assert "After trading window" in result.error_message
+
+    @pytest.mark.asyncio
+    async def test_execute_proceeds_when_no_time_window(
+        self,
+        mock_broker,
+        mock_data_provider,
+        mock_safety_service,
+    ):
+        """Test that execution proceeds past time window check when no time window is set."""
+        from engine.algo.executor import ExecutionResult, StrategyConfig, StrategyExecutor
+        from engine.models.algo import ExecutionStatus
+
+        executor = StrategyExecutor(
+            broker=mock_broker,
+            data_provider=mock_data_provider,
+            safety_service=mock_safety_service,
+        )
+
+        # Configure a strategy without time window
+        config = StrategyConfig(
+            id="test-strategy-3",
+            user_id="user-1",
+            name="Test Strategy",
+            strategy_name="SMA_Crossover",  # Strategy not registered in test
+            symbols=[],  # No symbols to avoid actual execution
+            trading_start_time=None,  # No time window
+            trading_end_time=None,
+        )
+
+        result: ExecutionResult = await executor.execute(config)
+
+        # Should NOT be SKIPPED due to time window - it proceeds past the check
+        # Will be FAILED since SMA_Crossover strategy is not registered in test env
+        assert result.status != ExecutionStatus.SKIPPED
+        # Confirm it failed for strategy-not-found reason, not time window
+        assert result.status == ExecutionStatus.FAILED
+        assert "not found in registry" in result.error_message
