@@ -717,6 +717,170 @@ class TestProfitBookingRules:
         assert stats.trades_closed == 0
 
 
+class TestTrailingStopLoss:
+    """Tests for trailing stop loss functionality."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock async database session."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.execute = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def tracker(self, mock_db):
+        """Create PositionTracker with mocked db."""
+        return PositionTracker(mock_db)
+
+    async def test_trailing_stop_updates_when_price_rises_long(self, tracker, mock_db):
+        """Test trailing stop moves up when price rises for LONG position."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-trailing-1"
+        position.symbol = "RELIANCE"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("1000.00")
+        # Enable trailing stop at 5%
+        position.trailing_stop_enabled = True
+        position.trailing_stop_pct = Decimal("0.05")
+        position.highest_price_since_entry = Decimal("1000.00")
+        position.trailing_stop_price = Decimal("950.00")  # Initial: 1000 * 0.95
+
+        # Price rises to 1100 (10% up)
+        current_price = Decimal("1100.00")
+
+        updated = await tracker._update_trailing_stop(position, current_price, None)
+
+        assert updated is True
+        assert position.highest_price_since_entry == Decimal("1100.00")
+        # New stop should be 1100 * 0.95 = 1045
+        assert position.trailing_stop_price == Decimal("1045.00")
+
+    async def test_trailing_stop_does_not_lower_long(self, tracker, mock_db):
+        """Test trailing stop does NOT move down when price falls for LONG."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-trailing-2"
+        position.symbol = "INFY"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("1000.00")
+        position.trailing_stop_enabled = True
+        position.trailing_stop_pct = Decimal("0.05")
+        position.highest_price_since_entry = Decimal("1100.00")  # Was at 1100
+        position.trailing_stop_price = Decimal("1045.00")  # Stop at 1045
+
+        # Price falls to 1050 (below highest but above stop)
+        current_price = Decimal("1050.00")
+
+        updated = await tracker._update_trailing_stop(position, current_price, None)
+
+        assert updated is False
+        # Stop should remain at 1045, not move down
+        assert position.trailing_stop_price == Decimal("1045.00")
+        assert position.highest_price_since_entry == Decimal("1100.00")
+
+    async def test_trailing_stop_triggers_exit_long(self, tracker, mock_db):
+        """Test position closes when price hits trailing stop for LONG."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-trailing-3"
+        position.symbol = "TCS"
+        position.side = PositionSide.LONG
+        position.status = PositionStatus.OPEN
+        position.remaining_quantity = 100
+        position.entry_quantity = 100
+        position.entry_price = Decimal("1000.00")
+        position.stop_loss = Decimal("900.00")  # Original fixed stop
+        position.take_profit = Decimal("1200.00")
+        position.realized_pnl = Decimal("0")
+        position.exit_quantity = None
+        position.profit_booking_rules = None
+        # Trailing stop enabled - price was at 1100, stop at 1045
+        position.trailing_stop_enabled = True
+        position.trailing_stop_pct = Decimal("0.05")
+        position.trailing_stop_price = Decimal("1045.00")
+        position.highest_price_since_entry = Decimal("1100.00")
+        position.lowest_price_since_entry = None
+
+        # Mock strategy for exit_only cleanup
+        mock_strategy_cleanup = MagicMock()
+        mock_strategy_cleanup.exit_only_symbols = []
+        mock_strategy_cleanup.name = "Test Strategy"
+
+        # Mock queries: strategy, all positions, get position, cleanup strategy
+        mock_result_strategy = MagicMock()
+        mock_result_strategy.scalar_one_or_none.return_value = None
+        mock_result_all = MagicMock()
+        mock_result_all.scalars.return_value.all.return_value = [position]
+        mock_result_one = MagicMock()
+        mock_result_one.scalar_one_or_none.return_value = position
+        mock_db.execute.side_effect = [
+            mock_result_strategy,
+            mock_result_all,
+            mock_result_one,
+            MagicMock(scalar_one_or_none=MagicMock(return_value=mock_strategy_cleanup)),
+        ]
+
+        # Price at 1040, below trailing stop of 1045
+        current_prices = {"TCS": Decimal("1040.00")}
+
+        closed_positions, stats = await tracker.check_stop_loss_take_profit(
+            strategy_id="strat-1",
+            user_id="user-1",
+            current_prices=current_prices,
+        )
+
+        # Should have closed due to trailing stop
+        assert len(closed_positions) == 1
+        assert stats.trades_closed == 1
+        # P&L = (1040 - 1000) * 100 = 4000 profit (still profitable due to trailing!)
+        assert closed_positions[0].realized_pnl == Decimal("4000.00")
+
+    async def test_trailing_stop_updates_when_price_falls_short(self, tracker, mock_db):
+        """Test trailing stop moves down when price falls for SHORT position."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-trailing-short"
+        position.symbol = "HDFC"
+        position.side = PositionSide.SHORT
+        position.entry_price = Decimal("1000.00")
+        position.trailing_stop_enabled = True
+        position.trailing_stop_pct = Decimal("0.05")
+        position.lowest_price_since_entry = Decimal("1000.00")
+        position.trailing_stop_price = Decimal("1050.00")  # Initial: 1000 * 1.05
+        position.highest_price_since_entry = None
+
+        # Price falls to 900 (10% down - profit for short)
+        current_price = Decimal("900.00")
+
+        updated = await tracker._update_trailing_stop(position, current_price, None)
+
+        assert updated is True
+        assert position.lowest_price_since_entry == Decimal("900.00")
+        # New stop should be 900 * 1.05 = 945
+        assert position.trailing_stop_price == Decimal("945.00")
+
+    async def test_trailing_stop_disabled_uses_fixed_stop(self, tracker, mock_db):
+        """Test that fixed stop_loss is used when trailing is disabled."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-no-trailing"
+        position.symbol = "WIPRO"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("1000.00")
+        position.trailing_stop_enabled = False
+        position.trailing_stop_pct = None
+        position.trailing_stop_price = None
+        position.highest_price_since_entry = None
+        position.lowest_price_since_entry = None
+
+        current_price = Decimal("1100.00")
+
+        updated = await tracker._update_trailing_stop(position, current_price, None)
+
+        # Should not update anything when trailing is disabled
+        assert updated is False
+        assert position.trailing_stop_price is None
+
+
 class TestSafetyService:
     """Tests for SafetyService basic checks."""
 
