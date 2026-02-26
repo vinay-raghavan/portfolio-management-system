@@ -262,7 +262,13 @@ class PositionTracker:
                 f"pct={trailing_stop_pct}, stop_price={trailing_stop_price}"
             )
 
-        # Create new position with trailing stop settings
+        # Initialize profit lock from strategy defaults
+        profit_lock_enabled = False
+        if strategy and strategy.default_profit_lock_enabled:
+            profit_lock_enabled = True
+            logger.info(f"Initialized profit lock for {symbol}: enabled={profit_lock_enabled}")
+
+        # Create new position with trailing stop and profit lock settings
         position = AlgoPosition(
             strategy_id=strategy_id,
             user_id=user_id,
@@ -280,6 +286,9 @@ class PositionTracker:
             trailing_stop_price=trailing_stop_price,
             highest_price_since_entry=highest_price,
             lowest_price_since_entry=lowest_price,
+            profit_lock_enabled=profit_lock_enabled,
+            profit_lock_activated=False,
+            profit_lock_price=None,
         )
         self.db.add(position)
         await self.db.flush()
@@ -516,6 +525,93 @@ class PositionTracker:
 
         return updated
 
+    async def _check_profit_lock(
+        self,
+        position: AlgoPosition,
+        current_price: Decimal,
+        strategy: UserStrategy | None = None,
+    ) -> bool:
+        """Check and activate profit lock based on first profit booking rule threshold.
+
+        When profit lock is enabled and the first profit booking rule's threshold is reached,
+        the stop loss is locked at the current profit price level.
+
+        Args:
+            position: The position to check
+            current_price: Current market price
+            strategy: Optional strategy for fallback settings
+
+        Returns:
+            True if profit lock was activated (first time threshold reached)
+        """
+        # Check if profit lock is already activated
+        if position.profit_lock_activated:
+            return False
+
+        # Determine if profit lock is enabled (position -> strategy hierarchy)
+        profit_lock_enabled = position.profit_lock_enabled
+        if not profit_lock_enabled and strategy:
+            profit_lock_enabled = strategy.default_profit_lock_enabled
+
+        if not profit_lock_enabled:
+            return False
+
+        # Get profit booking rules (position -> strategy hierarchy)
+        rules_data = position.profit_booking_rules
+        if not rules_data and strategy and strategy.default_profit_booking_rules:
+            rules_data = strategy.default_profit_booking_rules
+
+        if not rules_data or not rules_data.get("enabled", False):
+            return False
+
+        rules = rules_data.get("rules", [])
+        if not rules:
+            return False
+
+        # Get the FIRST (lowest) profit booking threshold
+        sorted_rules = sorted(rules, key=lambda r: float(r.get("target_pct", 0)))
+        first_threshold = Decimal(str(sorted_rules[0].get("target_pct", 0)))
+
+        # Calculate current profit percentage
+        if position.side == PositionSide.LONG:
+            profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
+        else:  # SHORT
+            profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
+
+        # Check if threshold is reached
+        if profit_pct >= first_threshold:
+            # Get trailing stop percentage for buffer (position -> strategy hierarchy)
+            trailing_pct = position.trailing_stop_pct
+            if trailing_pct is None and strategy:
+                trailing_pct = strategy.default_trailing_stop_pct
+
+            # Calculate profit lock price with trailing buffer
+            # For LONG: stop = current_price * (1 - trailing_pct)
+            # For SHORT: stop = current_price * (1 + trailing_pct)
+            if trailing_pct:
+                if position.side == PositionSide.LONG:
+                    lock_price = current_price * (Decimal("1") - trailing_pct)
+                else:  # SHORT
+                    lock_price = current_price * (Decimal("1") + trailing_pct)
+            else:
+                # No trailing stop configured, lock at current price
+                lock_price = current_price
+
+            # Activate profit lock
+            position.profit_lock_activated = True
+            position.profit_lock_price = lock_price
+            await self.db.flush()
+
+            buffer_info = f" (with {trailing_pct * 100:.2f}% buffer)" if trailing_pct else ""
+            logger.info(
+                f"🔒 Profit lock activated for {position.symbol}: "
+                f"{profit_pct:.2f}% profit >= {first_threshold}% threshold, "
+                f"stop locked at {lock_price}{buffer_info}"
+            )
+            return True
+
+        return False
+
     async def check_stop_loss_take_profit(
         self,
         strategy_id: str,
@@ -550,6 +646,9 @@ class PositionTracker:
             if not current_price:
                 continue
 
+            # Check and activate profit lock (uses first profit booking rule threshold)
+            await self._check_profit_lock(position, current_price, strategy)
+
             # Determine effective trailing stop settings (hierarchical: position -> strategy)
             trailing_enabled = position.trailing_stop_enabled
             trailing_pct = position.trailing_stop_pct
@@ -557,31 +656,42 @@ class PositionTracker:
                 trailing_enabled = strategy.default_trailing_stop_enabled
                 trailing_pct = strategy.default_trailing_stop_pct
 
+            # Determine if profit lock is enabled and activated
+            profit_lock_enabled = position.profit_lock_enabled
+            if not profit_lock_enabled and strategy:
+                profit_lock_enabled = strategy.default_profit_lock_enabled
+
             # Update trailing stop price before checking SL (pass strategy for fallback)
-            if trailing_enabled:
+            # Only use trailing stop if profit lock is OFF
+            if not profit_lock_enabled and trailing_enabled:
                 await self._update_trailing_stop(position, current_price, strategy)
 
             should_close = False
             close_reason = ""
 
-            # Determine effective stop loss:
-            # - If trailing stop is enabled (position or strategy level), use trailing_stop_price
+            # Determine effective stop loss (priority: profit_lock > trailing > fixed)
+            # - If profit lock is activated, use profit_lock_price
+            # - Else if trailing stop is enabled, use trailing_stop_price
             # - Otherwise, use fixed stop_loss
-            effective_stop = (
-                position.trailing_stop_price
-                if trailing_enabled and position.trailing_stop_price
-                else position.stop_loss
-            )
+            if position.profit_lock_activated and position.profit_lock_price:
+                effective_stop = position.profit_lock_price
+                stop_type = "profit-lock-stop"
+            elif trailing_enabled and position.trailing_stop_price:
+                effective_stop = position.trailing_stop_price
+                stop_type = "trailing-stop-loss"
+            else:
+                effective_stop = position.stop_loss
+                stop_type = "stop-loss"
 
-            # Check stop-loss / trailing stop (for OPEN and PARTIAL positions)
+            # Check stop-loss / trailing stop / profit lock (for OPEN and PARTIAL positions)
             # PARTIAL positions still need stop loss protection for remaining quantity
             if position.status in (PositionStatus.OPEN, PositionStatus.PARTIAL) and effective_stop:
                 if position.side == PositionSide.LONG and current_price <= effective_stop:
                     should_close = True
-                    close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
+                    close_reason = stop_type
                 elif position.side == PositionSide.SHORT and current_price >= effective_stop:
                     should_close = True
-                    close_reason = "trailing-stop-loss" if trailing_enabled else "stop-loss"
+                    close_reason = stop_type
 
             # Check take-profit (for OPEN and PARTIAL positions)
             if (

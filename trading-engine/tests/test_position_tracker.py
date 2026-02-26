@@ -362,11 +362,16 @@ class TestPositionTrackerUnit:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
 
         # Mock strategy for exit_only cleanup
         mock_strategy_cleanup = MagicMock()
         mock_strategy_cleanup.exit_only_symbols = []
         mock_strategy_cleanup.name = "Test Strategy"
+        mock_strategy_cleanup.default_profit_lock_enabled = False
         mock_result_strategy_cleanup = MagicMock()
         mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
 
@@ -419,11 +424,16 @@ class TestPositionTrackerUnit:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
 
         # Mock strategy for exit_only cleanup
         mock_strategy_cleanup = MagicMock()
         mock_strategy_cleanup.exit_only_symbols = []
         mock_strategy_cleanup.name = "Test Strategy"
+        mock_strategy_cleanup.default_profit_lock_enabled = False
         mock_result_strategy_cleanup = MagicMock()
         mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
 
@@ -476,11 +486,16 @@ class TestPositionTrackerUnit:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
 
         # Mock strategy for exit_only cleanup
         mock_strategy_cleanup = MagicMock()
         mock_strategy_cleanup.exit_only_symbols = []
         mock_strategy_cleanup.name = "Test Strategy"
+        mock_strategy_cleanup.default_profit_lock_enabled = False
         mock_result_strategy_cleanup = MagicMock()
         mock_result_strategy_cleanup.scalar_one_or_none.return_value = mock_strategy_cleanup
 
@@ -534,6 +549,10 @@ class TestPositionTrackerUnit:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
 
         # Mock strategy query (first) and get_all_open_positions (second)
         mock_result_strategy = MagicMock()
@@ -587,6 +606,10 @@ class TestProfitBookingRules:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
         # Set profit booking rules: 25% at 1% profit
         position.profit_booking_rules = {
             "enabled": True,
@@ -639,6 +662,10 @@ class TestProfitBookingRules:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
         # 1% rule already executed
         position.profit_booking_rules = {
             "enabled": True,
@@ -689,6 +716,10 @@ class TestProfitBookingRules:
         position.trailing_stop_price = None
         position.highest_price_since_entry = None
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
         # Disabled profit booking
         position.profit_booking_rules = {
             "enabled": False,
@@ -801,11 +832,16 @@ class TestTrailingStopLoss:
         position.trailing_stop_price = Decimal("1045.00")
         position.highest_price_since_entry = Decimal("1100.00")
         position.lowest_price_since_entry = None
+        # Profit lock fields
+        position.profit_lock_enabled = False
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
 
         # Mock strategy for exit_only cleanup
         mock_strategy_cleanup = MagicMock()
         mock_strategy_cleanup.exit_only_symbols = []
         mock_strategy_cleanup.name = "Test Strategy"
+        mock_strategy_cleanup.default_profit_lock_enabled = False
 
         # Mock queries: strategy, all positions, get position, cleanup strategy
         mock_result_strategy = MagicMock()
