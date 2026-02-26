@@ -1,5 +1,43 @@
 # Release Notes
 
+## v1.5.0 (2026-02-26)
+
+### 🕐 Algo Trading Time Window (Section 2.7)
+
+This release adds the ability to restrict when algo strategies can execute trades, helping users avoid volatile market periods or focus on specific trading sessions.
+
+**Core Features:**
+
+- **Time Window Configuration**: Set start/end times for strategy execution (e.g., 9:45 AM - 3:15 PM IST)
+- **Timezone Support**: Full IANA timezone support (default: Asia/Kolkata)
+- **Active Trading Days**: Select which days of the week the strategy can trade
+- **Real-time Status Indicator**: Strategy cards show "In Window" (green) or "Outside Window" (grey) status
+- **Preset Configurations**: Quick presets for Market Hours, Avoid Open/Close, Morning/Afternoon sessions
+
+**Backend Changes:**
+
+- Added `trading_start_time`, `trading_end_time`, `trading_timezone`, `active_trading_days` fields to `UserStrategy` model
+- Created `TimeWindowValidator` utility class in shared package
+- Integrated time window checks in `StrategyExecutor.execute()` - strategies outside window return `SKIPPED` status
+
+**Frontend Changes:**
+
+- New `TimeWindowSection` component with time pickers, timezone selector, and day checkboxes
+- Strategy cards display time window badge and real-time status indicator
+- StrategyDialog and StrategyDetails integration
+
+**Bug Fixes:**
+
+- Fixed time window config not being passed to `StrategyConfig` in scheduled/manual execution routes
+
+**Technical Details:**
+
+- Alembic migration: `20260225_1000_add_trading_time_window_fields.py`
+- 17 commits across backend, shared, trading-engine, and frontend
+- PR: [#83](https://github.com/vinay-raghavan/portfolio-management-system/pull/83)
+
+---
+
 ## v1.4.2 (2026-02-25)
 
 ### 🐛 Bug Fixes - Ledger Data Integrity

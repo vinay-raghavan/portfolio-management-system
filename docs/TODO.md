@@ -5233,7 +5233,8 @@ class AutoTradeConfig(Base):
 
 ### 2.7 Algo Trading Time Window
 > 🌿 **Branch:** `phase-2/algo-time-window`
-> **Status:** 🔲 Not Started
+> **Status:** ✅ Completed
+> **PR:** [#83](https://github.com/vinay-raghavan/portfolio-management-system/pull/83)
 
 **Goal**: Allow users to restrict when algo strategies execute trades. Example: Only trade between 9:45 AM and 3:15 PM IST.
 
@@ -5289,11 +5290,11 @@ class UserStrategy(Base):
 ```
 
 **Tasks:**
-- [ ] Add time window fields to `UserStrategy` model
-- [ ] Create Alembic migration for new columns
-- [ ] Update `UserStrategy` schemas to include time window fields
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): add trading time window fields to UserStrategy`
+- [x] Add time window fields to `UserStrategy` model
+- [x] Create Alembic migration for new columns
+- [x] Update `UserStrategy` schemas to include time window fields
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add trading time window fields to UserStrategy`
 
 #### 2.7.2 Time Window Validation
 
@@ -5335,12 +5336,12 @@ class TimeWindowValidator:
 ```
 
 **Tasks:**
-- [ ] Create `TimeWindowValidator` in `backend/app/modules/algo/time_window.py`
-- [ ] Handle timezone conversions properly (use `zoneinfo`)
-- [ ] Handle edge cases (overnight windows, different timezones)
-- [ ] Add comprehensive unit tests
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): implement TimeWindowValidator`
+- [x] Create `TimeWindowValidator` in `shared/shared/utils/time_window.py`
+- [x] Handle timezone conversions properly (use `zoneinfo`)
+- [x] Handle edge cases (overnight windows, different timezones)
+- [x] Add comprehensive unit tests
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(shared): implement TimeWindowValidator for trading windows`
 
 #### 2.7.3 Executor Integration
 
@@ -5368,13 +5369,13 @@ class StrategyExecutor:
 ```
 
 **Tasks:**
-- [ ] Update `StrategyConfig` dataclass to include time window fields
-- [ ] Update `StrategyExecutor.execute()` to check time window
-- [ ] Add `SKIPPED` status to `ExecutionStatus` enum if not exists
-- [ ] Log skipped executions with reason
-- [ ] Add tests for executor time window checks
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(trading-engine): integrate time window checks in executor`
+- [x] Update `StrategyConfig` dataclass to include time window fields
+- [x] Update `StrategyExecutor.execute()` to check time window
+- [x] Add `SKIPPED` status to `ExecutionStatus` enum if not exists
+- [x] Log skipped executions with reason
+- [x] Add tests for executor time window checks
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(trading-engine): integrate time window checks in executor`
 
 #### 2.7.4 API Updates
 
@@ -5400,13 +5401,13 @@ class StrategyUpdate(BaseModel):
 ```
 
 **Tasks:**
-- [ ] Update `StrategyCreate` schema with time window fields
-- [ ] Update `StrategyUpdate` schema with time window fields
-- [ ] Update `StrategyResponse` schema to include time window
-- [ ] Validate time window (start < end, valid timezone)
-- [ ] Add API tests for time window validation
-- [ ] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
-- [ ] Commit: `feat(algo): update API schemas for time window support`
+- [x] Update `StrategyCreate` schema with time window fields
+- [x] Update `StrategyUpdate` schema with time window fields
+- [x] Update `StrategyResponse` schema to include time window
+- [x] Validate time window (start < end, valid timezone)
+- [x] Add API tests for time window validation
+- [x] Run CI checks: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [x] Commit: `feat(algo): add time window fields to API schemas and service layer`
 
 #### 2.7.5 Frontend: Time Window Configuration
 
@@ -5428,14 +5429,14 @@ Add a new section "Trading Time Window" with:
 | Afternoon Session | 13:00 | 15:30 | Trade only in afternoon |
 
 **Tasks:**
-- [ ] Create `TimeWindowSection` component for strategy form
-- [ ] Add time pickers for start/end time
-- [ ] Add timezone selector dropdown
-- [ ] Add active days checkboxes
-- [ ] Add preset buttons for common configurations
-- [ ] Show current status indicator (In Window / Outside Window)
-- [ ] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): add time window configuration to strategy form`
+- [x] Create `TimeWindowSection` component for strategy form
+- [x] Add time pickers for start/end time
+- [x] Add timezone selector dropdown
+- [x] Add active days checkboxes
+- [x] Add preset buttons for common configurations
+- [x] Show current status indicator (In Window / Outside Window)
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): create TimeWindowSection component`
 
 #### 2.7.6 Strategy Status Display
 
@@ -5446,20 +5447,20 @@ Add a new section "Trading Time Window" with:
 - Countdown to window open/close
 
 **Tasks:**
-- [ ] Update `StrategyCard` component to show time window
-- [ ] Add status indicator component
-- [ ] Add countdown timer for window status
-- [ ] Run frontend audit: `npm audit`
-- [ ] Commit: `feat(frontend): display time window status on strategy cards`
+- [x] Update `StrategyCard` component to show time window
+- [x] Add status indicator component
+- [x] Add countdown timer for window status
+- [x] Run frontend audit: `npm audit`
+- [x] Commit: `feat(frontend): add real-time In Window / Outside Window status indicator`
 
 #### 2.7.7 Testing & Deployment
 
 **Tasks:**
-- [ ] Write unit tests for TimeWindowValidator
-- [ ] Write integration tests for executor with time window
-- [ ] Test timezone edge cases (DST transitions, different TZs)
-- [ ] Write E2E tests for frontend time window configuration
-- [ ] Run full CI suite:
+- [x] Write unit tests for TimeWindowValidator
+- [x] Write integration tests for executor with time window
+- [x] Test timezone edge cases (DST transitions, different TZs)
+- [x] Write E2E tests for frontend time window configuration
+- [x] Run full CI suite:
   ```bash
   # Backend
   uv run ruff check
@@ -5475,10 +5476,10 @@ Add a new section "Trading Time Window" with:
   npm run lint
   npm run build
   ```
-- [ ] Build containers: `podman-compose build`
-- [ ] Deploy to staging: `podman-compose up -d`
-- [ ] Verify time window functionality in staging
-- [ ] Commit: `test(algo): add comprehensive tests for time window feature`
+- [x] Build containers: `podman-compose build`
+- [x] Deploy to staging: `podman-compose up -d`
+- [x] Verify time window functionality in staging
+- [x] Bug fix: Pass time window config to StrategyConfig in execution routes
 
 ---
 
