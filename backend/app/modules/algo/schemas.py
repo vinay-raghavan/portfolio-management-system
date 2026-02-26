@@ -1,6 +1,6 @@
 """Pydantic schemas for algo trading module."""
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -77,6 +77,20 @@ class ScheduleConfig(BaseModel):
     interval_seconds: int | None = None
     cron_expression: str | None = None
     timeframe: str = "1d"
+    # Trading time window fields
+    trading_start_time: time | None = Field(
+        default=None, description="Start time for trading window (e.g., 09:45)"
+    )
+    trading_end_time: time | None = Field(
+        default=None, description="End time for trading window (e.g., 15:15)"
+    )
+    trading_timezone: str = Field(
+        default="Asia/Kolkata", description="IANA timezone for time window"
+    )
+    active_trading_days: list[int] | None = Field(
+        default=None,
+        description="Weekday indices (0=Monday, 6=Sunday). Default: [0,1,2,3,4] (Mon-Fri)",
+    )
 
 
 class RiskConfig(BaseModel):
@@ -341,6 +355,20 @@ class StrategyCreate(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Trading time window fields
+    trading_start_time: time | None = Field(
+        default=None, description="Start time for trading window (e.g., 09:45)"
+    )
+    trading_end_time: time | None = Field(
+        default=None, description="End time for trading window (e.g., 15:15)"
+    )
+    trading_timezone: str = Field(
+        default="Asia/Kolkata", description="IANA timezone for time window"
+    )
+    active_trading_days: list[int] | None = Field(
+        default=None,
+        description="Weekday indices (0=Monday, 6=Sunday). Default: [0,1,2,3,4] (Mon-Fri)",
+    )
 
 
 class StrategyUpdate(BaseModel):
@@ -369,6 +397,11 @@ class StrategyUpdate(BaseModel):
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Trading time window fields
+    trading_start_time: time | None = None
+    trading_end_time: time | None = None
+    trading_timezone: str | None = None
+    active_trading_days: list[int] | None = None
 
 
 class RecentExecutionSummary(BaseModel):
@@ -421,6 +454,11 @@ class StrategyResponse(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Trading time window fields
+    trading_start_time: time | None = None
+    trading_end_time: time | None = None
+    trading_timezone: str = "Asia/Kolkata"
+    active_trading_days: list[int] | None = None
     last_run_at: datetime | None
     next_run_at: datetime | None
     total_trades: int
@@ -507,6 +545,11 @@ class StrategyResponse(BaseModel):
                 if obj.default_profit_booking_rules
                 else None
             ),
+            # Trading time window fields
+            "trading_start_time": obj.trading_start_time,
+            "trading_end_time": obj.trading_end_time,
+            "trading_timezone": obj.trading_timezone or "Asia/Kolkata",
+            "active_trading_days": obj.active_trading_days,
             "last_run_at": obj.last_run_at,
             "next_run_at": obj.next_run_at,
             "total_trades": obj.total_trades,

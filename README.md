@@ -1,6 +1,6 @@
 # Portfolio Management System
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.4.1)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.5.0)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A personal automated financial portfolio management system with algorithmic trading, paper trading, technical/fundamental analysis, and real-time market data for Indian markets (NSE/BSE).
@@ -20,6 +20,7 @@ This system performs comprehensive market analysis, executes automated trading s
 #### 🤖 Algorithmic Trading
 - **Strategy Framework**: RSI, MACD, VWAP, ORB, Supertrend, and custom strategies
 - **Safety Controls**: Kill switch, circuit breakers, daily loss limits
+- **Trading Time Windows**: Restrict execution to specific hours (e.g., 9:45 AM - 3:15 PM IST)
 - **Trailing Stops & Profit Booking**: Automated position management
 - **Backtesting**: Full metrics (Sharpe, Sortino, Max DD, Win Rate)
 

@@ -1,11 +1,22 @@
 """Database models for algo trading module."""
 
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Time,
+)
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -131,6 +142,16 @@ class UserStrategy(Base):
     )  # For INTERVAL type
     cron_expression: Mapped[str | None] = mapped_column(String(100), nullable=True)  # For CRON type
     timeframe: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
+
+    # Trading time window (optional restriction on when strategy can execute)
+    trading_start_time: Mapped[time | None] = mapped_column(Time, nullable=True)  # e.g., 09:45:00
+    trading_end_time: Mapped[time | None] = mapped_column(Time, nullable=True)  # e.g., 15:15:00
+    trading_timezone: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="Asia/Kolkata"
+    )  # IANA timezone
+    active_trading_days: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, default=[0, 1, 2, 3, 4]
+    )  # Monday=0, Sunday=6
 
     # Universe (symbols to trade)
     universe_id: Mapped[str | None] = mapped_column(

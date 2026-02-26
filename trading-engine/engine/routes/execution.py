@@ -1,6 +1,7 @@
 """Execution routes for strategy running."""
 
 import logging
+from datetime import time as dt_time
 from decimal import Decimal
 from typing import Annotated
 
@@ -249,6 +250,11 @@ class ExecuteStrategyRequest(BaseModel):
     risk_per_trade_percent: float = 2.0
     is_paper_trading: bool = True
     product_type: str = "DELIVERY"
+    # Trading time window (optional)
+    trading_start_time: str | None = None  # Format: HH:MM:SS
+    trading_end_time: str | None = None  # Format: HH:MM:SS
+    trading_timezone: str = "Asia/Kolkata"
+    active_trading_days: list[int] = [0, 1, 2, 3, 4]  # Monday=0, Sunday=6
 
 
 class ExecuteStrategyResponse(BaseModel):
@@ -277,6 +283,18 @@ async def execute_strategy_full(
     to execute a strategy and place orders.
     """
     try:
+        # Parse time window fields from strings if provided
+        start_time = None
+        end_time = None
+        if request.trading_start_time:
+            parts = request.trading_start_time.split(":")
+            start_time = dt_time(
+                int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0
+            )
+        if request.trading_end_time:
+            parts = request.trading_end_time.split(":")
+            end_time = dt_time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+
         # Build strategy config
         config = StrategyConfig(
             id=request.strategy_id,
@@ -293,6 +311,11 @@ async def execute_strategy_full(
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
             product_type=ProductType.normalize(request.product_type),
+            # Trading time window configuration
+            trading_start_time=start_time,
+            trading_end_time=end_time,
+            trading_timezone=request.trading_timezone,
+            active_trading_days=request.active_trading_days,
         )
 
         # Get broker based on paper trading mode
@@ -491,6 +514,11 @@ async def run_scheduled_strategies(
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
                         product_type=ProductType.normalize(strategy.product_type.value),
+                        # Trading time window configuration
+                        trading_start_time=strategy.trading_start_time,
+                        trading_end_time=strategy.trading_end_time,
+                        trading_timezone=strategy.trading_timezone or "Asia/Kolkata",
+                        active_trading_days=strategy.active_trading_days or [0, 1, 2, 3, 4],
                     )
 
                     # Get broker based on paper trading mode
@@ -728,6 +756,11 @@ async def execute_strategy_by_id(
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
             product_type=ProductType.normalize(strategy.product_type.value),
+            # Trading time window configuration
+            trading_start_time=strategy.trading_start_time,
+            trading_end_time=strategy.trading_end_time,
+            trading_timezone=strategy.trading_timezone or "Asia/Kolkata",
+            active_trading_days=strategy.active_trading_days or [0, 1, 2, 3, 4],
         )
 
         # Get broker based on paper trading mode
