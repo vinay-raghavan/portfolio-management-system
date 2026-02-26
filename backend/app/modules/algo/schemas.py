@@ -355,6 +355,8 @@ class StrategyCreate(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Profit lock: locks stop loss at profit level once threshold is reached
+    default_profit_lock_enabled: bool = False
     # Trading time window fields
     trading_start_time: time | None = Field(
         default=None, description="Start time for trading window (e.g., 09:45)"
@@ -397,6 +399,8 @@ class StrategyUpdate(BaseModel):
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Profit lock: locks stop loss at profit level once threshold is reached
+    default_profit_lock_enabled: bool | None = None
     # Trading time window fields
     trading_start_time: time | None = None
     trading_end_time: time | None = None
@@ -454,6 +458,8 @@ class StrategyResponse(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Profit lock: locks stop loss at profit level once threshold is reached
+    default_profit_lock_enabled: bool = False
     # Trading time window fields
     trading_start_time: time | None = None
     trading_end_time: time | None = None
@@ -545,6 +551,7 @@ class StrategyResponse(BaseModel):
                 if obj.default_profit_booking_rules
                 else None
             ),
+            "default_profit_lock_enabled": obj.default_profit_lock_enabled,
             # Trading time window fields
             "trading_start_time": obj.trading_start_time,
             "trading_end_time": obj.trading_end_time,
@@ -704,6 +711,14 @@ class PositionResponse(BaseModel):
     is_winner: bool | None
     stop_loss: Decimal | None
     take_profit: Decimal | None
+    # Trailing stop fields
+    trailing_stop_enabled: bool | None = None
+    trailing_stop_pct: Decimal | None = None
+    trailing_stop_price: Decimal | None = None
+    # Profit lock fields
+    profit_lock_enabled: bool | None = None
+    profit_lock_activated: bool | None = None
+    profit_lock_price: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -940,6 +955,8 @@ class CompositeStrategyCreate(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Profit lock: locks stop loss at profit level once threshold is reached
+    default_profit_lock_enabled: bool = False
 
 
 class CompositeStrategyResponse(BaseModel):
@@ -983,6 +1000,8 @@ class DSLStrategyCreate(BaseModel):
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
     default_profit_booking_rules: ProfitBookingRules | None = None
+    # Profit lock: locks stop loss at profit level once threshold is reached
+    default_profit_lock_enabled: bool = False
 
 
 class DSLStrategyResponse(BaseModel):

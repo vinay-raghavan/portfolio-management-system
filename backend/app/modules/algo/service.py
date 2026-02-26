@@ -36,6 +36,8 @@ from app.modules.algo.schemas import (
 )
 from app.modules.portfolio.schemas import (
     ProfitBookingRules,
+    ProfitLockConfig,
+    ProfitLockUpdate,
     TrailingStopConfig,
     TrailingStopUpdate,
 )
@@ -913,6 +915,56 @@ class AlgoService:
             current_stop_price=position.trailing_stop_price,
             highest_price=position.highest_price_since_entry,
             lowest_price=position.lowest_price_since_entry,
+        )
+
+    async def get_profit_lock_config(
+        self, user_id: str, position_id: str
+    ) -> ProfitLockConfig | None:
+        """Get profit lock configuration for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        return ProfitLockConfig(
+            enabled=position.profit_lock_enabled,
+            activated=position.profit_lock_activated,
+            profit_lock_price=position.profit_lock_price,
+        )
+
+    async def update_profit_lock(
+        self, user_id: str, position_id: str, config: ProfitLockUpdate
+    ) -> ProfitLockConfig | None:
+        """Update profit lock configuration for an algo position."""
+        result = await self.db.execute(
+            select(AlgoPosition).where(
+                AlgoPosition.id == position_id, AlgoPosition.user_id == user_id
+            )
+        )
+        position = result.scalar_one_or_none()
+
+        if not position:
+            return None
+
+        position.profit_lock_enabled = config.enabled
+
+        # If disabling profit lock, reset the activated state and price
+        if not config.enabled:
+            position.profit_lock_activated = False
+            position.profit_lock_price = None
+
+        await self.db.flush()
+        await self.db.refresh(position)
+
+        return ProfitLockConfig(
+            enabled=position.profit_lock_enabled,
+            activated=position.profit_lock_activated,
+            profit_lock_price=position.profit_lock_price,
         )
 
     # ============== Exit Position Methods ==============

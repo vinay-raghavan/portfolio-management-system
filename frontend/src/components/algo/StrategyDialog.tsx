@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign, Layers, Settings2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign, Layers, Settings2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -112,6 +112,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     { target_pct: 10, quantity_pct: 25 },
     { target_pct: 15, quantity_pct: 50 },
   ]);
+  // Strategy-level profit lock state (locks stop loss at profit level once threshold is reached)
+  const [defaultProfitLockEnabled, setDefaultProfitLockEnabled] = useState(false);
   // Trading time window state
   const [timeWindowEnabled, setTimeWindowEnabled] = useState(false);
   const [tradingStartTime, setTradingStartTime] = useState('09:15');
@@ -181,6 +183,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
           { target_pct: 15, quantity_pct: 50 },
         ]);
       }
+      // Profit lock setting
+      setDefaultProfitLockEnabled(strategy.default_profit_lock_enabled || false);
       // Trading time window - convert HH:MM:SS to HH:MM for input
       const hasTimeWindow = Boolean(strategy.trading_start_time && strategy.trading_end_time);
       setTimeWindowEnabled(hasTimeWindow);
@@ -374,6 +378,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
             executed: [],
           }
         : undefined,
+      default_profit_lock_enabled: defaultProfitLockEnabled,
       // Trading time window fields - convert HH:MM to HH:MM:SS
       trading_start_time: timeWindowEnabled ? `${tradingStartTime}:00` : undefined,
       trading_end_time: timeWindowEnabled ? `${tradingEndTime}:00` : undefined,
@@ -1096,6 +1101,31 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                     </div>
                   </div>
                 )}
+              </div>
+              {/* Profit Lock */}
+              <div className="border-t pt-4 mt-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-emerald-500" />
+                    <Label htmlFor="defaultProfitLock" className="font-medium">Profit Lock</Label>
+                  </div>
+                  <Switch
+                    id="defaultProfitLock"
+                    checked={defaultProfitLockEnabled}
+                    onCheckedChange={setDefaultProfitLockEnabled}
+                    disabled={!defaultProfitBookingEnabled || !defaultTrailingStopEnabled}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, locks stop loss at a profit level once the first profit booking threshold is reached.
+                  Uses trailing stop % as buffer below the activation price.
+                  {!defaultProfitBookingEnabled && (
+                    <span className="block mt-1 text-amber-500">Enable Profit Booking to use this feature.</span>
+                  )}
+                  {defaultProfitBookingEnabled && !defaultTrailingStopEnabled && (
+                    <span className="block mt-1 text-amber-500">Enable Trailing Stop to use this feature.</span>
+                  )}
+                </p>
               </div>
               {/* Profit Cutoff */}
               <div className="border-t pt-4 mt-2 space-y-3">

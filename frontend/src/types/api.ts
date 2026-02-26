@@ -82,6 +82,16 @@ export interface TrailingStopUpdate {
   percentage?: number | null;
 }
 
+export interface ProfitLockConfig {
+  enabled: boolean;
+  activated: boolean;
+  profit_lock_price: number | null;
+}
+
+export interface ProfitLockUpdate {
+  enabled: boolean;
+}
+
 export interface Position {
   id: string;
   portfolio_id?: string | null;
@@ -656,6 +666,8 @@ export interface AlgoStrategy {
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
   default_profit_booking_rules: ProfitBookingRules | null;
+  // Profit lock: locks stop loss at profit level once threshold is reached
+  default_profit_lock_enabled: boolean;
   // Trading time window fields
   trading_start_time: string | null; // HH:MM:SS format
   trading_end_time: string | null; // HH:MM:SS format
@@ -696,6 +708,8 @@ export interface AlgoStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Profit lock: locks stop loss at profit level once threshold is reached
+  default_profit_lock_enabled?: boolean;
   // Trading time window fields
   trading_start_time?: string; // HH:MM:SS format
   trading_end_time?: string; // HH:MM:SS format
@@ -728,6 +742,8 @@ export interface AlgoStrategyUpdate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Profit lock: locks stop loss at profit level once threshold is reached
+  default_profit_lock_enabled?: boolean;
   // Trading time window fields
   trading_start_time?: string | null; // HH:MM:SS format
   trading_end_time?: string | null; // HH:MM:SS format
@@ -1026,6 +1042,8 @@ export interface CompositeStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Profit lock: locks stop loss at profit level once threshold is reached
+  default_profit_lock_enabled?: boolean;
   // Trading time window fields
   trading_start_time?: string; // HH:MM:SS format
   trading_end_time?: string; // HH:MM:SS format
@@ -1121,6 +1139,8 @@ export interface DSLStrategyCreate {
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
   default_profit_booking_rules?: ProfitBookingRules;
+  // Profit lock: locks stop loss at profit level once threshold is reached
+  default_profit_lock_enabled?: boolean;
   // Trading time window fields
   trading_start_time?: string; // HH:MM:SS format
   trading_end_time?: string; // HH:MM:SS format

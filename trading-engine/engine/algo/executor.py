@@ -714,7 +714,7 @@ class StrategyExecutor:
                     # Track position and calculate P&L for filled orders
                     if order_status == "FILLED" and filled_price:
                         try:
-                            _, pnl_stats = await position_tracker.process_order_fill(
+                            position_result, pnl_stats = await position_tracker.process_order_fill(
                                 strategy_id=config.id,
                                 user_id=config.user_id,
                                 symbol=order_data.get("symbol", ""),
@@ -731,24 +731,49 @@ class StrategyExecutor:
                             if pnl_stats.consecutive_losses > 0:
                                 aggregated_pnl.consecutive_losses += pnl_stats.consecutive_losses
 
+                            # Import funds provider (used for both opening and closing)
+                            from shared.providers.funds import DatabaseFundsProvider
+
+                            from engine.models import AlgoPosition, UserFunds
+
+                            funds_provider = DatabaseFundsProvider(
+                                db=db,
+                                user_funds_model=UserFunds,
+                                initial_balance=Decimal("0"),
+                                algo_position_model=AlgoPosition,
+                            )
+
                             # Update realized P&L in user funds when positions are closed
                             if pnl_stats.trades_closed > 0 and pnl_stats.total_pnl != Decimal("0"):
-                                from shared.providers.funds import DatabaseFundsProvider
-
-                                from engine.models import AlgoPosition, UserFunds
-
-                                funds_provider = DatabaseFundsProvider(
-                                    db=db,
-                                    user_funds_model=UserFunds,
-                                    initial_balance=Decimal("0"),
-                                    algo_position_model=AlgoPosition,
-                                )
                                 await funds_provider.update_realized_pnl(
                                     config.user_id, pnl_stats.total_pnl
                                 )
                                 logger.info(
                                     f"Updated realized P&L for user {config.user_id[:8]}...: "
                                     f"+₹{pnl_stats.total_pnl:.2f}"
+                                )
+
+                            # Block margin when opening/adding to positions
+                            # (trades_closed == 0 means position was opened, not closed)
+                            if pnl_stats.trades_closed == 0 and position_result:
+                                order_side = order_data.get("side", "BUY")
+                                order_qty = Decimal(str(order_data.get("quantity", 0)))
+                                order_price = Decimal(str(filled_price))
+
+                                await funds_provider.update_funds_for_trade(
+                                    user_id=config.user_id,
+                                    side=order_side,
+                                    quantity=order_qty,
+                                    price=order_price,
+                                    fees=Decimal("0"),
+                                    product_type=config.product_type,
+                                    existing_position_qty=None,  # Opening new position
+                                    entry_price=None,
+                                )
+                                logger.info(
+                                    f"Blocked margin for new position {order_data.get('symbol')}: "
+                                    f"side={order_side}, qty={order_qty}, price={order_price}, "
+                                    f"product_type={config.product_type.value}"
                                 )
                         except Exception as e:
                             logger.warning(

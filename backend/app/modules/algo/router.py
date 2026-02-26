@@ -52,6 +52,8 @@ from app.modules.algo.universe_service import (
 )
 from app.modules.portfolio.schemas import (
     ProfitBookingRules,
+    ProfitLockConfig,
+    ProfitLockUpdate,
     TrailingStopConfig,
     TrailingStopUpdate,
 )
@@ -1406,6 +1408,42 @@ async def update_algo_trailing_stop(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+    if updated_config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found",
+        )
+    await db.commit()
+    return updated_config
+
+
+@router.get("/positions/{position_id}/profit-lock", response_model=ProfitLockConfig)
+async def get_algo_profit_lock_config(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+) -> ProfitLockConfig:
+    """Get profit lock configuration for an algo position."""
+    service = AlgoService(db)
+    config = await service.get_profit_lock_config(current_user.id, position_id)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found",
+        )
+    return config
+
+
+@router.patch("/positions/{position_id}/profit-lock", response_model=ProfitLockConfig)
+async def update_algo_profit_lock(
+    db: DbSession,
+    current_user: CurrentUser,
+    position_id: str,
+    config: ProfitLockUpdate,
+) -> ProfitLockConfig:
+    """Set or update profit lock configuration for an algo position."""
+    service = AlgoService(db)
+    updated_config = await service.update_profit_lock(current_user.id, position_id, config)
     if updated_config is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -114,6 +114,22 @@ class TrailingStopUpdate(BaseModel):
     )
 
 
+class ProfitLockConfig(BaseModel):
+    """Schema for profit lock configuration response."""
+
+    enabled: bool = Field(default=False, description="Whether profit lock is enabled")
+    activated: bool = Field(default=False, description="Whether profit lock has been activated")
+    profit_lock_price: Decimal | None = Field(
+        None, description="The locked profit price level (effective stop)"
+    )
+
+
+class ProfitLockUpdate(BaseModel):
+    """Schema for updating profit lock configuration."""
+
+    enabled: bool = Field(..., description="Whether to enable profit lock")
+
+
 class PositionResponse(BaseModel):
     """Schema for position response."""
 
