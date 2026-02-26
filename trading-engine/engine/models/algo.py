@@ -337,6 +337,12 @@ class UserStrategy(Base):
     # Strategy-level default profit booking rules (applied to positions unless overridden)
     default_profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Strategy-level default profit lock setting
+    # When enabled, uses first profit_booking_rule threshold to lock stop at profit level
+    default_profit_lock_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -553,6 +559,16 @@ class AlgoPosition(Base):
 
     # Profit booking rules
     profit_booking_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Profit lock stop loss fields
+    # Uses first profit_booking_rule threshold to lock stop at profit level
+    profit_lock_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    profit_lock_activated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )  # Whether profit threshold has been reached
+    profit_lock_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 4), nullable=True
+    )  # The locked profit price level (effective stop)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
