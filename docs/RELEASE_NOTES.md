@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.5.1 (2026-02-26)
+
+### 🔒 Profit-Lock Stop Loss & Margin Fix
+
+This release adds the ability to lock profits by moving stop loss to a profit level once a threshold is reached, plus fixes margin tracking for open positions.
+
+**Core Features:**
+
+- **Profit-Lock Stop Loss**: When enabled, stop loss automatically moves to a profit level once the position hits the profit threshold
+- **Position-Level Toggle**: Override strategy-level profit lock settings for individual positions
+- **Hybrid Buffer Approach**: Uses trailing stop percentage as a buffer below the activation price
+
+**Backend Changes:**
+
+- Added `profit_lock_enabled`, `profit_lock_activated`, `profit_lock_price` fields to position tracking
+- New API endpoints: `GET/PATCH /algo/positions/{id}/profit-lock`
+- `ProfitLockConfig` and `ProfitLockUpdate` schemas in portfolio module
+
+**Frontend Changes:**
+
+- New `AlgoProfitLockDialog` component for per-position profit lock configuration
+- Integrated in PnLDashboard position actions menu
+- Real-time status display showing lock activation and price
+
+**Bug Fixes:**
+
+- **Margin Blocking Fix**: Fixed bug where margin wasn't blocked when opening positions in `executor.py`
+- Margin is now correctly tracked for all product types (DELIVERY 100%, INTRADAY 25%, MARGIN 50%)
+
+**Technical Details:**
+
+- 10 files changed, 321 insertions
+- PR: [#85](https://github.com/vinay-raghavan/portfolio-management-system/pull/85)
+
+---
+
 ## v1.5.0 (2026-02-26)
 
 ### 🕐 Algo Trading Time Window (Section 2.7)

@@ -82,6 +82,16 @@ export interface TrailingStopUpdate {
   percentage?: number | null;
 }
 
+export interface ProfitLockConfig {
+  enabled: boolean;
+  activated: boolean;
+  profit_lock_price: number | null;
+}
+
+export interface ProfitLockUpdate {
+  enabled: boolean;
+}
+
 export interface Position {
   id: string;
   portfolio_id?: string | null;

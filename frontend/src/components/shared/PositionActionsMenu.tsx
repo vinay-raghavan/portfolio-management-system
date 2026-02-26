@@ -8,6 +8,7 @@ import {
   XCircle,
   TrendingUp,
   TrendingDown,
+  Lock,
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,7 @@ interface PositionActionsMenuProps {
   context: 'portfolio' | 'algo';
   onProfitBookingClick?: () => void;
   onTrailingStopClick?: () => void;
+  onProfitLockClick?: () => void;
   onAddClick?: () => void;
 }
 
@@ -63,6 +65,7 @@ export function PositionActionsMenu({
   context,
   onProfitBookingClick,
   onTrailingStopClick,
+  onProfitLockClick,
   onAddClick,
 }: PositionActionsMenuProps) {
   const { toast } = useToast();
@@ -163,6 +166,13 @@ export function PositionActionsMenu({
             <TrendingDown className="mr-2 h-4 w-4" />
             Trailing Stop Loss
           </DropdownMenuItem>
+
+          {context === 'algo' && onProfitLockClick && (
+            <DropdownMenuItem onClick={onProfitLockClick}>
+              <Lock className="mr-2 h-4 w-4" />
+              Profit Lock
+            </DropdownMenuItem>
+          )}
 
           {context === 'portfolio' && onAddClick && (
             <DropdownMenuItem onClick={onAddClick}>

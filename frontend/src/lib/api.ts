@@ -9,6 +9,8 @@ import type {
   PortfolioCreate,
   PortfolioUpdate,
   ProfitBookingRules,
+  ProfitLockConfig,
+  ProfitLockUpdate,
   TrailingStopConfig,
   TrailingStopUpdate,
   TradeHistoryResponse,
@@ -523,6 +525,12 @@ export const algoApi = {
     api.get<TrailingStopConfig>(`/algo/positions/${positionId}/trailing-stop`),
   updateAlgoTrailingStop: (positionId: string, config: TrailingStopUpdate) =>
     api.patch<TrailingStopConfig>(`/algo/positions/${positionId}/trailing-stop`, config),
+
+  // Profit lock for algo positions
+  getAlgoProfitLockConfig: (positionId: string) =>
+    api.get<ProfitLockConfig>(`/algo/positions/${positionId}/profit-lock`),
+  updateAlgoProfitLock: (positionId: string, config: ProfitLockUpdate) =>
+    api.patch<ProfitLockConfig>(`/algo/positions/${positionId}/profit-lock`, config),
 
   // Position Exit Endpoints
   closePosition: (strategyId: string, symbol: string, data?: ClosePositionRequest) =>

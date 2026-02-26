@@ -197,6 +197,7 @@ main                           # Production-ready code
 | 2 | 11-12 | `phase-2/reports-frontend` | Reports UI: statement, gains, API logs, activity |
 | 2 | 12-13 | `phase-2/auto-trade-pipeline` | Recommendation → Algo automation, templates, pending trades |
 | 2 | 13-14 | `phase-2/algo-time-window` | Trading time window for strategies (from/to time) |
+| 2 | 14-15 | `phase-2/profit-lock-stop` | Position-level profit lock toggle and margin fix |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
