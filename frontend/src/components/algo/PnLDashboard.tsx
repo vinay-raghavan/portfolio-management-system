@@ -26,6 +26,7 @@ import { algoApi } from '@/lib/api';
 import { useCurrency } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { AlgoProfitBookingDialog } from './AlgoProfitBookingDialog';
+import { AlgoProfitLockDialog } from './AlgoProfitLockDialog';
 import { AlgoTrailingStopDialog } from './AlgoTrailingStopDialog';
 import { PositionActionsMenu, toUnifiedAlgoPosition } from '@/components/shared';
 import type { StrategyPnL, AlgoDailyPnL, UnrealizedPnLPosition } from '@/types';
@@ -325,6 +326,7 @@ function UnrealizedPositionsTable({
 }) {
   const [profitBookingPosition, setProfitBookingPosition] = useState<UnrealizedPnLPosition | null>(null);
   const [trailingStopPosition, setTrailingStopPosition] = useState<UnrealizedPnLPosition | null>(null);
+  const [profitLockPosition, setProfitLockPosition] = useState<UnrealizedPnLPosition | null>(null);
   return (
     <Card>
       <CardHeader>
@@ -381,6 +383,7 @@ function UnrealizedPositionsTable({
                       context="algo"
                       onProfitBookingClick={() => setProfitBookingPosition(p)}
                       onTrailingStopClick={() => setTrailingStopPosition(p)}
+                      onProfitLockClick={() => setProfitLockPosition(p)}
                     />
                   </TableCell>
                 </TableRow>
@@ -398,6 +401,11 @@ function UnrealizedPositionsTable({
         position={trailingStopPosition}
         open={!!trailingStopPosition}
         onOpenChange={(open) => !open && setTrailingStopPosition(null)}
+      />
+      <AlgoProfitLockDialog
+        position={profitLockPosition}
+        open={!!profitLockPosition}
+        onOpenChange={(open) => !open && setProfitLockPosition(null)}
       />
     </Card>
   );
