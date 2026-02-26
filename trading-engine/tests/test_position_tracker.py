@@ -917,6 +917,190 @@ class TestTrailingStopLoss:
         assert position.trailing_stop_price is None
 
 
+class TestProfitLockStop:
+    """Tests for profit lock stop loss functionality."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock async database session."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.execute = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def tracker(self, mock_db):
+        """Create a PositionTracker with mock db."""
+        return PositionTracker(mock_db)
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_activates_on_threshold_long(self, tracker):
+        """Test profit lock activates when LONG position reaches first profit booking threshold."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-profit-lock-long"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = True
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
+        position.trailing_stop_pct = Decimal("0.005")  # 0.5% trailing
+        # Profit booking rules: 25% at 1% profit
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        # Price at 1.5% profit (above 1% threshold)
+        current_price = Decimal("101.50")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock should activate with buffer below current price
+        assert position.profit_lock_activated is True
+        # Lock price = 101.50 * (1 - 0.005) = 100.9925
+        expected_lock_price = Decimal("101.50") * (1 - Decimal("0.005"))
+        assert position.profit_lock_price == expected_lock_price
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_activates_on_threshold_short(self, tracker):
+        """Test profit lock activates when SHORT position reaches first profit booking threshold."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-profit-lock-short"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.SHORT
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = True
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
+        position.trailing_stop_pct = Decimal("0.005")  # 0.5% trailing
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        # Price at 1.5% profit for SHORT (below entry)
+        current_price = Decimal("98.50")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock should activate with buffer above current price
+        assert position.profit_lock_activated is True
+        # Lock price = 98.50 * (1 + 0.005) = 98.9925
+        expected_lock_price = Decimal("98.50") * (1 + Decimal("0.005"))
+        assert position.profit_lock_price == expected_lock_price
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_not_activated_below_threshold(self, tracker):
+        """Test profit lock does not activate when price hasn't reached threshold."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-below-threshold"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = True
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
+        position.trailing_stop_pct = Decimal("0.005")
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        # Price at 0.5% profit (below 1% threshold)
+        current_price = Decimal("100.50")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock should NOT activate
+        assert position.profit_lock_activated is False
+        assert position.profit_lock_price is None
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_disabled_does_not_activate(self, tracker):
+        """Test profit lock does not activate when disabled."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-disabled-lock"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = False  # Disabled
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
+        position.trailing_stop_pct = Decimal("0.005")
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        current_price = Decimal("101.50")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock should NOT activate
+        assert position.profit_lock_activated is False
+        assert position.profit_lock_price is None
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_no_trailing_stop_pct_locks_at_current_price(self, tracker):
+        """Test profit lock activates at current price when no trailing_stop_pct is set."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-no-trailing-pct"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = True
+        position.profit_lock_activated = False
+        position.profit_lock_price = None
+        position.trailing_stop_pct = None  # No trailing stop configured
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        current_price = Decimal("101.50")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock SHOULD activate at current price (no buffer)
+        assert position.profit_lock_activated is True
+        # Lock price = current_price (no trailing buffer applied)
+        assert position.profit_lock_price == current_price
+
+    @pytest.mark.asyncio
+    async def test_profit_lock_already_activated_no_update(self, tracker):
+        """Test profit lock price doesn't change once activated."""
+        position = MagicMock(spec=AlgoPosition)
+        position.id = "pos-already-locked"
+        position.symbol = "HDFCBANK"
+        position.side = PositionSide.LONG
+        position.entry_price = Decimal("100.00")
+        position.profit_lock_enabled = True
+        position.profit_lock_activated = True  # Already activated
+        position.profit_lock_price = Decimal("100.50")  # Locked at previous price
+        position.trailing_stop_pct = Decimal("0.005")
+        position.profit_booking_rules = {
+            "enabled": True,
+            "rules": [{"target_pct": 1, "quantity_pct": 25}],
+            "executed": [],
+        }
+
+        # Price has gone higher
+        current_price = Decimal("105.00")
+
+        await tracker._check_profit_lock(position, current_price)
+
+        # Profit lock price should NOT change (stays at original lock price)
+        assert position.profit_lock_price == Decimal("100.50")
+
+
 class TestSafetyService:
     """Tests for SafetyService basic checks."""
 
