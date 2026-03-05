@@ -5772,6 +5772,39 @@ flowchart TB
 - [ ] Trading journal with notes
 - [ ] Community chat/discussions
 
+### 3.7 Advanced NLP & Sentiment Analysis
+> 🌿 **Branch:** `phase-3/nlp-sentiment`
+
+**Current State**: Keyword-based sentiment analysis (134 negative, 68 positive keywords)
+
+**Upgrade Options** (in order of recommendation):
+
+| Option | Accuracy | Cost | Latency | Notes |
+|--------|----------|------|---------|-------|
+| **FinBERT** | High | Free | ~50ms/article | Finance-specific transformer, runs locally |
+| VADER | Medium | Free | <1ms | Rule-based, not finance-specific |
+| OpenAI/Claude API | Highest | ~$0.01/article | ~500ms | Best contextual understanding |
+| AWS Comprehend | High | Pay-per-use | ~200ms | Managed service, enterprise-ready |
+
+**Implementation Tasks:**
+- [ ] FinBERT integration (`ProsusAI/finbert` from Hugging Face)
+- [ ] Model caching in Redis (avoid reprocessing same articles)
+- [ ] Configurable analyzer via env var (`SENTIMENT_ANALYZER=finbert|keywords|openai`)
+- [ ] Batch processing for efficiency (process multiple articles at once)
+- [ ] GPU support for faster inference (optional)
+- [ ] Fallback to keyword matching if model fails to load
+- [ ] Sentiment explanation/reasoning (why positive/negative)
+- [ ] Entity extraction (identify companies, people mentioned)
+- [ ] News impact scoring (how likely to move stock price)
+
+**Example FinBERT Usage:**
+```python
+from transformers import pipeline
+finbert = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+result = finbert("UK steel faces threat from antitrust probe")
+# [{'label': 'negative', 'score': 0.94}]
+```
+
 ---
 
 ## ⚙️ Configuration Reference

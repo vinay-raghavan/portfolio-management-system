@@ -240,8 +240,12 @@ class Funds(BaseModel):
 
     @property
     def available_margin(self) -> Decimal:
-        """Calculate available margin."""
-        return self.available_cash + self.collateral - self.used_margin
+        """Calculate available margin for new positions.
+
+        Note: available_cash already accounts for used_margin (available_cash = cash - margin_used),
+        so we only add collateral here.
+        """
+        return self.available_cash + self.collateral
 
     @property
     def net_pnl(self) -> Decimal:

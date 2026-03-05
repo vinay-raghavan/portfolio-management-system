@@ -531,10 +531,13 @@ class PositionTracker:
         current_price: Decimal,
         strategy: UserStrategy | None = None,
     ) -> bool:
-        """Check and activate profit lock based on first profit booking rule threshold.
+        """Check and update profit lock based on profit booking rule thresholds.
 
-        When profit lock is enabled and the first profit booking rule's threshold is reached,
-        the stop loss is locked at the current profit price level.
+        When profit lock is enabled and a profit booking threshold is reached,
+        the stop loss is locked at the current profit price level (minus buffer).
+
+        The profit lock "ratchets up" as higher thresholds are crossed - each time
+        a new threshold is reached, the lock price is updated to protect more profit.
 
         Args:
             position: The position to check
@@ -542,12 +545,8 @@ class PositionTracker:
             strategy: Optional strategy for fallback settings
 
         Returns:
-            True if profit lock was activated (first time threshold reached)
+            True if profit lock was activated or updated
         """
-        # Check if profit lock is already activated
-        if position.profit_lock_activated:
-            return False
-
         # Determine if profit lock is enabled (position -> strategy hierarchy)
         profit_lock_enabled = position.profit_lock_enabled
         if not profit_lock_enabled and strategy:
@@ -568,46 +567,78 @@ class PositionTracker:
         if not rules:
             return False
 
-        # Get the FIRST (lowest) profit booking threshold
-        sorted_rules = sorted(rules, key=lambda r: float(r.get("target_pct", 0)))
-        first_threshold = Decimal(str(sorted_rules[0].get("target_pct", 0)))
-
         # Calculate current profit percentage
         if position.side == PositionSide.LONG:
             profit_pct = ((current_price - position.entry_price) / position.entry_price) * 100
         else:  # SHORT
             profit_pct = ((position.entry_price - current_price) / position.entry_price) * 100
 
-        # Check if threshold is reached
-        if profit_pct >= first_threshold:
-            # Get trailing stop percentage for buffer (position -> strategy hierarchy)
-            trailing_pct = position.trailing_stop_pct
-            if trailing_pct is None and strategy:
-                trailing_pct = strategy.default_trailing_stop_pct
+        # Get trailing stop percentage for buffer (position -> strategy hierarchy)
+        trailing_pct = position.trailing_stop_pct
+        if trailing_pct is None and strategy:
+            trailing_pct = strategy.default_trailing_stop_pct
 
-            # Calculate profit lock price with trailing buffer
-            # For LONG: stop = current_price * (1 - trailing_pct)
-            # For SHORT: stop = current_price * (1 + trailing_pct)
-            if trailing_pct:
-                if position.side == PositionSide.LONG:
-                    lock_price = current_price * (Decimal("1") - trailing_pct)
-                else:  # SHORT
-                    lock_price = current_price * (Decimal("1") + trailing_pct)
+        # Sort rules by threshold (ascending) and find the HIGHEST crossed threshold
+        sorted_rules = sorted(rules, key=lambda r: float(r.get("target_pct", 0)))
+        highest_crossed_threshold: Decimal | None = None
+
+        for rule in sorted_rules:
+            threshold = Decimal(str(rule.get("target_pct", 0)))
+            if profit_pct >= threshold:
+                highest_crossed_threshold = threshold
             else:
-                # No trailing stop configured, lock at current price
-                lock_price = current_price
+                # Rules are sorted, so no need to check higher ones
+                break
 
-            # Activate profit lock
+        if highest_crossed_threshold is None:
+            return False
+
+        # Calculate new profit lock price with trailing buffer
+        # For LONG: stop = current_price * (1 - trailing_pct)
+        # For SHORT: stop = current_price * (1 + trailing_pct)
+        if trailing_pct:
+            if position.side == PositionSide.LONG:
+                new_lock_price = current_price * (Decimal("1") - trailing_pct)
+            else:  # SHORT
+                new_lock_price = current_price * (Decimal("1") + trailing_pct)
+        else:
+            # No trailing stop configured, lock at current price
+            new_lock_price = current_price
+
+        # Check if this is a new activation or an update (ratchet up)
+        is_new_activation = not position.profit_lock_activated
+        current_lock = position.profit_lock_price
+
+        # For LONG: only update if new lock is HIGHER (protecting more profit)
+        # For SHORT: only update if new lock is LOWER (protecting more profit)
+        should_update = False
+        if is_new_activation:
+            should_update = True
+        elif position.side == PositionSide.LONG:
+            should_update = current_lock is None or new_lock_price > current_lock
+        else:  # SHORT
+            should_update = current_lock is None or new_lock_price < current_lock
+
+        if should_update:
+            old_lock = position.profit_lock_price
             position.profit_lock_activated = True
-            position.profit_lock_price = lock_price
+            position.profit_lock_price = new_lock_price
             await self.db.flush()
 
             buffer_info = f" (with {trailing_pct * 100:.2f}% buffer)" if trailing_pct else ""
-            logger.info(
-                f"🔒 Profit lock activated for {position.symbol}: "
-                f"{profit_pct:.2f}% profit >= {first_threshold}% threshold, "
-                f"stop locked at {lock_price}{buffer_info}"
-            )
+
+            if is_new_activation:
+                logger.info(
+                    f"🔒 Profit lock activated for {position.symbol}: "
+                    f"{profit_pct:.2f}% profit >= {highest_crossed_threshold}% threshold, "
+                    f"stop locked at {new_lock_price}{buffer_info}"
+                )
+            else:
+                logger.info(
+                    f"🔒 Profit lock RATCHETED UP for {position.symbol}: "
+                    f"{profit_pct:.2f}% profit >= {highest_crossed_threshold}% threshold, "
+                    f"stop moved from {old_lock} to {new_lock_price}{buffer_info}"
+                )
             return True
 
         return False
