@@ -13,7 +13,7 @@ from app.modules.algo.models import (
     StrategyProductType,
     StrategyStatus,
 )
-from app.modules.portfolio.schemas import ProfitBookingRules
+from app.modules.portfolio.schemas import ProfitBookingRule, ProfitBookingRules
 
 # ============== Universe Schemas ==============
 
@@ -477,6 +477,37 @@ class StrategyResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @staticmethod
+    def _parse_profit_booking_rules(rules_data: dict | list | None) -> "ProfitBookingRules | None":
+        """Parse profit booking rules from database format.
+
+        Handles both old format (list) and new format (dict with enabled/rules).
+        """
+        if not rules_data:
+            return None
+
+        # If it's already a dict with 'enabled' and 'rules', validate it
+        if isinstance(rules_data, dict) and "enabled" in rules_data:
+            return ProfitBookingRules.model_validate(rules_data)
+
+        # Old format: list of rules (convert to new format)
+        if isinstance(rules_data, list):
+            # Convert old format to new format
+            converted_rules = []
+            for rule in rules_data:
+                if isinstance(rule, dict):
+                    # Old format uses profit_percent/book_percent
+                    # New format uses target_pct/quantity_pct
+                    converted_rules.append(
+                        ProfitBookingRule(
+                            target_pct=rule.get("profit_percent", rule.get("target_pct", 0)),
+                            quantity_pct=rule.get("book_percent", rule.get("quantity_pct", 0)),
+                        )
+                    )
+            return ProfitBookingRules(enabled=True, rules=converted_rules, executed=[])
+
+        return None
+
     @classmethod
     def from_model(cls, obj, executions: list | None = None) -> "StrategyResponse":
         """Create response from UserStrategy model with optional pre-loaded executions.
@@ -547,7 +578,7 @@ class StrategyResponse(BaseModel):
             "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
             "default_trailing_stop_pct": obj.default_trailing_stop_pct,
             "default_profit_booking_rules": (
-                ProfitBookingRules.model_validate(obj.default_profit_booking_rules)
+                cls._parse_profit_booking_rules(obj.default_profit_booking_rules)
                 if obj.default_profit_booking_rules
                 else None
             ),
