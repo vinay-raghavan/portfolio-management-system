@@ -64,8 +64,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "slow_period": {
         "description": "Long-term EMA period for MACD or MA crossover",
         "unit": "candles/bars",
-        "tuning": "Lower (20-22) = quicker crossovers. "
-        "Higher (26-30) = filter out weak trends",
+        "tuning": "Lower (20-22) = quicker crossovers. Higher (26-30) = filter out weak trends",
     },
     "signal_period": {
         "description": "Signal line EMA period (triggers the actual crossover)",
@@ -117,8 +116,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "volume_lookback": {
         "description": "Number of periods for calculating average volume",
         "unit": "candles/bars",
-        "tuning": "Lower (5-10) = recent volume focus. "
-        "Higher (20-30) = more stable baseline",
+        "tuning": "Lower (5-10) = recent volume focus. Higher (20-30) = more stable baseline",
     },
     "volume_multiplier": {
         "description": "Required volume as multiple of average for confirmation",
@@ -141,8 +139,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "entry_zone_pct": {
         "description": "Percentage of band width considered as entry zone",
         "unit": "% (0-1)",
-        "tuning": "Lower (0.2) = must be very close to band. "
-        "Higher (0.5) = broader entry area",
+        "tuning": "Lower (0.2) = must be very close to band. Higher (0.5) = broader entry area",
     },
     "trend_lookback": {
         "description": "Number of periods to assess trend direction",
@@ -164,8 +161,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "max_distance_from_vwap_pct": {
         "description": "Maximum allowed distance from VWAP to consider entry",
         "unit": "%",
-        "tuning": "Lower (1-2%) = trade only near VWAP. "
-        "Higher (3-5%) = allow extended moves",
+        "tuning": "Lower (1-2%) = trade only near VWAP. Higher (3-5%) = allow extended moves",
     },
     "no_trade_after": {
         "description": "Time after which no new trades are initiated",
@@ -183,8 +179,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "breakout_buffer_pct": {
         "description": "Buffer above/below range high/low to confirm breakout",
         "unit": "%",
-        "tuning": "Lower (0.05-0.1%) = quicker entries. "
-        "Higher (0.2-0.3%) = filter false breakouts",
+        "tuning": "Lower (0.05-0.1%) = quicker entries. Higher (0.2-0.3%) = filter false breakouts",
     },
     "require_close_breakout": {
         "description": "Require candle close beyond range (vs just wick)",
@@ -200,8 +195,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "stop_loss_pct": {
         "description": "Stop loss as percentage of entry price",
         "unit": "%",
-        "tuning": "Lower (0.5-1%) = tight risk control. "
-        "Higher (2-3%) = more room for volatility",
+        "tuning": "Lower (0.5-1%) = tight risk control. Higher (2-3%) = more room for volatility",
     },
     "max_entries_per_day": {
         "description": "Maximum number of entries allowed per trading day",
@@ -213,8 +207,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "min_gap_pct": {
         "description": "Minimum gap size to consider trading",
         "unit": "%",
-        "tuning": "Lower (0.5-1%) = trade smaller gaps. "
-        "Higher (2-3%) = only significant gaps",
+        "tuning": "Lower (0.5-1%) = trade smaller gaps. Higher (2-3%) = only significant gaps",
     },
     "max_gap_pct": {
         "description": "Maximum gap size (avoid extreme/news-driven gaps)",
@@ -272,8 +265,7 @@ PARAMETER_METADATA: dict[str, dict[str, str]] = {
     "duration_minutes": {
         "description": "Total duration over which to execute the order",
         "unit": "minutes",
-        "tuning": "Lower (30-60) = faster execution. "
-        "Higher (120-240) = minimize market impact",
+        "tuning": "Lower (30-60) = faster execution. Higher (120-240) = minimize market impact",
     },
     "randomize_pct": {
         "description": "Percentage to randomize slice timing (avoid detection)",
@@ -321,4 +313,3 @@ def get_parameter_description(param_name: str) -> str:
         parts.append(f"Tuning: {meta['tuning']}")
 
     return " | ".join(parts)
-

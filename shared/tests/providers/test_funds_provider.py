@@ -81,7 +81,8 @@ class TestDatabaseFundsProvider:
         assert isinstance(funds, Funds)
         assert funds.available_cash == Decimal("450000")  # 500000 - 50000
         assert funds.used_margin == Decimal("50000")
-        assert funds.total_balance == Decimal("550000")  # 500000 + 50000
+        # total_balance = cash_balance + collateral (collateral=0 in mock)
+        assert funds.total_balance == Decimal("500000")
 
     @pytest.mark.asyncio
     async def test_get_funds_new_user_creates_funds(self):
