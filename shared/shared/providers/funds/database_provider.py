@@ -89,7 +89,8 @@ class DatabaseFundsProvider(FundsProvider):
         return Funds(
             available_cash=db_funds.available_cash,
             used_margin=db_funds.margin_used,
-            total_balance=db_funds.cash_balance + db_funds.margin_used,
+            total_balance=db_funds.cash_balance
+            + db_funds.collateral,  # Fixed: was incorrectly adding margin_used
             collateral=db_funds.collateral,
             realized_pnl=db_funds.realized_pnl,
             unrealized_pnl=db_funds.unrealized_pnl,
@@ -158,7 +159,8 @@ class DatabaseFundsProvider(FundsProvider):
         return Funds(
             available_cash=funds.available_cash,
             used_margin=funds.margin_used,
-            total_balance=funds.cash_balance + funds.margin_used,
+            total_balance=funds.cash_balance
+            + funds.collateral,  # Fixed: was incorrectly adding margin_used
             collateral=funds.collateral,
         )
 
@@ -251,7 +253,7 @@ class DatabaseFundsProvider(FundsProvider):
                         f"Available: ₹{funds.available_cash:.2f}"
                     )
                 funds.margin_used += margin_required
-                logger.debug(
+                logger.info(
                     f"INTRADAY BUY: Blocked margin ₹{margin_required:.2f} "
                     f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
                 )
@@ -268,7 +270,7 @@ class DatabaseFundsProvider(FundsProvider):
                     f"Available: ₹{funds.available_cash:.2f}"
                 )
             funds.margin_used += margin_required
-            logger.debug(
+            logger.info(
                 f"MARGIN BUY: Blocked margin ₹{margin_required:.2f} "
                 f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
             )
@@ -346,7 +348,7 @@ class DatabaseFundsProvider(FundsProvider):
                 # Credit/debit only the P&L to cash balance (not full proceeds)
                 funds.cash_balance += pnl
 
-                logger.debug(
+                logger.info(
                     f"INTRADAY SELL (close): P&L ₹{pnl:.2f}, "
                     f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
                 )
@@ -400,7 +402,7 @@ class DatabaseFundsProvider(FundsProvider):
             # Credit/debit only the P&L to cash balance (not full proceeds)
             funds.cash_balance += pnl
 
-            logger.debug(
+            logger.info(
                 f"MARGIN SELL: P&L ₹{pnl:.2f}, "
                 f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
             )
