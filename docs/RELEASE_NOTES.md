@@ -1,5 +1,52 @@
 # Release Notes
 
+## v1.5.2 (2026-03-05)
+
+### 🔧 Funds Calculation Fix & Sentiment Display
+
+This release fixes critical bugs in margin trading accounting and adds visual sentiment indicators to the Daily Digest.
+
+**Bug Fixes:**
+
+- **Funds Calculation**: Fixed `total_balance` and `available_margin` formulas that were double-counting margin
+  - `total_balance` was incorrectly `cash_balance + margin_used` (now `cash_balance + collateral`)
+  - `available_margin` was double-subtracting `margin_used` (now `available_cash + collateral`)
+- **Profit Lock Ratcheting**: Profit lock now "ratchets up" as higher profit booking thresholds are crossed
+  - Previously, profit lock was only set once at the first threshold
+  - Now it updates at each subsequent threshold (1% → 2% → 5% → 10%) to protect more profit
+- **Profit Booking Rules Parsing**: Enhanced to support both legacy (list) and new (object) formats
+
+**Features:**
+
+- **Sentiment Score Display**: Added comprehensive sentiment visualization to Daily Digest widget
+  - Numerical score with +/- sign (e.g., `-0.079`)
+  - Visual gauge bar from -1.0 (bearish) to +1.0 (bullish)
+  - Component breakdown showing Indices (40%), Breadth (30%), News (30%) contributions
+  - Category labels: Strong Bullish/Bullish/Slightly Bullish/Neutral/Slightly Bearish/Bearish/Strong Bearish
+  - Emoji indicators for quick sentiment recognition
+
+**Improvements:**
+
+- Changed margin operation logs from DEBUG to INFO level for better transaction visibility
+- Fixed high-severity minimatch ReDoS vulnerability in frontend dependencies
+
+**Accounting Model (Corrected):**
+
+```
+cash_balance    = Deposits - Withdrawals + Realized P&L
+margin_used     = Σ(remaining_qty × entry_price × margin_rate) for open positions
+available_cash  = cash_balance - margin_used
+total_balance   = cash_balance + collateral
+available_margin = available_cash + collateral
+```
+
+**Technical Details:**
+
+- 4 commits: profit lock ratcheting, sentiment display, funds calculation fix, dependency update
+- Files changed: `database_provider.py`, `schemas.py`, `position_tracker.py`, `DigestWidget.tsx`
+
+---
+
 ## v1.5.1 (2026-02-26)
 
 ### 🔒 Profit-Lock Stop Loss & Margin Fix
