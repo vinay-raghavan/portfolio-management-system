@@ -198,6 +198,7 @@ main                           # Production-ready code
 | 2 | 12-13 | `phase-2/auto-trade-pipeline` | Recommendation → Algo automation, templates, pending trades |
 | 2 | 13-14 | `phase-2/algo-time-window` | Trading time window for strategies (from/to time) |
 | 2 | 14-15 | `phase-2/profit-lock-stop` | Position-level profit lock toggle and margin fix |
+| 2 | 15-16 | `phase-2/ema-trailing-stop` | EMA-based trailing stop and profit booking extension |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
@@ -5481,6 +5482,522 @@ Add a new section "Trading Time Window" with:
 - [x] Deploy to staging: `podman-compose up -d`
 - [x] Verify time window functionality in staging
 - [x] Bug fix: Pass time window config to StrategyConfig in execution routes
+
+---
+
+### 2.8 EMA-Based Trailing Stop & Profit Booking
+> 🌿 **Branch:** `phase-2/ema-trailing-stop`
+
+**Goal**: Extend the existing trailing stop and profit booking system to support EMA-based (e.g., EMA21) dynamic levels in addition to fixed percentages.
+
+#### Overview
+
+Currently, trailing stops and profit booking use fixed percentage thresholds. This feature adds the option to use EMA (Exponential Moving Average) values as dynamic, market-adaptive stop levels.
+
+**Benefits:**
+- Adapts to volatility (EMA expands/contracts with price action)
+- Lets winners run during strong trends (EMA follows price)
+- Protects profits when momentum weakens
+- Proven technique used by professional traders
+
+#### Architecture
+
+```mermaid
+flowchart TB
+    subgraph CurrentSystem["Current System (Percentage-Based)"]
+        TrailingPct[trailing_stop_pct<br/>e.g., 5%]
+        ProfitBookPct[profit_booking_rules<br/>target_pct thresholds]
+        ProfitLock[profit_lock<br/>at threshold]
+    end
+
+    subgraph NewSystem["Extended System (Percentage OR EMA)"]
+        direction TB
+        TrailingMode{trailing_stop_mode}
+        TrailingMode -->|percentage| TrailingPct2[Use trailing_stop_pct]
+        TrailingMode -->|ema| EMATrailing[Use EMA value<br/>with buffer]
+
+        ProfitBookMode{target_mode}
+        ProfitBookMode -->|percentage| ProfitPct[Use target_pct]
+        ProfitBookMode -->|ema_distance| EMADistance[Trigger when<br/>price > EMA + X%]
+    end
+
+    subgraph DataFlow["Data Flow"]
+        OHLCV[(OHLCV Data)]
+        EMACalc[EMA Calculator]
+        PositionTracker[Position Tracker]
+    end
+
+    OHLCV --> EMACalc
+    EMACalc --> NewSystem
+    NewSystem --> PositionTracker
+
+    style CurrentSystem fill:#f5f5f5,stroke:#9e9e9e
+    style NewSystem fill:#e8f5e9,stroke:#4caf50
+    style DataFlow fill:#e3f2fd,stroke:#1976d2
+```
+
+#### 2.8.1 Schema & Model Changes
+
+**New Enum:**
+```python
+class TrailingStopMode(str, Enum):
+    PERCENTAGE = "percentage"  # Current behavior (default)
+    EMA = "ema"               # Use EMA as dynamic stop
+```
+
+**New Fields for UserStrategy & AlgoPosition:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `trailing_stop_mode` | `TrailingStopMode` | `percentage` | Mode selector |
+| `trailing_stop_ema_period` | `int` | `21` | EMA period (e.g., 21, 50, 200) |
+| `trailing_stop_ema_buffer_pct` | `Decimal` | `0.005` | Buffer below/above EMA (0.5%) |
+| `trailing_stop_ema_min_profit_pct` | `Decimal` | `None` | Only activate after this profit % |
+| `trailing_stop_ema_timeframe` | `str` | `1d` | Timeframe for EMA calc (1d, 1h, etc.) |
+
+**Extended ProfitBookingRule:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `target_pct` | `Decimal` | - | Existing: profit % threshold |
+| `quantity_pct` | `Decimal` | - | Existing: % to sell |
+| `target_mode` | `str` | `percentage` | NEW: "percentage" or "ema_distance" |
+| `ema_period` | `int` | `21` | NEW: EMA period for ema_distance mode |
+| `ema_distance_pct` | `Decimal` | - | NEW: Trigger when price > EMA + X% |
+
+**Tasks:**
+- [ ] Create `TrailingStopMode` enum in `backend/app/modules/algo/models.py`
+- [ ] Add EMA trailing stop fields to `UserStrategy` model (backend)
+- [ ] Add EMA trailing stop fields to `AlgoPosition` model (backend)
+- [ ] Mirror changes in `trading-engine/engine/models/algo.py`
+- [ ] Extend `ProfitBookingRule` schema with EMA fields
+- [ ] Update `StrategyCreate`, `StrategyUpdate`, `StrategyResponse` schemas
+- [ ] Run: `uv run ruff check && uv run ruff format && uv run pytest && uv run bandit -r backend/`
+- [ ] Commit: `feat(algo): add EMA trailing stop schema and model fields`
+
+#### 2.8.2 Database Migrations
+
+**Backend Migration:**
+```sql
+-- Add to user_strategies table
+ALTER TABLE user_strategies ADD COLUMN trailing_stop_mode VARCHAR(20) DEFAULT 'percentage';
+ALTER TABLE user_strategies ADD COLUMN trailing_stop_ema_period INTEGER DEFAULT 21;
+ALTER TABLE user_strategies ADD COLUMN trailing_stop_ema_buffer_pct DECIMAL(10,4) DEFAULT 0.005;
+ALTER TABLE user_strategies ADD COLUMN trailing_stop_ema_min_profit_pct DECIMAL(10,4);
+ALTER TABLE user_strategies ADD COLUMN trailing_stop_ema_timeframe VARCHAR(10) DEFAULT '1d';
+
+-- Add to algo_positions table
+ALTER TABLE algo_positions ADD COLUMN trailing_stop_mode VARCHAR(20) DEFAULT 'percentage';
+ALTER TABLE algo_positions ADD COLUMN trailing_stop_ema_period INTEGER DEFAULT 21;
+ALTER TABLE algo_positions ADD COLUMN trailing_stop_ema_buffer_pct DECIMAL(10,4) DEFAULT 0.005;
+ALTER TABLE algo_positions ADD COLUMN trailing_stop_ema_min_profit_pct DECIMAL(10,4);
+ALTER TABLE algo_positions ADD COLUMN trailing_stop_ema_timeframe VARCHAR(10) DEFAULT '1d';
+ALTER TABLE algo_positions ADD COLUMN last_ema_value DECIMAL(18,4);
+ALTER TABLE algo_positions ADD COLUMN last_ema_updated_at TIMESTAMP WITH TIME ZONE;
+```
+
+**Tasks:**
+- [ ] Create Alembic migration for backend (`backend/alembic/versions/`)
+- [ ] Create Alembic migration for trading-engine (`trading-engine/`)
+- [ ] Test migration up/down
+- [ ] Run: `uv run alembic upgrade head`
+- [ ] Commit: `feat(algo): add EMA trailing stop database migrations`
+
+#### 2.8.3 EMA Provider Service
+
+Create a service to calculate and cache EMA values for open positions.
+
+**File:** `trading-engine/engine/algo/ema_provider.py`
+
+```python
+class EMAProvider:
+    """Calculate and cache EMA values for position management."""
+
+    def __init__(self, data_provider: DataProvider, cache_ttl_seconds: int = 300):
+        self.data_provider = data_provider
+        self.cache: dict[tuple[str, int, str], tuple[Decimal, datetime]] = {}
+        self.cache_ttl = timedelta(seconds=cache_ttl_seconds)
+
+    async def get_ema(
+        self,
+        symbol: str,
+        period: int = 21,
+        timeframe: str = "1d",
+    ) -> Decimal | None:
+        """Get EMA value for symbol, with caching."""
+        cache_key = (symbol, period, timeframe)
+        cached = self.cache.get(cache_key)
+
+        if cached and datetime.now(UTC) - cached[1] < self.cache_ttl:
+            return cached[0]
+
+        # Fetch OHLCV and calculate EMA
+        ema_value = await self._calculate_ema(symbol, period, timeframe)
+        if ema_value:
+            self.cache[cache_key] = (ema_value, datetime.now(UTC))
+
+        return ema_value
+
+    async def get_emas_bulk(
+        self,
+        requests: list[tuple[str, int, str]],  # (symbol, period, timeframe)
+    ) -> dict[str, Decimal]:
+        """Batch fetch EMAs for multiple symbols."""
+        results = {}
+        tasks = []
+        for symbol, period, timeframe in requests:
+            tasks.append(self.get_ema(symbol, period, timeframe))
+
+        ema_values = await asyncio.gather(*tasks)
+        for (symbol, _, _), value in zip(requests, ema_values):
+            if value:
+                results[symbol] = value
+
+        return results
+
+    async def _calculate_ema(
+        self,
+        symbol: str,
+        period: int,
+        timeframe: str,
+    ) -> Decimal | None:
+        """Calculate EMA from OHLCV data."""
+        # Fetch enough bars for EMA calculation
+        bars_needed = period + 10
+        ohlcv = await self.data_provider.get_ohlcv(
+            symbol, interval=timeframe, limit=bars_needed
+        )
+
+        if not ohlcv or len(ohlcv) < period:
+            return None
+
+        closes = pd.Series([float(bar.close) for bar in ohlcv])
+        ema = closes.ewm(span=period, adjust=False).mean().iloc[-1]
+        return Decimal(str(ema)).quantize(Decimal("0.0001"))
+```
+
+**Tasks:**
+- [ ] Create `EMAProvider` class in `trading-engine/engine/algo/ema_provider.py`
+- [ ] Add caching with configurable TTL
+- [ ] Add bulk fetch method for efficiency
+- [ ] Write unit tests for EMA calculation
+- [ ] Run: `cd trading-engine && uv run pytest`
+- [ ] Commit: `feat(algo): create EMAProvider service for EMA calculations`
+
+#### 2.8.4 Position Tracker Updates
+
+Modify `_update_trailing_stop()` and `_check_profit_booking_rules()` in `position_tracker.py` to support EMA mode.
+
+**Updated Flow:**
+
+```python
+async def _update_trailing_stop(
+    self,
+    position: AlgoPosition,
+    current_price: Decimal,
+    strategy: UserStrategy | None = None,
+    ema_values: dict[str, Decimal] | None = None,  # NEW: Pre-fetched EMAs
+) -> bool:
+    # Get trailing stop mode (position -> strategy hierarchy)
+    mode = position.trailing_stop_mode
+    if mode is None and strategy:
+        mode = strategy.trailing_stop_mode or TrailingStopMode.PERCENTAGE
+
+    if mode == TrailingStopMode.PERCENTAGE:
+        # Existing percentage-based logic
+        return await self._update_trailing_stop_percentage(position, current_price, strategy)
+
+    elif mode == TrailingStopMode.EMA:
+        # New EMA-based logic
+        return await self._update_trailing_stop_ema(
+            position, current_price, strategy, ema_values
+        )
+
+async def _update_trailing_stop_ema(
+    self,
+    position: AlgoPosition,
+    current_price: Decimal,
+    strategy: UserStrategy | None,
+    ema_values: dict[str, Decimal] | None,
+) -> bool:
+    # Get EMA value
+    ema_value = ema_values.get(position.symbol) if ema_values else None
+    if not ema_value:
+        return False
+
+    # Check minimum profit requirement
+    min_profit = position.trailing_stop_ema_min_profit_pct
+    if min_profit is None and strategy:
+        min_profit = strategy.trailing_stop_ema_min_profit_pct
+
+    if min_profit:
+        profit_pct = self._calculate_profit_pct(position, current_price)
+        if profit_pct < min_profit:
+            return False  # Not enough profit to activate EMA trailing
+
+    # Calculate EMA-based stop with buffer
+    buffer_pct = position.trailing_stop_ema_buffer_pct or Decimal("0.005")
+    if strategy and not position.trailing_stop_ema_buffer_pct:
+        buffer_pct = strategy.trailing_stop_ema_buffer_pct or Decimal("0.005")
+
+    if position.side == PositionSide.LONG:
+        new_stop = ema_value * (Decimal("1") - buffer_pct)
+        # Only update if new stop is higher (ratchet up)
+        if position.trailing_stop_price is None or new_stop > position.trailing_stop_price:
+            position.trailing_stop_price = new_stop
+            position.last_ema_value = ema_value
+            position.last_ema_updated_at = datetime.now(UTC)
+            return True
+    else:  # SHORT
+        new_stop = ema_value * (Decimal("1") + buffer_pct)
+        # Only update if new stop is lower (ratchet down)
+        if position.trailing_stop_price is None or new_stop < position.trailing_stop_price:
+            position.trailing_stop_price = new_stop
+            position.last_ema_value = ema_value
+            position.last_ema_updated_at = datetime.now(UTC)
+            return True
+
+    return False
+```
+
+**Tasks:**
+- [ ] Add `TrailingStopMode` import and branching in `_update_trailing_stop()`
+- [ ] Create `_update_trailing_stop_percentage()` (refactor existing logic)
+- [ ] Create `_update_trailing_stop_ema()` for EMA-based trailing
+- [ ] Update `_check_profit_booking_rules()` to support `ema_distance` mode
+- [ ] Add `ema_values` parameter to `check_stop_loss_take_profit()`
+- [ ] Write unit tests for both modes
+- [ ] Run: `cd trading-engine && uv run pytest`
+- [ ] Commit: `feat(algo): implement EMA-based trailing stop in position tracker`
+
+#### 2.8.5 Executor Integration
+
+Update the strategy executor to fetch EMAs and pass them to position tracker.
+
+**File:** `trading-engine/engine/algo/executor.py`
+
+```python
+async def _check_exit_conditions(
+    self,
+    config: StrategyConfig,
+    symbol_prices: dict[str, Decimal],
+    result: ExecutionResult,
+) -> None:
+    if not symbol_prices:
+        return
+
+    try:
+        async with get_db_context() as db:
+            position_tracker = PositionTracker(db)
+
+            # NEW: Fetch EMAs for positions that use EMA trailing
+            ema_values = await self._fetch_required_emas(db, config, symbol_prices.keys())
+
+            closed_positions, pnl_stats = await position_tracker.check_stop_loss_take_profit(
+                strategy_id=config.id,
+                user_id=config.user_id,
+                current_prices=symbol_prices,
+                ema_values=ema_values,  # NEW
+            )
+            # ... rest of method
+
+async def _fetch_required_emas(
+    self,
+    db: AsyncSession,
+    config: StrategyConfig,
+    symbols: Iterable[str],
+) -> dict[str, Decimal]:
+    """Fetch EMAs for positions using EMA trailing mode."""
+    # Get open positions
+    position_tracker = PositionTracker(db)
+    open_positions = await position_tracker.get_all_open_positions(
+        config.id, config.user_id, include_partial=True
+    )
+
+    # Collect EMA requests for positions using EMA mode
+    ema_requests: list[tuple[str, int, str]] = []
+    for pos in open_positions:
+        mode = pos.trailing_stop_mode or config.trailing_stop_mode
+        if mode == TrailingStopMode.EMA:
+            period = pos.trailing_stop_ema_period or config.trailing_stop_ema_period or 21
+            timeframe = pos.trailing_stop_ema_timeframe or config.trailing_stop_ema_timeframe or "1d"
+            ema_requests.append((pos.symbol, period, timeframe))
+
+    if not ema_requests:
+        return {}
+
+    # Batch fetch EMAs
+    ema_provider = EMAProvider(self.data_provider)
+    return await ema_provider.get_emas_bulk(ema_requests)
+```
+
+**Tasks:**
+- [ ] Add `_fetch_required_emas()` method to executor
+- [ ] Update `_check_exit_conditions()` to fetch and pass EMAs
+- [ ] Add EMA fields to `StrategyConfig` dataclass
+- [ ] Test executor with EMA trailing enabled
+- [ ] Run: `cd trading-engine && uv run pytest`
+- [ ] Commit: `feat(algo): integrate EMA provider with strategy executor`
+
+#### 2.8.6 Frontend: EMA Trailing Stop Configuration
+
+**Update Strategy Form:**
+
+Add a new "Trailing Stop Mode" section with:
+- Mode selector: "Percentage" (default) / "EMA-Based"
+- When Percentage selected:
+  - Trailing stop percentage input (existing)
+- When EMA selected:
+  - EMA Period dropdown (9, 21, 50, 100, 200)
+  - Buffer percentage input (default 0.5%)
+  - Minimum profit % to activate (optional)
+  - Timeframe selector (1d, 1h, 15m)
+
+**Mockup:**
+```
+┌─────────────────────────────────────────────────────────┐
+│ Trailing Stop Configuration                             │
+├─────────────────────────────────────────────────────────┤
+│ Mode:  ○ Percentage  ● EMA-Based                       │
+│                                                         │
+│ ┌─ EMA Settings ──────────────────────────────────────┐ │
+│ │ EMA Period:    [21 ▼]                               │ │
+│ │ Buffer:        [0.5] %                              │ │
+│ │ Min Profit:    [2.0] % (optional)                   │ │
+│ │ Timeframe:     [Daily ▼]                            │ │
+│ └─────────────────────────────────────────────────────┘ │
+│                                                         │
+│ Preview: Stop will be set at EMA21 - 0.5%              │
+│          Activates after 2% profit                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Tasks:**
+- [ ] Create `TrailingStopModeSection` component
+- [ ] Add mode toggle (percentage/ema)
+- [ ] Add EMA configuration inputs (period, buffer, min profit, timeframe)
+- [ ] Add preview/explanation text
+- [ ] Update strategy form to include new component
+- [ ] Run: `npm audit && npm run lint`
+- [ ] Commit: `feat(frontend): add EMA trailing stop configuration UI`
+
+#### 2.8.7 Frontend: Position Display Updates
+
+**Update Position Cards/Tables:**
+- Show trailing stop mode indicator (% or EMA)
+- For EMA mode, show:
+  - Current EMA value
+  - Current trailing stop price
+  - Distance from EMA
+
+**Tasks:**
+- [ ] Update `PositionCard` component to show trailing mode
+- [ ] Add EMA value display for EMA mode positions
+- [ ] Add tooltip explaining EMA trailing stop
+- [ ] Run: `npm audit && npm run lint`
+- [ ] Commit: `feat(frontend): display EMA trailing stop info on positions`
+
+#### 2.8.8 Testing & Deployment
+
+**Unit Tests:**
+- [ ] Test `TrailingStopMode` enum serialization
+- [ ] Test EMA calculation accuracy
+- [ ] Test `_update_trailing_stop_ema()` logic
+- [ ] Test minimum profit gate
+- [ ] Test ratcheting behavior (stop only moves favorably)
+
+**Integration Tests:**
+- [ ] Test full flow: position opens → price rises → EMA trailing updates → stop triggered
+- [ ] Test fallback when EMA data unavailable
+- [ ] Test mixed mode (some positions %, some EMA)
+
+**Edge Cases:**
+- [ ] EMA data not available (skip EMA update, use percentage fallback)
+- [ ] Position just opened (no profit yet, respect min_profit_pct)
+- [ ] Market gaps (large overnight move)
+- [ ] Different timeframes for different positions
+
+**Tasks:**
+- [ ] Write unit tests for EMA provider
+- [ ] Write unit tests for position tracker EMA mode
+- [ ] Write integration tests for executor
+- [ ] Test timezone handling for daily EMA
+- [ ] Run full CI suite:
+  ```bash
+  # Backend
+  uv run ruff check
+  uv run ruff format
+  uv run pytest
+  uv run bandit -r backend/
+
+  # Trading Engine
+  cd trading-engine && uv run pytest
+
+  # Frontend
+  npm audit
+  npm run lint
+  npm run build
+  ```
+- [ ] Build containers: `podman-compose build`
+- [ ] Deploy to staging: `podman-compose up -d`
+- [ ] Manual testing with paper trading positions
+- [ ] Commit: `test(algo): add EMA trailing stop test coverage`
+
+#### 2.8.9 Phase 2: Profit Booking with EMA Distance (Future Extension)
+
+After Phase 1 (EMA trailing stop) is validated, extend profit booking rules:
+
+**New Profit Booking Rule Type:**
+```python
+class ProfitBookingRule(BaseModel):
+    # Existing fields
+    target_pct: Decimal | None  # Used when target_mode = "percentage"
+    quantity_pct: Decimal       # % of position to book
+
+    # New fields
+    target_mode: str = "percentage"  # "percentage" or "ema_distance"
+    ema_period: int = 21             # EMA period for ema_distance mode
+    ema_distance_pct: Decimal | None # Trigger when price > EMA + X%
+```
+
+**Example Rule:**
+```json
+{
+  "enabled": true,
+  "rules": [
+    {
+      "target_mode": "percentage",
+      "target_pct": 5,
+      "quantity_pct": 25
+    },
+    {
+      "target_mode": "ema_distance",
+      "ema_period": 21,
+      "ema_distance_pct": 8,
+      "quantity_pct": 25
+    }
+  ]
+}
+```
+
+This means:
+- Book 25% when profit reaches 5%
+- Book another 25% when price is 8% above EMA21
+
+**Tasks (Phase 2):**
+- [ ] Extend `ProfitBookingRule` schema with `target_mode` and EMA fields
+- [ ] Update `_check_profit_booking_rules()` to handle `ema_distance` mode
+- [ ] Update frontend profit booking configuration UI
+- [ ] Write tests for EMA distance profit booking
+- [ ] Commit: `feat(algo): add EMA distance mode for profit booking rules`
+
+#### Summary: Implementation Phases
+
+| Phase | Scope | Effort | Status |
+|-------|-------|--------|--------|
+| **Phase 1** | EMA-based trailing stop only | ~15-20 hours | [ ] Not Started |
+| **Phase 2** | Extend profit booking with EMA distance | ~8-10 hours | [ ] Not Started |
+| **Phase 3** | Multi-timeframe EMA (1d + 1h) | ~5-6 hours | [ ] Not Started |
 
 ---
 
