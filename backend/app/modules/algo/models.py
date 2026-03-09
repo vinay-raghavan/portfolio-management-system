@@ -93,6 +93,19 @@ class StrategyProductType(str, Enum):
     SLB = "SLB"  # Securities Lending & Borrowing (multi-day short selling)
 
 
+class SignalDirection(str, Enum):
+    """Direction of signals the strategy will generate.
+
+    - LONG: Only generate BUY signals (go long)
+    - SHORT: Only generate SELL signals to open short positions (requires INTRADAY/SLB)
+    - BOTH: Generate both LONG and SHORT signals based on market conditions
+    """
+
+    LONG = "LONG"  # Only long positions (default, safest)
+    SHORT = "SHORT"  # Only short positions (requires INTRADAY or SLB)
+    BOTH = "BOTH"  # Both directions (requires INTRADAY or SLB)
+
+
 class UserStrategy(Base):
     """User's configured strategy for algo trading.
 
@@ -128,6 +141,13 @@ class UserStrategy(Base):
         SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
         nullable=False,
         default=StrategyProductType.DELIVERY,
+    )
+
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: Mapped[SignalDirection] = mapped_column(
+        SQLEnum(SignalDirection, name="signaldirection", create_type=False),
+        nullable=False,
+        default=SignalDirection.LONG,
     )
 
     # Strategy parameters (stored as JSON for flexibility)

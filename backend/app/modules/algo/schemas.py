@@ -10,6 +10,7 @@ from app.modules.algo.models import (
     PositionSizingMethod,
     ProfitCutoffAction,
     ScheduleType,
+    SignalDirection,
     StrategyProductType,
     StrategyStatus,
 )
@@ -351,6 +352,8 @@ class StrategyCreate(BaseModel):
     is_paper_trading: bool = True
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection = SignalDirection.LONG
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -395,6 +398,8 @@ class StrategyUpdate(BaseModel):
     is_paper_trading: bool | None = None
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType | None = None
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
@@ -454,6 +459,8 @@ class StrategyResponse(BaseModel):
     is_paper_trading: bool
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -575,6 +582,7 @@ class StrategyResponse(BaseModel):
             "profit_cutoff_action": obj.profit_cutoff_action,
             "is_paper_trading": obj.is_paper_trading,
             "product_type": obj.product_type,
+            "signal_direction": obj.signal_direction,
             "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
             "default_trailing_stop_pct": obj.default_trailing_stop_pct,
             "default_profit_booking_rules": (
