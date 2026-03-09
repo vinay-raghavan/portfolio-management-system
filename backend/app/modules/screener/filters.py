@@ -246,11 +246,47 @@ class MomentumFilter(BaseFilter):
                 passed = checks_passed > 0
 
             elif self.momentum_mode == "bearish":
-                # For bearish/pullback: prefer low RSI (oversold)
+                # For bearish/pullback: prefer low RSI (oversold) - BUY signal
                 if rsi < self.rsi_oversold:
                     passed = True
                     reasons.append(f"RSI {rsi:.0f} oversold")
                     score += 30
+
+            elif self.momentum_mode == "bearish_short":
+                # For SHORT SELLING: look for stocks to short
+                # - RSI overbought (reversal setup) or weak momentum
+                # - Near 52-week low (downtrend)
+                # - Negative ROC
+                checks_passed = 0
+                total_checks = 0
+
+                # Check negative ROC (downward momentum)
+                if self.min_roc != 0:
+                    total_checks += 1
+                    if roc < 0:  # Negative momentum
+                        checks_passed += 1
+                        reasons.append(f"Negative ROC {roc:.1f}%")
+                        score += 15
+
+                # Check RSI overbought (reversal setup)
+                total_checks += 1
+                if rsi > self.rsi_overbought:
+                    checks_passed += 1
+                    reasons.append(f"RSI {rsi:.0f} overbought (reversal)")
+                    score += 20
+
+                # Check near 52-week low (downtrend confirmation)
+                total_checks += 1
+                if pct_above_low < 30:  # Within 30% of 52w low
+                    checks_passed += 1
+                    reasons.append(f"Near 52w low ({pct_above_low:.0f}% above)")
+                    score += 15
+
+                # Pass if at least 2 checks pass (strong short setup)
+                passed = checks_passed >= 2
+                if passed:
+                    reasons.insert(0, "⚠️ SHORT SIGNAL")
+
             else:  # neutral
                 passed = True
                 reasons.append("Neutral momentum mode")
@@ -289,6 +325,7 @@ class MovingAverageFilter(BaseFilter):
         mid_ma: int = 150,
         trend_ma: int = 200,
         require_above_trend: bool = True,
+        require_below_trend: bool = False,  # For SHORT SELLING
         require_stacked_ma: bool = False,
         require_trend_up: bool = False,
         trend_up_days: int = 22,
@@ -302,6 +339,7 @@ class MovingAverageFilter(BaseFilter):
             mid_ma: Mid-term MA period (default 150 for Minervini)
             trend_ma: Long-term trend MA period (default 200)
             require_above_trend: Price must be above trend MA
+            require_below_trend: Price must be BELOW trend MA (for shorting)
             require_stacked_ma: Require 50 > 150 > 200 SMA stacking (Minervini)
             require_trend_up: Require 200 SMA to be trending upward
             trend_up_days: Days to check for 200 SMA uptrend (default ~1 month)
@@ -311,6 +349,7 @@ class MovingAverageFilter(BaseFilter):
         self.mid_ma = mid_ma
         self.trend_ma = trend_ma
         self.require_above_trend = require_above_trend
+        self.require_below_trend = require_below_trend
         self.require_stacked_ma = require_stacked_ma
         self.require_trend_up = require_trend_up
         self.trend_up_days = trend_up_days
@@ -364,6 +403,15 @@ class MovingAverageFilter(BaseFilter):
                 else:
                     passed = False
                     reasons.append(f"Below {self.trend_ma}MA")
+
+            # Check below trend MA (for SHORT SELLING)
+            if self.require_below_trend:
+                if not above_trend:  # Below trend MA
+                    score += 20
+                    reasons.append(f"⚠️ Below {self.trend_ma}MA (bearish)")
+                else:
+                    passed = False
+                    reasons.append(f"Above {self.trend_ma}MA (need below for short)")
 
             if self.require_stacked_ma:
                 if stacked_ma:

@@ -40,15 +40,17 @@ class OrderStatus(str, Enum):
 class ProductType(str, Enum):
     """Product type for orders (Indian markets terminology).
 
-    Three main product types with their rules:
+    Four main product types with their rules:
     - DELIVERY (CNC): Full payment required, no shorting, hold indefinitely
     - INTRADAY (MIS): Margin required (20-40%), shorting allowed, must square off same day
     - MARGIN (MTF): Margin required (25-50%) + interest, leveraged buying only, no shorting
+    - SLB: Securities Lending & Borrowing, multi-day shorting with borrowing fee
     """
 
     DELIVERY = "DELIVERY"  # CNC - Cash and Carry
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
     MARGIN = "MARGIN"  # MTF - Margin Trading Facility
+    SLB = "SLB"  # Securities Lending & Borrowing (multi-day short selling)
     CNC = "CNC"  # Alias for DELIVERY
     MIS = "MIS"  # Alias for INTRADAY
     MTF = "MTF"  # Alias for MARGIN
@@ -68,6 +70,7 @@ class ProductType(str, Enum):
             cls.DELIVERY: 1.0,  # 100% - full payment
             cls.INTRADAY: 0.25,  # 25% margin for MIS
             cls.MARGIN: 0.50,  # 50% margin for MTF
+            cls.SLB: 0.50,  # 50% margin for SLB + borrowing fee
         }
         return margins.get(normalized, 1.0)
 
@@ -75,13 +78,13 @@ class ProductType(str, Enum):
     def allows_short_selling(cls, product_type: "ProductType") -> bool:
         """Check if short selling is allowed for this product type."""
         normalized = cls.normalize(product_type)
-        return normalized == cls.INTRADAY
+        return normalized in (cls.INTRADAY, cls.SLB)
 
     @classmethod
     def requires_square_off(cls, product_type: "ProductType") -> bool:
         """Check if positions must be squared off same day."""
         normalized = cls.normalize(product_type)
-        return normalized == cls.INTRADAY
+        return normalized == cls.INTRADAY  # SLB allows multi-day
 
     @classmethod
     def normalize(cls, product_type: "ProductType") -> "ProductType":
@@ -92,6 +95,8 @@ class ProductType(str, Enum):
             return cls.INTRADAY
         elif product_type in (cls.MTF, cls.MARGIN):
             return cls.MARGIN
+        elif product_type == cls.SLB:
+            return cls.SLB
         return product_type
 
 

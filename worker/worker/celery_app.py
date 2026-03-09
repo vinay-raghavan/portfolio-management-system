@@ -23,6 +23,8 @@ celery_app = Celery(
         "worker.tasks.screener",
         "worker.tasks.research",
         "worker.tasks.reporting",
+        "worker.tasks.intraday",
+        "worker.tasks.slb",
     ],
 )
 
@@ -93,8 +95,13 @@ celery_app.conf.beat_schedule = {
     },
     # Auto square-off intraday positions at 3:15 PM IST (9:45 UTC)
     "auto-square-off-intraday": {
-        "task": "worker.tasks.trading.auto_square_off_intraday",
+        "task": "worker.tasks.intraday.square_off_intraday_positions",
         "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
+    },
+    # Safety check: verify no intraday positions remain after market close
+    "check-intraday-positions-after-close": {
+        "task": "worker.tasks.intraday.check_intraday_positions",
+        "schedule": crontab(hour=10, minute=5),  # 3:35 PM IST = 10:05 UTC
     },
     # Process AMO (After Market Orders) at market open - 9:15 AM IST (3:45 UTC)
     "process-amo-orders-at-market-open": {
@@ -165,5 +172,23 @@ celery_app.conf.beat_schedule = {
     "sync-reporting-tables-every-15-minutes": {
         "task": "worker.tasks.reporting.sync_reporting_tables",
         "schedule": 900.0,  # Every 15 minutes
+    },
+    # =========================================================================
+    # SLB (Securities Lending & Borrowing) Tasks
+    # =========================================================================
+    # Daily SLB fee accrual - after market close 4:30 PM IST (11:00 UTC)
+    "slb-accrue-fees-daily": {
+        "task": "worker.tasks.slb.accrue_slb_fees",
+        "schedule": crontab(hour=11, minute=0),  # 4:30 PM IST = 11:00 UTC
+    },
+    # Check SLB expiry warnings - daily at 9:00 AM IST (3:30 UTC)
+    "slb-check-expiry-daily": {
+        "task": "worker.tasks.slb.check_slb_expiry",
+        "schedule": crontab(hour=3, minute=30),  # 9:00 AM IST = 3:30 UTC
+    },
+    # Auto-close expiring SLB positions - daily at 9:10 AM IST (3:40 UTC)
+    "slb-auto-close-expiring-daily": {
+        "task": "worker.tasks.slb.auto_close_expiring_slb",
+        "schedule": crontab(hour=3, minute=40),  # 9:10 AM IST = 3:40 UTC
     },
 }

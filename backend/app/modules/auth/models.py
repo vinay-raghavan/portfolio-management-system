@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -28,6 +28,9 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # Relationships
+    slb_positions = relationship("SLBPosition", back_populates="user")
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"

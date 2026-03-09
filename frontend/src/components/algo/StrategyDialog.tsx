@@ -73,6 +73,15 @@ const productTypes: { value: StrategyProductType; label: string; description: st
   { value: 'DELIVERY', label: 'Delivery (CNC)', description: 'Full payment, no shorting, hold indefinitely' },
   { value: 'INTRADAY', label: 'Intraday (MIS)', description: '25% margin, shorting allowed, same-day square off' },
   { value: 'MARGIN', label: 'Margin (MTF)', description: '50% margin, no shorting, leveraged buying' },
+  { value: 'SLB', label: 'SLB (Short Sell)', description: '50% margin + borrowing fee, multi-day short selling' },
+];
+
+type SignalDirection = 'LONG' | 'SHORT' | 'BOTH';
+
+const signalDirections: { value: SignalDirection; label: string; description: string; requiresShortCapable: boolean }[] = [
+  { value: 'LONG', label: 'Long Only', description: 'Only buy signals (safest)', requiresShortCapable: false },
+  { value: 'SHORT', label: 'Short Only', description: 'Only short sell signals', requiresShortCapable: true },
+  { value: 'BOTH', label: 'Both Directions', description: 'Both long and short based on market', requiresShortCapable: true },
 ];
 
 export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogProps) {
@@ -102,6 +111,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [isPaperTrading, setIsPaperTrading] = useState(true);
   // Product type state (CNC/MIS/MTF)
   const [productType, setProductType] = useState<StrategyProductType>('DELIVERY');
+  // Signal direction (LONG/SHORT/BOTH)
+  const [signalDirection, setSignalDirection] = useState<SignalDirection>('LONG');
   // Strategy-level default trailing stop state
   const [defaultTrailingStopEnabled, setDefaultTrailingStopEnabled] = useState(false);
   const [defaultTrailingStopPct, setDefaultTrailingStopPct] = useState('5');
@@ -169,6 +180,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setIsPaperTrading(strategy.is_paper_trading);
       // Product type
       setProductType(strategy.product_type || 'DELIVERY');
+      // Signal direction
+      setSignalDirection(strategy.signal_direction || 'LONG');
       // Strategy-level trailing stop and profit booking
       setDefaultTrailingStopEnabled(strategy.default_trailing_stop_enabled || false);
       setDefaultTrailingStopPct(strategy.default_trailing_stop_pct ? String(strategy.default_trailing_stop_pct * 100) : '5');
@@ -253,6 +266,8 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setIsPaperTrading(true);
       // Product type default
       setProductType('DELIVERY');
+      // Signal direction default
+      setSignalDirection('LONG');
       // Strategy-level trailing stop and profit booking defaults
       setDefaultTrailingStopEnabled(false);
       setDefaultTrailingStopPct('5');
@@ -369,6 +384,7 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       profit_cutoff_action: profitCutoffAction,
       is_paper_trading: isPaperTrading,
       product_type: productType,
+      signal_direction: signalDirection,
       default_trailing_stop_enabled: defaultTrailingStopEnabled,
       default_trailing_stop_pct: defaultTrailingStopEnabled ? parseFloat(defaultTrailingStopPct) / 100 : undefined,
       default_profit_booking_rules: defaultProfitBookingEnabled
@@ -792,6 +808,42 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
               {productType && (
                 <p className="text-xs text-muted-foreground">
                   {productTypes.find((pt) => pt.value === productType)?.description}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="signalDirection">Signal Direction</Label>
+              <Select
+                value={signalDirection}
+                onValueChange={(v) => setSignalDirection(v as SignalDirection)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select signal direction" />
+                </SelectTrigger>
+                <SelectContent>
+                  {signalDirections.map((sd) => (
+                    <SelectItem
+                      key={sd.value}
+                      value={sd.value}
+                      disabled={sd.requiresShortCapable && productType !== 'INTRADAY' && productType !== 'SLB'}
+                    >
+                      {sd.label}
+                      {sd.requiresShortCapable && productType !== 'INTRADAY' && productType !== 'SLB' && (
+                        <span className="text-muted-foreground ml-1">(requires MIS/SLB)</span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {signalDirection && (
+                <p className="text-xs text-muted-foreground">
+                  {signalDirections.find((sd) => sd.value === signalDirection)?.description}
+                </p>
+              )}
+              {(signalDirection === 'SHORT' || signalDirection === 'BOTH') && productType !== 'INTRADAY' && productType !== 'SLB' && (
+                <p className="text-xs text-destructive">
+                  ⚠️ Short selling requires INTRADAY (MIS) or SLB product type
                 </p>
               )}
             </div>

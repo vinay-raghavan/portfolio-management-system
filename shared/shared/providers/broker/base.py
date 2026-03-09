@@ -1,6 +1,7 @@
 """Abstract base class for broker providers."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from decimal import Decimal
 
 from ..schemas import (
@@ -11,6 +12,44 @@ from ..schemas import (
     OrderType,
     Position,
 )
+
+
+@dataclass
+class SLBAvailability:
+    """SLB availability information for a symbol."""
+
+    symbol: str
+    available_quantity: int
+    borrow_rate: Decimal  # Annualized rate, e.g., 0.05 = 5%
+    min_tenure_days: int
+    max_tenure_days: int
+
+
+@dataclass
+class SLBBorrowResponse:
+    """Response from borrowing securities via SLB."""
+
+    success: bool
+    slb_id: str | None  # Broker's SLB reference ID
+    symbol: str
+    quantity: int
+    borrow_rate: Decimal
+    tenure_days: int
+    daily_fee: Decimal
+    total_estimated_fee: Decimal
+    error_message: str | None = None
+
+
+@dataclass
+class SLBReturnResponse:
+    """Response from returning borrowed securities."""
+
+    success: bool
+    slb_id: str
+    symbol: str
+    quantity_returned: int
+    total_fee_paid: Decimal
+    error_message: str | None = None
 
 
 class Broker(ABC):
@@ -180,3 +219,76 @@ class Broker(ABC):
                 responses.append(response)
 
         return responses
+
+    # =========================================================================
+    # SLB (Securities Lending & Borrowing) Methods
+    # =========================================================================
+    # These methods support multi-day short selling via SLB.
+    # Not all brokers support SLB - default implementations return not-supported.
+
+    async def get_slb_availability(self, symbol: str) -> SLBAvailability | None:
+        """Check SLB availability and rates for a symbol.
+
+        Args:
+            symbol: Stock symbol to check
+
+        Returns:
+            SLBAvailability if available, None if not supported or unavailable
+        """
+        # Default: SLB not supported
+        return None
+
+    async def borrow_securities(
+        self,
+        user_id: str,
+        symbol: str,
+        quantity: int,
+        tenure_days: int,
+    ) -> SLBBorrowResponse:
+        """Borrow securities via SLB for short selling.
+
+        Args:
+            user_id: User identifier
+            symbol: Stock symbol to borrow
+            quantity: Number of shares to borrow
+            tenure_days: Borrowing period in days
+
+        Returns:
+            SLBBorrowResponse with borrowing details or error
+        """
+        # Default: SLB not supported
+        return SLBBorrowResponse(
+            success=False,
+            slb_id=None,
+            symbol=symbol,
+            quantity=0,
+            borrow_rate=Decimal("0"),
+            tenure_days=0,
+            daily_fee=Decimal("0"),
+            total_estimated_fee=Decimal("0"),
+            error_message="SLB not supported by this broker",
+        )
+
+    async def return_securities(
+        self,
+        user_id: str,
+        slb_id: str,
+    ) -> SLBReturnResponse:
+        """Return borrowed securities to close SLB position.
+
+        Args:
+            user_id: User identifier
+            slb_id: SLB position ID from borrow_securities
+
+        Returns:
+            SLBReturnResponse with return details or error
+        """
+        # Default: SLB not supported
+        return SLBReturnResponse(
+            success=False,
+            slb_id=slb_id,
+            symbol="",
+            quantity_returned=0,
+            total_fee_paid=Decimal("0"),
+            error_message="SLB not supported by this broker",
+        )

@@ -166,6 +166,9 @@ class FundsResponse(BaseModel):
     available_cash: Decimal
     total_balance: Decimal
     available_margin: Decimal
+    starting_balance: Decimal
+    realized_pnl: Decimal
+    unrealized_pnl: Decimal
 
     model_config = {"from_attributes": True}
 

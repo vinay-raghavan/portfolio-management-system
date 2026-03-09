@@ -275,6 +275,43 @@ class DatabaseFundsProvider(FundsProvider):
                 f"for user {user_id[:8]}... Available: ₹{funds.available_cash:.2f}"
             )
 
+        elif product_type == ProductType.SLB:
+            # SLB: Similar to INTRADAY but allows multi-day shorting
+            # Check if this is closing a short position
+            is_closing_short = existing_position_qty is not None and existing_position_qty < 0
+
+            if is_closing_short:
+                # Closing short position - release margin and calculate P&L
+                margin_base_price = (
+                    entry_price if entry_price else trade_value / abs(existing_position_qty)
+                )
+                margin_base_value = abs(existing_position_qty) * margin_base_price
+
+                if entry_price:
+                    short_pnl = (entry_price - (trade_value / abs(existing_position_qty))) * abs(
+                        existing_position_qty
+                    )
+                    funds.cash_balance += short_pnl - fees
+                    funds.realized_pnl += short_pnl - fees
+                    logger.debug(f"SLB BUY (close short): P&L ₹{short_pnl:.2f} - fees ₹{fees:.2f}")
+                else:
+                    funds.cash_balance -= total_cost
+                    logger.warning("SLB BUY (close short): No entry price provided")
+
+                margin_to_release = min(funds.margin_used, margin_base_value * margin_percent)
+                if margin_to_release > 0:
+                    funds.margin_used -= margin_to_release
+            else:
+                # Opening long position - block margin
+                margin_required = trade_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    raise ValueError(
+                        f"Insufficient margin for SLB buy. "
+                        f"Required: ₹{margin_required:.2f}, Available: ₹{funds.available_cash:.2f}"
+                    )
+                funds.margin_used += margin_required
+                logger.info(f"SLB BUY: Blocked margin ₹{margin_required:.2f}")
+
     async def _handle_sell(
         self,
         funds: Any,
@@ -312,10 +349,21 @@ class DatabaseFundsProvider(FundsProvider):
             # Credit proceeds to cash
             net_proceeds = trade_value - fees
             funds.cash_balance += net_proceeds
-            logger.debug(
-                f"DELIVERY SELL: Credited ₹{net_proceeds:.2f} to user {user_id[:8]}... "
-                f"New balance: ₹{funds.cash_balance:.2f}"
-            )
+
+            # Calculate and track P&L if entry_price provided
+            if entry_price:
+                original_value = quantity * entry_price
+                pnl = trade_value - original_value - fees
+                funds.realized_pnl += pnl
+                logger.debug(
+                    f"DELIVERY SELL: Credited ₹{net_proceeds:.2f}, P&L ₹{pnl:.2f} "
+                    f"for user {user_id[:8]}... New balance: ₹{funds.cash_balance:.2f}"
+                )
+            else:
+                logger.debug(
+                    f"DELIVERY SELL: Credited ₹{net_proceeds:.2f} to user {user_id[:8]}... "
+                    f"New balance: ₹{funds.cash_balance:.2f}"
+                )
 
         elif product_type == ProductType.INTRADAY:
             # INTRADAY: Short selling allowed with margin
@@ -346,7 +394,9 @@ class DatabaseFundsProvider(FundsProvider):
                     funds.margin_used -= margin_to_release
 
                 # Credit/debit only the P&L to cash balance (not full proceeds)
+                # Also update realized_pnl to keep them in sync
                 funds.cash_balance += pnl
+                funds.realized_pnl += pnl
 
                 logger.info(
                     f"INTRADAY SELL (close): P&L ₹{pnl:.2f}, "
@@ -400,12 +450,49 @@ class DatabaseFundsProvider(FundsProvider):
                 funds.margin_used -= margin_to_release
 
             # Credit/debit only the P&L to cash balance (not full proceeds)
+            # Also update realized_pnl to keep them in sync
             funds.cash_balance += pnl
+            funds.realized_pnl += pnl
 
             logger.info(
                 f"MARGIN SELL: P&L ₹{pnl:.2f}, "
                 f"released margin ₹{margin_to_release:.2f} for user {user_id[:8]}..."
             )
+
+        elif product_type == ProductType.SLB:
+            # SLB SELL: Check if closing long or opening short
+            is_closing_long = existing_position_qty is not None and existing_position_qty > 0
+
+            if is_closing_long:
+                # Closing long position - release margin and credit P&L
+                if entry_price:
+                    original_value = quantity * entry_price
+                    margin_to_release = min(funds.margin_used, original_value * margin_percent)
+                    pnl = trade_value - original_value - fees
+                else:
+                    margin_to_release = min(funds.margin_used, trade_value * margin_percent)
+                    pnl = -fees
+                    logger.warning("SLB SELL (close): No entry price provided")
+
+                if margin_to_release > 0:
+                    funds.margin_used -= margin_to_release
+
+                funds.cash_balance += pnl
+                funds.realized_pnl += pnl
+
+                logger.info(
+                    f"SLB SELL (close): P&L ₹{pnl:.2f}, released margin ₹{margin_to_release:.2f}"
+                )
+            else:
+                # Opening short position via SLB - block margin
+                margin_required = trade_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    raise ValueError(
+                        f"Insufficient margin for SLB short sell. "
+                        f"Required: ₹{margin_required:.2f}, Available: ₹{funds.available_cash:.2f}"
+                    )
+                funds.margin_used += margin_required
+                logger.debug(f"SLB SHORT: Blocked margin ₹{margin_required:.2f}")
 
     async def initialize_funds(
         self,
@@ -440,7 +527,7 @@ class DatabaseFundsProvider(FundsProvider):
         return Funds(
             available_cash=funds.available_cash,
             used_margin=funds.margin_used,
-            total_balance=funds.cash_balance + funds.margin_used,
+            total_balance=funds.cash_balance + funds.collateral,
             collateral=funds.collateral,
         )
 

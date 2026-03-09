@@ -12,7 +12,7 @@ from shared.strategies import register_all_prebuilt_strategies
 import engine.strategies  # noqa: F401
 from engine.config import settings
 from engine.core.redis import close_redis_pool
-from engine.routes import execution_router, health_router
+from engine.routes import execution_router, health_router, intraday_router
 
 # Configure logging
 logging.basicConfig(
@@ -139,6 +139,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health_router)
 app.include_router(execution_router)
+app.include_router(intraday_router)
 
 
 @app.get("/")

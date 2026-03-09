@@ -1,5 +1,92 @@
 # Release Notes
 
+## v1.5.3 (2026-03-09)
+
+### 🩳 Short Selling & Intraday Enhancements
+
+This release adds comprehensive short selling support including INTRADAY auto-square-off, short-specific strategies, SLB (Securities Lending & Borrowing) for multi-day shorts, unified funds calculation, and enhanced auto-trade configuration.
+
+**New Features:**
+
+#### INTRADAY Auto Square-Off (Section 2.9.1)
+- **Auto square-off task**: Automatically closes all INTRADAY positions at 3:15 PM IST before market close
+- **Safety check task**: Verifies no intraday positions remain after market close (3:35 PM IST)
+- **Square-off endpoint**: `POST /internal/square-off-intraday` for manual triggering
+- **Position count endpoint**: `GET /internal/intraday-positions-count` for monitoring
+- Retry logic for failed square-offs (critical for risk management)
+- Funds properly updated on square-off (margin release + P&L credit)
+
+#### Short-Specific Strategies (Section 2.9.2)
+- **SignalIntent enum**: New signal classification (OPEN_LONG, CLOSE_LONG, OPEN_SHORT, CLOSE_SHORT)
+- **SignalDirection enum**: Strategy-level direction control (LONG, SHORT, BOTH)
+- **MomentumShortStrategy**: Generates SHORT signals based on bearish momentum:
+  - Price below EMA200 (long-term downtrend)
+  - RSI overbought (reversal setup)
+  - MACD bearish crossover
+  - ADX strong downtrend (-DI > +DI)
+- **Executor validation**: Blocks OPEN_SHORT signals when product_type doesn't allow shorting
+
+#### SLB Support Foundation (Section 2.9.3)
+- **SLB ProductType**: Added to all product type enums (backend, trading-engine, shared)
+- **SLBPosition model**: Tracks borrowing details, fees, return dates, status
+- **Broker interface**: Added `get_slb_availability()`, `borrow_securities()`, `return_securities()` methods
+- **SLB worker tasks**:
+  - `accrue_slb_fees`: Daily fee accrual after market close
+  - `check_slb_expiry`: Warn users about approaching return dates
+  - `auto_close_expiring_slb`: Force close positions on expiry day
+
+#### Unified Funds Calculation (Section 2.9.4)
+- **Consistent formula** across all product types:
+  - `cash_balance = starting_balance + realized_pnl`
+  - `margin_used = SUM(blocked margin for open positions)`
+  - `available_cash = cash_balance - margin_used`
+- **starting_balance column**: Added to `user_funds` for accurate P&L tracking
+- **SLB funds handling**: Full support for SLB buy/sell with 50% margin
+
+#### Auto-Trade Enhancements (Section 2.9.5)
+- **product_type field**: Configure DELIVERY, INTRADAY, MARGIN, or SLB per auto-trade config
+- **signal_direction field**: Restrict to LONG, SHORT, or BOTH directions
+- **Frontend UI**: Product Type and Signal Direction selectors in saved screener dialog
+- **Validation**: SHORT/BOTH disabled when DELIVERY or MARGIN selected
+
+#### Short Position Exit Logic (Section 2.9.6)
+- **Stop Loss**: Triggers when price >= stop (price rises against short)
+- **Take Profit**: Triggers when price <= target (price falls in favor)
+- **Trailing Stop**: Tracks lowest price, triggers when price rises
+- **Profit Lock**: Lock price moves DOWN to protect profits
+
+**Bug Fixes:**
+
+- **Exit condition time window**: Fixed bug where exit conditions (SL/TP/trailing stop) were checked outside strategy's trading window
+- **Position product_type**: Store product_type on position at open time to prevent margin mismatch when strategy settings change
+- **Double P&L counting**: Fixed duplicate `update_realized_pnl` calls that caused incorrect cash_balance
+- **Funds widget**: Fixed missing `starting_balance`, `realized_pnl`, `unrealized_pnl` fields in FundsResponse
+
+**Database Migrations:**
+
+- `add_product_type_to_positions`: Product type column on algo_positions
+- `backfill_position_product_type`: Populate from strategy settings
+- `add_signal_direction`: Signal direction on user_strategies
+- `add_slb_positions`: SLB position tracking table
+- `add_starting_balance`: Starting balance on user_funds
+- `add_auto_trade_config_fields`: Product type/direction on auto_trade_configs
+
+**New Files:**
+
+- `worker/worker/tasks/intraday.py` - INTRADAY square-off tasks
+- `worker/worker/tasks/slb.py` - SLB fee accrual and expiry tasks
+- `trading-engine/engine/routes/intraday.py` - Square-off endpoints
+- `shared/shared/strategies/short/momentum_short.py` - Bearish momentum strategy
+
+**Testing:**
+
+- All 399 backend tests pass
+- All 81 trading-engine tests pass
+- Auto square-off tested successfully (3 positions closed at 3:15 PM)
+- Funds calculation verified for all product types
+
+---
+
 ## v1.5.2 (2026-03-05)
 
 ### 🔧 Funds Calculation Fix & Sentiment Display

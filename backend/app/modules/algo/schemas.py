@@ -10,6 +10,7 @@ from app.modules.algo.models import (
     PositionSizingMethod,
     ProfitCutoffAction,
     ScheduleType,
+    SignalDirection,
     StrategyProductType,
     StrategyStatus,
 )
@@ -351,6 +352,8 @@ class StrategyCreate(BaseModel):
     is_paper_trading: bool = True
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection = SignalDirection.LONG
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -395,6 +398,8 @@ class StrategyUpdate(BaseModel):
     is_paper_trading: bool | None = None
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType | None = None
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
@@ -454,6 +459,8 @@ class StrategyResponse(BaseModel):
     is_paper_trading: bool
     # Product type for orders (CNC/MIS/MTF)
     product_type: StrategyProductType
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -575,6 +582,7 @@ class StrategyResponse(BaseModel):
             "profit_cutoff_action": obj.profit_cutoff_action,
             "is_paper_trading": obj.is_paper_trading,
             "product_type": obj.product_type,
+            "signal_direction": obj.signal_direction,
             "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
             "default_trailing_stop_pct": obj.default_trailing_stop_pct,
             "default_profit_booking_rules": (
@@ -1180,6 +1188,16 @@ class AutoTradeConfigCreate(BaseModel):
         description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
         pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
     )
+    product_type: str = Field(
+        default="INTRADAY",
+        pattern="^(DELIVERY|INTRADAY|MARGIN|SLB)$",
+        description="Product type for created strategies",
+    )
+    signal_direction: str = Field(
+        default="LONG",
+        pattern="^(LONG|SHORT|BOTH)$",
+        description="Signal direction for created strategies",
+    )
 
 
 class AutoTradeConfigUpdate(BaseModel):
@@ -1203,6 +1221,16 @@ class AutoTradeConfigUpdate(BaseModel):
         description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
         pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
     )
+    product_type: str | None = Field(
+        default=None,
+        pattern="^(DELIVERY|INTRADAY|MARGIN|SLB)$",
+        description="Product type for created strategies",
+    )
+    signal_direction: str | None = Field(
+        default=None,
+        pattern="^(LONG|SHORT|BOTH)$",
+        description="Signal direction for created strategies",
+    )
 
 
 class AutoTradeConfigResponse(BaseModel):
@@ -1225,6 +1253,10 @@ class AutoTradeConfigResponse(BaseModel):
     preset_category: str | None
     saved_screener_id: str | None
     run_time: str | None = Field(default="09:20", description="Scheduled run time in HH:MM format")
+    product_type: str = Field(default="INTRADAY", description="Product type for created strategies")
+    signal_direction: str = Field(
+        default="LONG", description="Signal direction for created strategies"
+    )
     created_at: datetime
     updated_at: datetime
 

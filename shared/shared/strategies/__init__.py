@@ -35,6 +35,7 @@ from shared.strategies.prebuilt import (
     register_all_prebuilt_strategies,
 )
 from shared.strategies.registry import StrategyRegistry
+from shared.strategies.short import MomentumShortStrategy
 from shared.strategies.swing import PriceActionVolumeSwingStrategy
 
 __all__ = [
@@ -62,6 +63,8 @@ __all__ = [
     "TWAPStrategy",
     "TWAPSlice",
     "TWAPPlan",
+    # Short strategies
+    "MomentumShortStrategy",
     # Swing
     "PriceActionVolumeSwingStrategy",
     # Prebuilt

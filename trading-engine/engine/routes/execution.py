@@ -25,6 +25,7 @@ from engine.core.locks import (
 from engine.core.redis import get_redis
 from engine.models.algo import (
     PositionSizingMethod,
+    SignalDirection,
     StrategyStatus,
     UserStrategy,
 )
@@ -204,15 +205,15 @@ async def _update_funds_for_closed_positions(
                 f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
             )
 
-            # Accumulate realized P&L
+            # Accumulate for logging
             if pos.realized_pnl:
                 total_realized_pnl += Decimal(str(pos.realized_pnl))
 
-        # Update cumulative realized P&L in user funds
+        # Note: realized_pnl is now updated inside update_funds_for_trade
+        # Just log the total
         if total_realized_pnl != Decimal("0"):
-            await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
             logger.info(
-                f"Updated realized P&L for user {user_id[:8]}...: "
+                f"Total realized P&L for user {user_id[:8]}...: "
                 f"{'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
             )
 
@@ -298,6 +299,7 @@ class ExecuteStrategyRequest(BaseModel):
     risk_per_trade_percent: float = 2.0
     is_paper_trading: bool = True
     product_type: str = "DELIVERY"
+    signal_direction: str = "LONG"  # LONG, SHORT, or BOTH
     # Trading time window (optional)
     trading_start_time: str | None = None  # Format: HH:MM:SS
     trading_end_time: str | None = None  # Format: HH:MM:SS
@@ -359,6 +361,7 @@ async def execute_strategy_full(
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
             product_type=ProductType.normalize(request.product_type),
+            signal_direction=SignalDirection(request.signal_direction),
             # Trading time window configuration
             trading_start_time=start_time,
             trading_end_time=end_time,
@@ -562,6 +565,7 @@ async def run_scheduled_strategies(
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
                         product_type=ProductType.normalize(strategy.product_type.value),
+                        signal_direction=strategy.signal_direction or SignalDirection.LONG,
                         # Trading time window configuration
                         trading_start_time=strategy.trading_start_time,
                         trading_end_time=strategy.trading_end_time,
@@ -804,6 +808,7 @@ async def execute_strategy_by_id(
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
             product_type=ProductType.normalize(strategy.product_type.value),
+            signal_direction=strategy.signal_direction or SignalDirection.LONG,
             # Trading time window configuration
             trading_start_time=strategy.trading_start_time,
             trading_end_time=strategy.trading_end_time,

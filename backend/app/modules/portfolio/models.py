@@ -200,6 +200,11 @@ class UserFunds(Base):
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
 
+    # Initial balance when account was created (for P&L tracking)
+    starting_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("100000")
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

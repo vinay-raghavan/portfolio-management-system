@@ -28,9 +28,11 @@ from engine.models.algo import (
     ExecutionStatus,
     Order,
     PositionSizingMethod,
+    SignalDirection,
     StrategyExecution,
+    StrategyProductType,
 )
-from engine.models.signals import SignalData, SignalType
+from engine.models.signals import SignalData, SignalIntent, SignalType
 from engine.providers.broker import Broker
 from engine.providers.data import DataProvider
 from engine.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
@@ -78,6 +80,8 @@ class StrategyConfig:
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
     product_type: ProductType = ProductType.DELIVERY
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection = SignalDirection.LONG
     # Trading time window fields
     trading_start_time: time | None = None
     trading_end_time: time | None = None
@@ -317,6 +321,44 @@ class StrategyExecutor:
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
+        # Check if signal direction is allowed by strategy configuration
+        if config.signal_direction == SignalDirection.LONG:
+            # LONG only: block SHORT signals
+            if signal.intent in (SignalIntent.OPEN_SHORT, SignalIntent.CLOSE_SHORT):
+                logger.debug(
+                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is LONG only"
+                )
+                return None
+        elif config.signal_direction == SignalDirection.SHORT:
+            # SHORT only: block LONG signals
+            if signal.intent in (SignalIntent.OPEN_LONG, SignalIntent.CLOSE_LONG):
+                logger.debug(
+                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is SHORT only"
+                )
+                return None
+        # BOTH: allow all signals
+
+        # Check if signal intent is compatible with product type
+        if signal.intent == SignalIntent.OPEN_SHORT:
+            # Short selling requires INTRADAY or SLB product type
+            if config.product_type not in (
+                StrategyProductType.INTRADAY,
+                StrategyProductType.SLB,
+            ):
+                logger.warning(
+                    f"Cannot open SHORT for {signal.symbol}: "
+                    f"{config.product_type.value} does not allow short selling. "
+                    f"Use INTRADAY or SLB product type."
+                )
+                return {
+                    "symbol": signal.symbol,
+                    "status": "BLOCKED",
+                    "reason": (
+                        f"Short selling not allowed with {config.product_type.value}. "
+                        f"Switch to INTRADAY or SLB product type."
+                    ),
+                }
+
         # Calculate position size (async to fetch funds for percent-based sizing)
         quantity = await self._calculate_position_size(config, signal)
         if quantity <= 0:
@@ -587,15 +629,15 @@ class StrategyExecutor:
                     f"pnl={pos.realized_pnl}, product_type={product_type.value}"
                 )
 
-                # Accumulate realized P&L
+                # Accumulate for logging
                 if pos.realized_pnl:
                     total_realized_pnl += Decimal(str(pos.realized_pnl))
 
-            # Update cumulative realized P&L in user funds
+            # Note: realized_pnl is now updated inside update_funds_for_trade
+            # Just log the total
             if total_realized_pnl != Decimal("0"):
-                await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
                 logger.info(
-                    f"Updated realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
+                    f"Total realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
                 )
 
         except Exception as e:
@@ -743,19 +785,27 @@ class StrategyExecutor:
                                 algo_position_model=AlgoPosition,
                             )
 
-                            # Update realized P&L in user funds when positions are closed
-                            if pnl_stats.trades_closed > 0 and pnl_stats.total_pnl != Decimal("0"):
-                                await funds_provider.update_realized_pnl(
-                                    config.user_id, pnl_stats.total_pnl
+                            # Update funds based on whether position was opened or closed
+                            if pnl_stats.trades_closed > 0 and position_result:
+                                # Position was closed - release margin and credit P&L
+                                # Determine the side (opposite of what was done to close)
+                                close_side = "SELL" if order_data.get("side") == "SELL" else "BUY"
+                                await funds_provider.update_funds_for_trade(
+                                    user_id=config.user_id,
+                                    side=close_side,
+                                    quantity=Decimal(str(position_result.quantity)),
+                                    price=Decimal(str(filled_price)),
+                                    fees=Decimal("0"),
+                                    product_type=config.product_type,
+                                    existing_position_qty=Decimal(str(position_result.quantity)),
+                                    entry_price=position_result.entry_price,
                                 )
                                 logger.info(
-                                    f"Updated realized P&L for user {config.user_id[:8]}...: "
-                                    f"+₹{pnl_stats.total_pnl:.2f}"
+                                    f"Released margin for closed position {order_data.get('symbol')}: "
+                                    f"pnl={pnl_stats.total_pnl:.2f}, product_type={config.product_type.value}"
                                 )
 
-                            # Block margin when opening/adding to positions
-                            # (trades_closed == 0 means position was opened, not closed)
-                            if pnl_stats.trades_closed == 0 and position_result:
+                            elif pnl_stats.trades_closed == 0 and position_result:
                                 order_side = order_data.get("side", "BUY")
                                 order_qty = Decimal(str(order_data.get("quantity", 0)))
                                 order_price = Decimal(str(filled_price))

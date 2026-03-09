@@ -284,6 +284,9 @@ async def get_funds(
         available_cash=funds.available_cash,
         total_balance=funds.total_balance,
         available_margin=funds.available_margin,
+        starting_balance=funds.starting_balance,
+        realized_pnl=funds.realized_pnl,
+        unrealized_pnl=funds.unrealized_pnl,
     )
 
 
@@ -308,6 +311,9 @@ async def deposit_funds(
         available_cash=funds.available_cash,
         total_balance=funds.total_balance,
         available_margin=funds.available_margin,
+        starting_balance=funds.starting_balance,
+        realized_pnl=funds.realized_pnl,
+        unrealized_pnl=funds.unrealized_pnl,
     )
 
 
@@ -333,6 +339,9 @@ async def withdraw_funds(
             available_cash=funds.available_cash,
             total_balance=funds.total_balance,
             available_margin=funds.available_margin,
+            starting_balance=funds.starting_balance,
+            realized_pnl=funds.realized_pnl,
+            unrealized_pnl=funds.unrealized_pnl,
         )
     except ValueError as e:
         raise HTTPException(
@@ -389,6 +398,9 @@ async def reset_funds(
         available_cash=funds.available_cash,
         total_balance=funds.total_balance,
         available_margin=funds.available_margin,
+        starting_balance=funds.starting_balance,
+        realized_pnl=funds.realized_pnl,
+        unrealized_pnl=funds.unrealized_pnl,
     )
 
 
