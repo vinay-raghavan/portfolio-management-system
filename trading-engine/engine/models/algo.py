@@ -83,6 +83,11 @@ class UserFunds(Base):
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
 
+    # Initial balance when account was created (for P&L tracking)
+    starting_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("100000")
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -222,11 +227,26 @@ class StrategyProductType(str, Enum):
     - DELIVERY (CNC): Full payment required, no shorting, hold indefinitely
     - INTRADAY (MIS): Margin required (25%), shorting allowed, must square off same day
     - MARGIN (MTF): Margin required (50%) + interest, leveraged buying only, no shorting
+    - SLB: Securities Lending & Borrowing, multi-day shorting with borrowing fee
     """
 
     DELIVERY = "DELIVERY"  # CNC - Cash and Carry (default, safest)
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
     MARGIN = "MARGIN"  # MTF - Margin Trading Facility
+    SLB = "SLB"  # Securities Lending & Borrowing (multi-day short selling)
+
+
+class SignalDirection(str, Enum):
+    """Direction of signals the strategy will generate.
+
+    - LONG: Only generate BUY signals (go long)
+    - SHORT: Only generate SELL signals to open short positions (requires INTRADAY/SLB)
+    - BOTH: Generate both LONG and SHORT signals based on market conditions
+    """
+
+    LONG = "LONG"  # Only long positions (default, safest)
+    SHORT = "SHORT"  # Only short positions (requires INTRADAY or SLB)
+    BOTH = "BOTH"  # Both directions (requires INTRADAY or SLB)
 
 
 class UserStrategy(Base):
@@ -257,6 +277,13 @@ class UserStrategy(Base):
         SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
         nullable=False,
         default=StrategyProductType.DELIVERY,
+    )
+
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: Mapped[SignalDirection] = mapped_column(
+        SQLEnum(SignalDirection, name="signaldirection", create_type=False),
+        nullable=False,
+        default=SignalDirection.LONG,
     )
 
     strategy_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -512,6 +539,12 @@ class AlgoPosition(Base):
         SQLEnum(PositionStatus, name="positionstatus", create_type=False),
         nullable=False,
         default=PositionStatus.OPEN,
+    )
+
+    # Product type at time of position opening (to ensure correct margin handling on close)
+    product_type: Mapped[StrategyProductType | None] = mapped_column(
+        SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
+        nullable=True,  # Nullable for backward compatibility with existing positions
     )
 
     # Entry details

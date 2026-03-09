@@ -717,7 +717,7 @@ export const settingsApi = {
 // ============================================================================
 
 export type FilterType = 'volume' | 'momentum' | 'breakout' | 'consolidation' | 'moving_average' | 'price_action';
-export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation' | 'minervini';
+export type ScreenerPresetType = 'momentum' | 'breakout' | 'consolidation' | 'value' | 'sector_rotation' | 'minervini' | 'bearish_short';
 export type StrictnessLevel = 'strict' | 'moderate' | 'relaxed' | 'exploratory';
 export type RecommendationCategory = 'momentum' | 'breakout' | 'pullback' | 'sector';
 

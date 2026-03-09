@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from redis.asyncio import Redis
+from shared.utils.time_window import TimeWindowValidator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
@@ -24,6 +25,7 @@ from engine.core.locks import (
 from engine.core.redis import get_redis
 from engine.models.algo import (
     PositionSizingMethod,
+    SignalDirection,
     StrategyStatus,
     UserStrategy,
 )
@@ -36,10 +38,33 @@ from engine.strategies.registry import StrategyRegistry
 logger = logging.getLogger(__name__)
 
 
+def _is_within_strategy_time_window(strategy: UserStrategy) -> tuple[bool, str]:
+    """Check if current time is within the strategy's trading time window.
+
+    Args:
+        strategy: The strategy to check
+
+    Returns:
+        Tuple of (is_within_window, reason_if_not)
+    """
+    # If no time window is configured, always allow
+    if not strategy.trading_start_time and not strategy.trading_end_time:
+        return True, ""
+
+    validator = TimeWindowValidator()
+    return validator.is_within_window(
+        start_time=strategy.trading_start_time,
+        end_time=strategy.trading_end_time,
+        timezone=strategy.trading_timezone or "Asia/Kolkata",
+        active_days=strategy.active_trading_days or [0, 1, 2, 3, 4],
+    )
+
+
 async def _check_exit_conditions_for_strategy(
     db: AsyncSession,
     strategy: UserStrategy,
     data_provider: DataProvider,
+    respect_time_window: bool = True,
 ) -> tuple[list[PositionResult], PnLStats]:
     """Check exit conditions (SL/TP/profit booking) for a strategy's open positions.
 
@@ -47,14 +72,30 @@ async def _check_exit_conditions_for_strategy(
     cooldown, etc. to ensure profit booking rules and exit conditions are still
     evaluated.
 
+    However, if the strategy has a time window configured and respect_time_window
+    is True, exit conditions will NOT be checked outside the trading window.
+    This prevents positions from being closed at times the user didn't expect
+    (e.g., stop loss triggered at 9:20 when strategy is set to trade 9:45-15:15).
+
     Args:
         db: Database session
         strategy: The strategy to check
         data_provider: Data provider to fetch current prices
+        respect_time_window: If True, skip exit checks outside strategy's time window
 
     Returns:
         Tuple of (closed positions, aggregated PnL stats)
     """
+    # Check if we should respect the strategy's time window
+    if respect_time_window:
+        is_within_window, reason = _is_within_strategy_time_window(strategy)
+        if not is_within_window:
+            logger.debug(
+                f"Skipping exit check for strategy {strategy.id[:8]}...: "
+                f"Outside time window - {reason}"
+            )
+            return [], PnLStats()
+
     position_tracker = PositionTracker(db)
     open_positions = await position_tracker.get_all_open_positions(
         strategy.id, strategy.user_id, include_partial=True
@@ -91,11 +132,14 @@ async def _check_exit_conditions_for_strategy(
         )
 
         # Update user funds for closed positions (credit proceeds, release margin, update P&L)
+        # Note: Each position stores its own product_type, which is used for margin handling.
+        # The strategy's current product_type is passed as a fallback for legacy positions
+        # that don't have product_type stored.
         await _update_funds_for_closed_positions(
             db=db,
             user_id=strategy.user_id,
             closed_positions=closed_positions,
-            product_type=strategy.product_type or ProductType.DELIVERY,
+            default_product_type=strategy.product_type or ProductType.DELIVERY,
         )
 
     return closed_positions, pnl_stats
@@ -105,7 +149,7 @@ async def _update_funds_for_closed_positions(
     db: AsyncSession,
     user_id: str,
     closed_positions: list[PositionResult],
-    product_type: ProductType = ProductType.DELIVERY,
+    default_product_type: ProductType = ProductType.DELIVERY,
 ) -> None:
     """Update user funds when positions are closed via SL/TP/trailing stop.
 
@@ -118,7 +162,7 @@ async def _update_funds_for_closed_positions(
         db: Database session
         user_id: User ID
         closed_positions: List of PositionResult objects from closed positions
-        product_type: Product type for margin handling
+        default_product_type: Fallback product type if position doesn't have one stored
     """
     from shared.providers.funds import DatabaseFundsProvider
 
@@ -140,6 +184,10 @@ async def _update_funds_for_closed_positions(
             side = "SELL" if pos.side == "LONG" else "BUY"
             exit_price = pos.exit_price if pos.exit_price else Decimal("0")
 
+            # Use position's product_type if available, otherwise use default
+            # This ensures correct margin handling even if strategy's product_type changed
+            pos_product_type = pos.product_type or default_product_type
+
             # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
@@ -147,24 +195,25 @@ async def _update_funds_for_closed_positions(
                 quantity=Decimal(str(pos.quantity)),
                 price=exit_price,
                 fees=Decimal("0"),  # Fees handled separately
-                product_type=product_type,
+                product_type=pos_product_type,
                 existing_position_qty=Decimal(str(pos.quantity)),  # Closing position
                 entry_price=pos.entry_price,  # Required for P&L calculation
             )
             logger.debug(
                 f"Updated funds for closed position {pos.symbol}: "
-                f"side={side}, qty={pos.quantity}, price={exit_price}, pnl={pos.realized_pnl}"
+                f"side={side}, qty={pos.quantity}, price={exit_price}, "
+                f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
             )
 
-            # Accumulate realized P&L
+            # Accumulate for logging
             if pos.realized_pnl:
                 total_realized_pnl += Decimal(str(pos.realized_pnl))
 
-        # Update cumulative realized P&L in user funds
+        # Note: realized_pnl is now updated inside update_funds_for_trade
+        # Just log the total
         if total_realized_pnl != Decimal("0"):
-            await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
             logger.info(
-                f"Updated realized P&L for user {user_id[:8]}...: "
+                f"Total realized P&L for user {user_id[:8]}...: "
                 f"{'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
             )
 
@@ -250,6 +299,7 @@ class ExecuteStrategyRequest(BaseModel):
     risk_per_trade_percent: float = 2.0
     is_paper_trading: bool = True
     product_type: str = "DELIVERY"
+    signal_direction: str = "LONG"  # LONG, SHORT, or BOTH
     # Trading time window (optional)
     trading_start_time: str | None = None  # Format: HH:MM:SS
     trading_end_time: str | None = None  # Format: HH:MM:SS
@@ -311,6 +361,7 @@ async def execute_strategy_full(
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
             product_type=ProductType.normalize(request.product_type),
+            signal_direction=SignalDirection(request.signal_direction),
             # Trading time window configuration
             trading_start_time=start_time,
             trading_end_time=end_time,
@@ -514,6 +565,7 @@ async def run_scheduled_strategies(
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
                         product_type=ProductType.normalize(strategy.product_type.value),
+                        signal_direction=strategy.signal_direction or SignalDirection.LONG,
                         # Trading time window configuration
                         trading_start_time=strategy.trading_start_time,
                         trading_end_time=strategy.trading_end_time,
@@ -756,6 +808,7 @@ async def execute_strategy_by_id(
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
             product_type=ProductType.normalize(strategy.product_type.value),
+            signal_direction=strategy.signal_direction or SignalDirection.LONG,
             # Trading time window configuration
             trading_start_time=strategy.trading_start_time,
             trading_end_time=strategy.trading_end_time,

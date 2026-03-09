@@ -156,18 +156,18 @@ function ParameterInput({ param, value, onChange }: ParameterInputProps) {
         <Label htmlFor={param.name} className="text-xs font-medium">
           {formatParamName(param.name)}
         </Label>
-        {param.description && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[200px]">
-                <p className="text-xs">{param.description}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[350px]">
+              <p className="text-xs whitespace-pre-wrap">
+                {param.description || 'No description available'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {param.type === 'bool' ? (

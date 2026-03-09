@@ -29,6 +29,7 @@ from app.modules.screener.schemas import (
     ScreenerPresetType,
     ScreenerResultItem,
     ScreenerRunResponse,
+    SignalDirectionEnum,
     StrictnessLevel,
     get_score_description,
     get_score_grade,
@@ -86,6 +87,31 @@ STRICTNESS_MODIFIERS = {
         StrictnessLevel.EXPLORATORY: 0.0,  # disabled
     },
 }
+
+
+def _detect_signal_direction(filters: list[FilterConfig]) -> SignalDirectionEnum:
+    """Detect signal direction based on filter configuration.
+
+    Returns SHORT if bearish filters are detected, otherwise LONG.
+    """
+    for f in filters:
+        params = f.params or {}
+
+        # Check for bearish momentum mode
+        if (
+            f.filter_type == FilterTypeEnum.MOMENTUM
+            and params.get("momentum_mode") == "bearish_short"
+        ):
+            return SignalDirectionEnum.SHORT
+
+        # Check for below trend MA (bearish)
+        if f.filter_type == FilterTypeEnum.MOVING_AVERAGE and params.get(
+            "require_below_trend", False
+        ):
+            return SignalDirectionEnum.SHORT
+
+    return SignalDirectionEnum.LONG
+
 
 # Boolean params that should be disabled at certain strictness levels
 STRICTNESS_BOOL_OVERRIDES = {
@@ -461,6 +487,39 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
             ),
         ],
     ),
+    # Bearish Short Screener - Find stocks to SHORT SELL
+    # ⚠️ Requires INTRADAY or SLB product type!
+    ScreenerPresetType.BEARISH_SHORT: ScreenerPresetInfo(
+        preset=ScreenerPresetType.BEARISH_SHORT,
+        name="⚠️ Bearish Short Screener",
+        description=(
+            "Find weak stocks for SHORT SELLING. ⚠️ Requires INTRADAY (MIS) or SLB product type!"
+        ),
+        filters=[
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 100000},  # Need liquidity for shorting
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOMENTUM,
+                params={
+                    "momentum_mode": "bearish_short",
+                    "rsi_overbought": 70,
+                    "min_roc": -5,  # Looking for negative momentum
+                },
+                weight=2.5,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={
+                    "require_below_trend": True,  # Below 200MA
+                    "trend_ma": 200,
+                },
+                weight=2.0,
+            ),
+        ],
+    ),
 }
 
 
@@ -712,6 +771,9 @@ class ScreenerService:
             grade_description = get_score_description(score)
             reasons_detailed = _generate_detailed_reasons(r.metadata, r.filter_scores)
 
+            # Detect signal direction from filters
+            signal_direction = _detect_signal_direction(filters)
+
             result_items.append(
                 ScreenerResultItem(
                     symbol=r.symbol,
@@ -720,6 +782,7 @@ class ScreenerService:
                     grade=grade,
                     grade_description=grade_description,
                     passed=r.passed,
+                    signal_direction=signal_direction,
                     filter_scores=r.filter_scores,
                     reasons=r.reasons,
                     reasons_detailed=reasons_detailed,

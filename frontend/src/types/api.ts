@@ -635,7 +635,8 @@ export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' 
 export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'CLOSE_POSITIONS_AND_CONTINUE' | 'NOTIFY_ONLY';
-export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB';
+export type SignalDirection = 'LONG' | 'SHORT' | 'BOTH';
 
 export interface AlgoStrategy {
   id: string;
@@ -662,6 +663,8 @@ export interface AlgoStrategy {
   is_paper_trading: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
@@ -704,6 +707,8 @@ export interface AlgoStrategyCreate {
   is_paper_trading?: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type?: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction?: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
@@ -738,6 +743,8 @@ export interface AlgoStrategyUpdate {
   is_paper_trading?: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type?: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction?: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
@@ -1822,6 +1829,8 @@ export interface AutoTradeConfig {
   preset_category: string | null;
   saved_screener_id: string | null;
   run_time: string | null; // HH:MM format for scheduled run time
+  product_type: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction: string; // 'LONG' | 'SHORT' | 'BOTH'
   created_at: string;
   updated_at: string;
   template?: StrategyTemplate | null;
@@ -1843,6 +1852,8 @@ export interface AutoTradeConfigCreate {
   preset_category?: string | null;
   saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
+  product_type?: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction?: string; // 'LONG' | 'SHORT' | 'BOTH'
 }
 
 export interface AutoTradeConfigUpdate {
@@ -1860,6 +1871,8 @@ export interface AutoTradeConfigUpdate {
   preset_category?: string | null;
   saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
+  product_type?: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction?: string; // 'LONG' | 'SHORT' | 'BOTH'
 }
 
 export interface WeightConfigUpdate {

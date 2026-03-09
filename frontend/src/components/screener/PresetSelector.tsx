@@ -1,6 +1,6 @@
 'use client';
 
-import { Zap, TrendingUp, Target, BarChart3, Layers, Award, Settings2 } from 'lucide-react';
+import { Zap, TrendingUp, TrendingDown, Target, BarChart3, Layers, Award, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -76,6 +76,13 @@ const PRESETS: PresetInfo[] = [
     description: 'Leaders in strong performing sectors',
     icon: <Layers className="h-5 w-5" />,
     color: 'text-cyan-500',
+  },
+  {
+    type: 'bearish_short',
+    name: '⚠️ Short Sell',
+    description: 'Weak stocks for shorting (MIS/SLB only)',
+    icon: <TrendingDown className="h-5 w-5" />,
+    color: 'text-red-500',
   },
 ];
 

@@ -22,6 +22,8 @@ class TradingIntent(str, Enum):
     BREAKOUT = "breakout"
     TREND_FOLLOWING = "trend_following"
     SWING = "swing"
+    SHORT_MOMENTUM = "short_momentum"  # Bearish momentum for short selling
+    SHORT_BREAKDOWN = "short_breakdown"  # Support breakdown for short selling
 
 
 class RiskProfile(str, Enum):
@@ -94,6 +96,10 @@ STRATEGY_INFO = {
         "name": "Price Action Volume Swing",
         "description": "Swing trading with price action and volume confirmation",
     },
+    "momentum_short": {
+        "name": "Momentum Short",
+        "description": "Bearish momentum signals for short selling (requires INTRADAY/SLB)",
+    },
 }
 
 
@@ -111,6 +117,11 @@ class FilterContext:
     require_volume_spike: bool = False
     require_stacked_ma: bool = False
     require_trend_up: bool = False
+
+    # Bearish/short selling detection
+    is_bearish: bool = False  # Explicit bearish setup for shorting
+    below_trend_ma: bool = False  # Price below 200MA
+    near_52w_low: bool = False  # Price near 52-week low
 
     # Parameter values for derivation
     rsi_oversold: float = 30
@@ -173,7 +184,11 @@ class StrategyInferenceEngine:
                 context.near_52w_high_pct = params.get("near_52w_high_pct", 25)
                 context.min_pct_above_52w_low = params.get("min_pct_above_52w_low", 30)
 
-                if context.momentum_mode == "bullish":
+                # Detect bearish momentum for short selling
+                if context.momentum_mode == "bearish_short":
+                    context.is_bearish = True
+                    context.detected_patterns.append("Bearish momentum setup (SHORT)")
+                elif context.momentum_mode == "bullish":
                     context.detected_patterns.append("Bullish momentum setup")
                 elif context.momentum_mode == "bearish":
                     context.detected_patterns.append("Mean reversion / oversold setup")
@@ -200,11 +215,16 @@ class StrategyInferenceEngine:
                 context.has_moving_average = True
                 context.require_stacked_ma = params.get("require_stacked_ma", False)
                 context.require_trend_up = params.get("require_trend_up", False)
+                require_below_trend = params.get("require_below_trend", False)
 
                 if context.require_stacked_ma:
                     context.detected_patterns.append("Stacked MAs (Minervini template)")
                 if context.require_trend_up:
                     context.detected_patterns.append("Upward trending 200MA")
+                if require_below_trend:
+                    context.below_trend_ma = True
+                    context.is_bearish = True
+                    context.detected_patterns.append("Below 200MA (bearish trend)")
 
         return context
 
@@ -215,10 +235,15 @@ class StrategyInferenceEngine:
         risk_profile = RiskProfile.MODERATE
 
         # Determine primary intent
-        if context.has_breakout and context.require_volume_spike:
+        # Check for SHORT SELLING intent first (requires explicit bearish setup)
+        if context.is_bearish and (context.below_trend_ma or context.has_momentum):
+            primary_intent = TradingIntent.SHORT_MOMENTUM
+            risk_profile = RiskProfile.AGGRESSIVE
+        elif context.has_breakout and context.require_volume_spike:
             primary_intent = TradingIntent.BREAKOUT
             risk_profile = RiskProfile.AGGRESSIVE
         elif context.has_momentum and context.momentum_mode == "bearish":
+            # Standard mean reversion (buy oversold), not shorting
             primary_intent = TradingIntent.MEAN_REVERSION
             risk_profile = RiskProfile.MODERATE
         elif context.require_stacked_ma or context.require_trend_up:
@@ -261,7 +286,28 @@ class StrategyInferenceEngine:
 
         intent = analysis.primary_intent
 
-        if intent == TradingIntent.BREAKOUT:
+        if intent == TradingIntent.SHORT_MOMENTUM:
+            strategy_type = "momentum_short"
+            confidence = 0.82
+            reasoning = [
+                "⚠️ SHORT SELLING strategy - requires INTRADAY or SLB product type",
+                "Bearish momentum signals detected (below trend, weak momentum)",
+                "Uses EMA, RSI, MACD, ADX for bearish confirmation",
+                "Stop loss above entry, take profit below entry",
+            ]
+            params = {
+                "ema_fast": 21,
+                "ema_slow": 50,
+                "ema_trend": 200,
+                "rsi_period": context.rsi_period,
+                "rsi_overbought": int(context.rsi_overbought),
+                "adx_threshold": 25,
+                "atr_stop_multiplier": 1.5,
+                "risk_reward_ratio": 2.0,
+                "min_score": 3,
+            }
+
+        elif intent == TradingIntent.BREAKOUT:
             strategy_type = "vwap_momentum"
             confidence = 0.85
             reasoning = [

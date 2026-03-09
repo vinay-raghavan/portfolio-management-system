@@ -40,6 +40,7 @@ class ScreenerPresetType(str, Enum):
     VALUE = "value"
     SECTOR_ROTATION = "sector_rotation"
     MINERVINI = "minervini"  # Mark Minervini Trend Template
+    BEARISH_SHORT = "bearish_short"  # Bearish momentum for short selling
 
 
 class StrictnessLevel(str, Enum):
@@ -124,6 +125,13 @@ class ScreenerPresetRunRequest(BaseModel):
     top_n: int = Field(default=50, ge=1, le=500)
 
 
+class SignalDirectionEnum(str, Enum):
+    """Direction of the signal for a screener result."""
+
+    LONG = "LONG"  # Bullish signal - buy
+    SHORT = "SHORT"  # Bearish signal - short sell
+
+
 class ScreenerResultItem(BaseModel):
     """Single stock result from screener."""
 
@@ -133,6 +141,10 @@ class ScreenerResultItem(BaseModel):
     grade: str = Field(default="", description="Letter grade (A+, A, B, C, D, F)")
     grade_description: str = Field(default="", description="Verbal interpretation of score")
     passed: bool
+    signal_direction: SignalDirectionEnum = Field(
+        default=SignalDirectionEnum.LONG,
+        description="Signal direction: LONG (buy) or SHORT (sell)",
+    )
     filter_scores: dict[str, float] = Field(default_factory=dict)
     reasons: list[str] = Field(default_factory=list)
     reasons_detailed: list[str] = Field(

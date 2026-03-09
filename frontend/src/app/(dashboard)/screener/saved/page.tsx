@@ -336,6 +336,8 @@ function AutoTradeSettingsModal({
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [minConfidence, setMinConfidence] = useState<ConfidenceLevelValue>('medium');
   const [maxPositions, setMaxPositions] = useState(3);
+  const [productType, setProductType] = useState<'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'>('INTRADAY');
+  const [signalDirection, setSignalDirection] = useState<'LONG' | 'SHORT' | 'BOTH'>('LONG');
 
   // Track previous screener ID to detect changes
   const prevScreenerIdRef = useRef<string | undefined>(undefined);
@@ -364,6 +366,8 @@ function AutoTradeSettingsModal({
       setTemplateId(existingConfig.strategy_template_id || null);
       setMinConfidence((existingConfig.min_confidence as ConfidenceLevelValue) || 'medium');
       setMaxPositions(existingConfig.max_positions_per_day || 3);
+      setProductType((existingConfig.product_type as 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB') || 'INTRADAY');
+      setSignalDirection((existingConfig.signal_direction as 'LONG' | 'SHORT' | 'BOTH') || 'LONG');
     }
   }, [existingConfig]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -388,6 +392,8 @@ function AutoTradeSettingsModal({
         screener_source_type: 'custom' as const,
         saved_screener_id: screener!.id,
         run_time: runTime,
+        product_type: productType,
+        signal_direction: signalDirection,
         // Default weights
         weight_technical: 50,
         weight_fundamental: 30,
@@ -574,6 +580,77 @@ function AutoTradeSettingsModal({
                         No templates yet. <Link href="/algo/templates" className="text-primary hover:underline">Create one</Link> to customize trading behavior.
                       </p>
                     )}
+                  </div>
+
+                  {/* Product Type & Signal Direction */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Product Type</Label>
+                      <Select value={productType} onValueChange={(v) => setProductType(v as 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB')}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INTRADAY">
+                            <div className="flex flex-col items-start">
+                              <span>Intraday (MIS)</span>
+                              <span className="text-xs text-muted-foreground">25% margin, auto square-off</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="DELIVERY">
+                            <div className="flex flex-col items-start">
+                              <span>Delivery (CNC)</span>
+                              <span className="text-xs text-muted-foreground">Full payment, hold overnight</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="MARGIN">
+                            <div className="flex flex-col items-start">
+                              <span>Margin (MTF)</span>
+                              <span className="text-xs text-muted-foreground">50% margin, multi-day</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="SLB">
+                            <div className="flex flex-col items-start">
+                              <span>SLB</span>
+                              <span className="text-xs text-muted-foreground">50% margin, short selling</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Signal Direction</Label>
+                      <Select value={signalDirection} onValueChange={(v) => setSignalDirection(v as 'LONG' | 'SHORT' | 'BOTH')}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LONG">
+                            <div className="flex flex-col items-start">
+                              <span>Long Only</span>
+                              <span className="text-xs text-muted-foreground">Buy and hold positions</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="SHORT" disabled={productType === 'DELIVERY' || productType === 'MARGIN'}>
+                            <div className="flex flex-col items-start">
+                              <span>Short Only</span>
+                              <span className="text-xs text-muted-foreground">Sell first, buy later</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="BOTH" disabled={productType === 'DELIVERY' || productType === 'MARGIN'}>
+                            <div className="flex flex-col items-start">
+                              <span>Both Directions</span>
+                              <span className="text-xs text-muted-foreground">Long and short based on signals</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(productType === 'DELIVERY' || productType === 'MARGIN') && signalDirection !== 'LONG' && (
+                        <p className="text-xs text-amber-600">
+                          SHORT/BOTH requires INTRADAY or SLB product type
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 

@@ -4,6 +4,8 @@ import inspect
 import logging
 from typing import TYPE_CHECKING
 
+from shared.strategies.parameter_metadata import PARAMETER_METADATA
+
 if TYPE_CHECKING:
     from shared.strategies.base import BaseStrategy
 
@@ -232,8 +234,19 @@ class StrategyRegistry:
                 else:
                     min_value, max_value = 0.0, 100.0
 
-            # Generate description from parameter name
-            description = param_name.replace("_", " ").title()
+            # Get description from metadata or generate from parameter name
+            meta = PARAMETER_METADATA.get(param_name, {})
+            if meta:
+                # Build rich description with unit and tuning guidance
+                desc_parts = [meta.get("description", "")]
+                if meta.get("unit"):
+                    desc_parts.append(f"Unit: {meta['unit']}")
+                if meta.get("tuning"):
+                    desc_parts.append(f"Tuning: {meta['tuning']}")
+                description = " | ".join(filter(None, desc_parts))
+            else:
+                # Fallback to title-cased parameter name
+                description = param_name.replace("_", " ").title()
 
             params.append(
                 {

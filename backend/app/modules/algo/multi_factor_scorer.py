@@ -86,6 +86,12 @@ STRATEGY_MAP = {
         "medium": "ma_crossover",
         "low": "trend_following",
     },
+    # Short selling strategies (requires INTRADAY or SLB product type)
+    "bearish_momentum": {
+        "high": "momentum_short",
+        "medium": "momentum_short",
+        "low": "momentum_short",
+    },
 }
 
 
