@@ -566,6 +566,9 @@ class AlgoPosition(Base):
         Index("ix_algo_positions_open", "status", "symbol"),
     )
 
+    # Relationship to SLB position (if opened via SLB)
+    slb_position = relationship("SLBPosition", back_populates="algo_position", uselist=False)
+
     def __repr__(self) -> str:
         return f"<AlgoPosition {self.side.value} {self.entry_quantity} {self.symbol} @ {self.entry_price} [{self.status.value}]>"
 
@@ -984,3 +987,95 @@ class PendingAutoTrade(Base):
 
     def __repr__(self) -> str:
         return f"<PendingAutoTrade {self.id} status={self.status} category={self.category}>"
+
+
+class SLBPositionStatus(str, Enum):
+    """Status of an SLB borrowing position."""
+
+    ACTIVE = "ACTIVE"  # Securities borrowed and short position active
+    RETURNED = "RETURNED"  # Securities returned to lender, position closed
+    DEFAULTED = "DEFAULTED"  # Failed to return by due date (penalty applies)
+
+
+class SLBPosition(Base):
+    """Track Securities Lending & Borrowing positions.
+
+    When a user opens a short position using SLB:
+    1. Securities are borrowed from the market via SLB mechanism
+    2. Borrowed securities are sold to open the short
+    3. Daily borrowing fee accrues based on borrow_rate
+    4. When closing, securities are bought back and returned to lender
+
+    This model tracks the SLB-specific details separate from the AlgoPosition
+    to handle borrowing fees, return dates, and SLB lifecycle.
+    """
+
+    __tablename__ = "slb_positions"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    algo_position_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("algo_positions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Borrowing details
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    borrow_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    return_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,  # Must return by this date
+    )
+
+    # Fee details (annualized rate, converted to daily)
+    borrow_rate: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,  # Annualized rate, e.g., 0.05 = 5%
+    )
+    daily_fee: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,  # Daily fee amount in currency
+    )
+    total_fee_accrued: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    # Status tracking
+    status: Mapped[SLBPositionStatus] = mapped_column(
+        SQLEnum(SLBPositionStatus, name="slbpositionstatus", create_type=False),
+        nullable=False,
+        default=SLBPositionStatus.ACTIVE,
+    )
+
+    # Broker reference for SLB position
+    broker_slb_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="slb_positions")
+    algo_position = relationship("AlgoPosition", back_populates="slb_position")
+
+    __table_args__ = (
+        Index("ix_slb_positions_user", "user_id"),
+        Index("ix_slb_positions_symbol", "symbol"),
+        Index("ix_slb_positions_status", "status"),
+        Index("ix_slb_positions_return_date", "return_date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SLBPosition {self.symbol} qty={self.quantity} status={self.status}>"
