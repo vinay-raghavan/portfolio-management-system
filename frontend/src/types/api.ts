@@ -636,6 +636,7 @@ export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'CLOSE_POSITIONS_AND_CONTINUE' | 'NOTIFY_ONLY';
 export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB';
+export type SignalDirection = 'LONG' | 'SHORT' | 'BOTH';
 
 export interface AlgoStrategy {
   id: string;
@@ -662,6 +663,8 @@ export interface AlgoStrategy {
   is_paper_trading: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
@@ -704,6 +707,8 @@ export interface AlgoStrategyCreate {
   is_paper_trading?: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type?: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction?: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
@@ -738,6 +743,8 @@ export interface AlgoStrategyUpdate {
   is_paper_trading?: boolean;
   // Product type for orders (CNC/MIS/MTF)
   product_type?: StrategyProductType;
+  // Signal direction (LONG/SHORT/BOTH)
+  signal_direction?: SignalDirection;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
