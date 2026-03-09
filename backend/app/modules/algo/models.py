@@ -1045,7 +1045,7 @@ class SLBPosition(Base):
     )
 
     # Borrowing details
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     borrow_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.now()
