@@ -47,13 +47,13 @@ def _is_within_strategy_time_window(strategy: UserStrategy) -> tuple[bool, str]:
         Tuple of (is_within_window, reason_if_not)
     """
     # If no time window is configured, always allow
-    if not strategy.time_window_start and not strategy.time_window_end:
+    if not strategy.trading_start_time and not strategy.trading_end_time:
         return True, ""
 
     validator = TimeWindowValidator()
     return validator.is_within_window(
-        start_time=strategy.time_window_start,
-        end_time=strategy.time_window_end,
+        start_time=strategy.trading_start_time,
+        end_time=strategy.trading_end_time,
         timezone=strategy.trading_timezone or "Asia/Kolkata",
         active_days=strategy.active_trading_days or [0, 1, 2, 3, 4],
     )
