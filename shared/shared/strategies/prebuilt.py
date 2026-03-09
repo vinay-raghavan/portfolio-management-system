@@ -6,6 +6,10 @@ These combine multiple indicators for higher-probability signals.
 
 from shared.strategies.composite import CompositeStrategy, CompositeStrategyFactory
 
+# Import short strategies to trigger their @StrategyRegistry.register decorators
+# This ensures they are registered when the prebuilt module is loaded
+from shared.strategies.short import MomentumShortStrategy as _MomentumShortStrategy  # noqa: F401
+
 
 def create_rsi_macd_confluence() -> CompositeStrategy:
     """RSI + MACD Confluence Strategy."""
