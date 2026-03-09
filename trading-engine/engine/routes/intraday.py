@@ -12,6 +12,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
+from shared.providers.funds.database_provider import DatabaseFundsProvider
+from shared.providers.schemas import ProductType
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +21,6 @@ from engine.config import settings
 from engine.core.database import get_db
 from engine.models.algo import AlgoPosition, PositionStatus, StrategyProductType, UserFunds
 from engine.providers.data import DataProvider, get_data_provider
-from shared.providers.funds.database_provider import DatabaseFundsProvider
-from shared.providers.schemas import ProductType
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,7 @@ async def square_off_intraday_positions(
                     continue
 
                 # Update funds - release margin and add P&L to cash balance
+                # Note: update_funds_for_trade now also updates realized_pnl internally
                 funds_provider = DatabaseFundsProvider(
                     db=db,
                     user_funds_model=UserFunds,
@@ -160,11 +161,6 @@ async def square_off_intraday_positions(
                     product_type=ProductType.INTRADAY,
                     existing_position_qty=Decimal(str(position.remaining_quantity)),
                     entry_price=position.entry_price,
-                )
-                # Also update realized_pnl tracking
-                await funds_provider.update_realized_pnl(
-                    user_id=user_id,
-                    pnl_amount=close_result.realized_pnl,
                 )
 
                 closed_positions.append(

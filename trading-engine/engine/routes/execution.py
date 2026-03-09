@@ -205,15 +205,15 @@ async def _update_funds_for_closed_positions(
                 f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
             )
 
-            # Accumulate realized P&L
+            # Accumulate for logging
             if pos.realized_pnl:
                 total_realized_pnl += Decimal(str(pos.realized_pnl))
 
-        # Update cumulative realized P&L in user funds
+        # Note: realized_pnl is now updated inside update_funds_for_trade
+        # Just log the total
         if total_realized_pnl != Decimal("0"):
-            await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
             logger.info(
-                f"Updated realized P&L for user {user_id[:8]}...: "
+                f"Total realized P&L for user {user_id[:8]}...: "
                 f"{'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
             )
 

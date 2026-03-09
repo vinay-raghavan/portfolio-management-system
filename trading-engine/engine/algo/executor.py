@@ -629,15 +629,15 @@ class StrategyExecutor:
                     f"pnl={pos.realized_pnl}, product_type={product_type.value}"
                 )
 
-                # Accumulate realized P&L
+                # Accumulate for logging
                 if pos.realized_pnl:
                     total_realized_pnl += Decimal(str(pos.realized_pnl))
 
-            # Update cumulative realized P&L in user funds
+            # Note: realized_pnl is now updated inside update_funds_for_trade
+            # Just log the total
             if total_realized_pnl != Decimal("0"):
-                await funds_provider.update_realized_pnl(user_id, total_realized_pnl)
                 logger.info(
-                    f"Updated realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
+                    f"Total realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
                 )
 
         except Exception as e:
@@ -785,19 +785,27 @@ class StrategyExecutor:
                                 algo_position_model=AlgoPosition,
                             )
 
-                            # Update realized P&L in user funds when positions are closed
-                            if pnl_stats.trades_closed > 0 and pnl_stats.total_pnl != Decimal("0"):
-                                await funds_provider.update_realized_pnl(
-                                    config.user_id, pnl_stats.total_pnl
+                            # Update funds based on whether position was opened or closed
+                            if pnl_stats.trades_closed > 0 and position_result:
+                                # Position was closed - release margin and credit P&L
+                                # Determine the side (opposite of what was done to close)
+                                close_side = "SELL" if order_data.get("side") == "SELL" else "BUY"
+                                await funds_provider.update_funds_for_trade(
+                                    user_id=config.user_id,
+                                    side=close_side,
+                                    quantity=Decimal(str(position_result.quantity)),
+                                    price=Decimal(str(filled_price)),
+                                    fees=Decimal("0"),
+                                    product_type=config.product_type,
+                                    existing_position_qty=Decimal(str(position_result.quantity)),
+                                    entry_price=position_result.entry_price,
                                 )
                                 logger.info(
-                                    f"Updated realized P&L for user {config.user_id[:8]}...: "
-                                    f"+₹{pnl_stats.total_pnl:.2f}"
+                                    f"Released margin for closed position {order_data.get('symbol')}: "
+                                    f"pnl={pnl_stats.total_pnl:.2f}, product_type={config.product_type.value}"
                                 )
 
-                            # Block margin when opening/adding to positions
-                            # (trades_closed == 0 means position was opened, not closed)
-                            if pnl_stats.trades_closed == 0 and position_result:
+                            elif pnl_stats.trades_closed == 0 and position_result:
                                 order_side = order_data.get("side", "BUY")
                                 order_qty = Decimal(str(order_data.get("quantity", 0)))
                                 order_price = Decimal(str(filled_price))
