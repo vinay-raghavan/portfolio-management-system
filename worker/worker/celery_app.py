@@ -93,8 +93,13 @@ celery_app.conf.beat_schedule = {
     },
     # Auto square-off intraday positions at 3:15 PM IST (9:45 UTC)
     "auto-square-off-intraday": {
-        "task": "worker.tasks.trading.auto_square_off_intraday",
+        "task": "worker.tasks.intraday.square_off_intraday_positions",
         "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
+    },
+    # Safety check: verify no intraday positions remain after market close
+    "check-intraday-positions-after-close": {
+        "task": "worker.tasks.intraday.check_intraday_positions",
+        "schedule": crontab(hour=10, minute=5),  # 3:35 PM IST = 10:05 UTC
     },
     # Process AMO (After Market Orders) at market open - 9:15 AM IST (3:45 UTC)
     "process-amo-orders-at-market-open": {
