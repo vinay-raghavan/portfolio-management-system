@@ -1,5 +1,51 @@
 # Release Notes
 
+## v1.5.3 (2026-03-09)
+
+### 🩳 Short Selling & Intraday Enhancements
+
+This release adds comprehensive short selling support including INTRADAY auto-square-off, short-specific strategies, and the foundation for SLB (Securities Lending & Borrowing) multi-day shorts.
+
+**New Features:**
+
+#### INTRADAY Auto Square-Off (Section 2.9.1)
+- **Auto square-off task**: Automatically closes all INTRADAY positions at 3:15 PM IST before market close
+- **Safety check task**: Verifies no intraday positions remain after market close (3:35 PM IST)
+- **Square-off endpoint**: `POST /internal/square-off-intraday` for manual triggering
+- **Position count endpoint**: `GET /internal/intraday-positions-count` for monitoring
+- Retry logic for failed square-offs (critical for risk management)
+
+#### Short-Specific Strategies (Section 2.9.2)
+- **SignalIntent enum**: New signal classification (OPEN_LONG, CLOSE_LONG, OPEN_SHORT, CLOSE_SHORT)
+- **MomentumShortStrategy**: Generates SHORT signals based on bearish momentum:
+  - Price below EMA200 (long-term downtrend)
+  - RSI overbought (reversal setup)
+  - MACD bearish crossover
+  - ADX strong downtrend (-DI > +DI)
+- **Executor validation**: Blocks OPEN_SHORT signals when product_type doesn't allow shorting
+
+#### SLB Support Foundation (Section 2.9.3)
+- **SLB ProductType**: Added to all product type enums (backend, trading-engine, shared)
+- **SLBPosition model**: Tracks borrowing details, fees, return dates, status
+- **Broker interface**: Added `get_slb_availability()`, `borrow_securities()`, `return_securities()` methods
+- **SLB worker tasks**:
+  - `accrue_slb_fees`: Daily fee accrual after market close
+  - `check_slb_expiry`: Warn users about approaching return dates
+  - `auto_close_expiring_slb`: Force close positions on expiry day
+
+**Bug Fixes:**
+
+- **Exit condition time window**: Fixed bug where exit conditions (SL/TP/trailing stop) were checked outside strategy's trading window
+- **Position product_type**: Store product_type on position at open time to prevent margin mismatch when strategy settings change
+
+**Technical Details:**
+
+- New files: `worker/tasks/intraday.py`, `worker/tasks/slb.py`, `routes/intraday.py`, `strategies/short/momentum_short.py`
+- Database migration: Added `slb_positions` table, SLB enum to `strategyproducttype`
+- 10 commits for section 2.9 implementation
+
+---
+
 ## v1.5.2 (2026-03-05)
 
 ### 🔧 Funds Calculation Fix & Sentiment Display
