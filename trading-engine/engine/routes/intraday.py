@@ -73,9 +73,9 @@ async def square_off_intraday_positions(
 
     logger.info("Starting intraday auto square-off")
 
-    # Query all OPEN intraday positions
+    # Query all OPEN or PARTIAL intraday positions (PARTIAL = partially closed)
     query = select(AlgoPosition).where(
-        AlgoPosition.status == PositionStatus.OPEN,
+        AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
         AlgoPosition.product_type == StrategyProductType.INTRADAY,
     )
     result = await db.execute(query)
@@ -183,7 +183,7 @@ async def get_intraday_positions_count(
     to verify all intraday positions have been squared off.
     """
     query = select(AlgoPosition).where(
-        AlgoPosition.status == PositionStatus.OPEN,
+        AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
         AlgoPosition.product_type == StrategyProductType.INTRADAY,
     )
     result = await db.execute(query)
