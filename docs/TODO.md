@@ -6491,14 +6491,47 @@ def _check_sell_funds(self, product_type: str, ...):
 
 ---
 
-#### 2.9.4 Summary: Short Selling Enhancement Phases
+#### 2.9.4 Funds Calculation Unification ✅
+
+**Tasks:**
+- [x] Unified formula across all product types
+- [x] `cash_balance = starting_balance + realized_pnl`
+- [x] `margin_used = SUM(blocked margin for open positions)`
+- [x] `available_cash = cash_balance - margin_used`
+- [x] Add `starting_balance` column to `user_funds` table
+- [x] SLB product type handling in `DatabaseFundsProvider`
+- [x] Remove duplicate `update_realized_pnl` calls (now handled internally)
+
+#### 2.9.5 Auto-Trade Enhancements ✅
+
+**Tasks:**
+- [x] Add `product_type` field to `AutoTradeConfig` (DELIVERY, INTRADAY, MARGIN, SLB)
+- [x] Add `signal_direction` field to `AutoTradeConfig` (LONG, SHORT, BOTH)
+- [x] Update frontend dialog with Product Type and Signal Direction selectors
+- [x] Disable SHORT/BOTH when DELIVERY or MARGIN selected
+- [x] Create database migration for new fields
+
+#### 2.9.6 Short Position Logic ✅
+
+**Tasks:**
+- [x] Stop Loss: Triggers when price >= stop (for SHORT)
+- [x] Take Profit: Triggers when price <= target (for SHORT)
+- [x] Trailing Stop: Tracks lowest price, triggers when price rises
+- [x] Profit Lock: Lock price moves DOWN to protect profits
+- [x] P&L calculation: `(entry_price - exit_price) * qty` for SHORT
+
+---
+
+#### 2.9.7 Summary: Short Selling Enhancement Phases
 
 | Phase | Component | Effort | Priority | Status |
 |-------|-----------|--------|----------|--------|
 | **1** | Auto square-off for INTRADAY | 6-8 hours | HIGH | ✅ Done |
 | **2** | Short-specific strategies | 10-12 hours | MEDIUM | ✅ Done |
-| **3** | SLB integration | 15-20 hours | LOW | 🔶 Core done, Fyers API pending |
-| **Total** | | **31-40 hours** | | |
+| **3** | SLB integration | 15-20 hours | LOW | ✅ Core done, Fyers API pending |
+| **4** | Funds calculation unification | 4-6 hours | HIGH | ✅ Done |
+| **5** | Auto-trade enhancements | 3-4 hours | MEDIUM | ✅ Done |
+| **Total** | | **40-50 hours** | | ✅ Complete |
 
 **Implementation Status:**
 1. ✅ **Auto square-off** - Worker task, endpoints, and Celery schedule complete
