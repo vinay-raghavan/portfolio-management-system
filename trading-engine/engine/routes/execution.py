@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from redis.asyncio import Redis
+from shared.utils.time_window import TimeWindowValidator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
@@ -36,10 +37,33 @@ from engine.strategies.registry import StrategyRegistry
 logger = logging.getLogger(__name__)
 
 
+def _is_within_strategy_time_window(strategy: UserStrategy) -> tuple[bool, str]:
+    """Check if current time is within the strategy's trading time window.
+
+    Args:
+        strategy: The strategy to check
+
+    Returns:
+        Tuple of (is_within_window, reason_if_not)
+    """
+    # If no time window is configured, always allow
+    if not strategy.trading_start_time and not strategy.trading_end_time:
+        return True, ""
+
+    validator = TimeWindowValidator()
+    return validator.is_within_window(
+        start_time=strategy.trading_start_time,
+        end_time=strategy.trading_end_time,
+        timezone=strategy.trading_timezone or "Asia/Kolkata",
+        active_days=strategy.active_trading_days or [0, 1, 2, 3, 4],
+    )
+
+
 async def _check_exit_conditions_for_strategy(
     db: AsyncSession,
     strategy: UserStrategy,
     data_provider: DataProvider,
+    respect_time_window: bool = True,
 ) -> tuple[list[PositionResult], PnLStats]:
     """Check exit conditions (SL/TP/profit booking) for a strategy's open positions.
 
@@ -47,14 +71,30 @@ async def _check_exit_conditions_for_strategy(
     cooldown, etc. to ensure profit booking rules and exit conditions are still
     evaluated.
 
+    However, if the strategy has a time window configured and respect_time_window
+    is True, exit conditions will NOT be checked outside the trading window.
+    This prevents positions from being closed at times the user didn't expect
+    (e.g., stop loss triggered at 9:20 when strategy is set to trade 9:45-15:15).
+
     Args:
         db: Database session
         strategy: The strategy to check
         data_provider: Data provider to fetch current prices
+        respect_time_window: If True, skip exit checks outside strategy's time window
 
     Returns:
         Tuple of (closed positions, aggregated PnL stats)
     """
+    # Check if we should respect the strategy's time window
+    if respect_time_window:
+        is_within_window, reason = _is_within_strategy_time_window(strategy)
+        if not is_within_window:
+            logger.debug(
+                f"Skipping exit check for strategy {strategy.id[:8]}...: "
+                f"Outside time window - {reason}"
+            )
+            return [], PnLStats()
+
     position_tracker = PositionTracker(db)
     open_positions = await position_tracker.get_all_open_positions(
         strategy.id, strategy.user_id, include_partial=True

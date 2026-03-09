@@ -199,6 +199,7 @@ main                           # Production-ready code
 | 2 | 13-14 | `phase-2/algo-time-window` | Trading time window for strategies (from/to time) |
 | 2 | 14-15 | `phase-2/profit-lock-stop` | Position-level profit lock toggle and margin fix |
 | 2 | 15-16 | `phase-2/ema-trailing-stop` | EMA-based trailing stop and profit booking extension |
+| 2 | 16-17 | `phase-2/short-selling-enhancements` | INTRADAY auto-square-off, short strategies, SLB support |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
@@ -5998,6 +5999,511 @@ This means:
 | **Phase 1** | EMA-based trailing stop only | ~15-20 hours | [ ] Not Started |
 | **Phase 2** | Extend profit booking with EMA distance | ~8-10 hours | [ ] Not Started |
 | **Phase 3** | Multi-timeframe EMA (1d + 1h) | ~5-6 hours | [ ] Not Started |
+
+---
+
+### 2.9 Short Selling & Intraday Enhancements
+> 🌿 **Branch:** `phase-2/short-selling-enhancements`
+
+**Goal**: Enable full short selling capabilities including INTRADAY auto-square-off, short-specific strategy signals, and multi-day shorting via SLB (Securities Lending & Borrowing).
+
+#### Overview
+
+Currently, the system supports:
+- ✅ MTF (Margin Trading Facility) - Long positions with 50% margin
+- ✅ INTRADAY (MIS) - Technical support for shorts, but no auto-square-off
+- ❌ Intentional short signal generation in strategies
+- ❌ SLB for multi-day short positions
+
+This enhancement adds complete short selling support.
+
+#### 2.9.1 Auto Square-Off for INTRADAY Positions
+
+**Problem**: INTRADAY (MIS) positions must be squared off before market close (3:20 PM IST). Currently, there's no automated mechanism to ensure this.
+
+**Solution**: Add a scheduled task that automatically closes all INTRADAY positions at a configurable time (default 3:15 PM).
+
+```mermaid
+flowchart TB
+    subgraph SquareOffFlow["Auto Square-Off Flow"]
+        Scheduler[Celery Beat<br/>3:15 PM IST]
+        Task[square_off_intraday_positions]
+        Query[Query all OPEN positions<br/>with product_type=INTRADAY]
+        Close[Close each position<br/>at market price]
+        Notify[Send notification<br/>to user]
+    end
+
+    Scheduler --> Task
+    Task --> Query
+    Query --> Close
+    Close --> Notify
+
+    style Scheduler fill:#fff3e0,stroke:#ff9800
+    style Task fill:#e3f2fd,stroke:#1976d2
+    style Close fill:#ffebee,stroke:#f44336
+```
+
+**New Files:**
+- `worker/worker/tasks/intraday.py` - Square-off task
+- `trading-engine/engine/routes/intraday.py` - Square-off endpoint
+
+**Configuration:**
+```python
+# In UserStrategy or global settings
+intraday_square_off_time: str = "15:15"  # 3:15 PM IST
+intraday_square_off_buffer_minutes: int = 5  # Start 5 mins before
+```
+
+**Task Implementation:**
+```python
+# worker/worker/tasks/intraday.py
+
+@celery_app.task(name="worker.tasks.intraday.square_off_intraday_positions")
+def square_off_intraday_positions():
+    """Auto square-off all INTRADAY positions before market close."""
+
+    # Query all users with open INTRADAY positions
+    positions = db.query(AlgoPosition).filter(
+        AlgoPosition.status == "OPEN",
+        AlgoPosition.product_type == "INTRADAY"
+    ).all()
+
+    for position in positions:
+        # Close position at market price
+        side = "SELL" if position.side == "LONG" else "BUY"
+
+        order_request = OrderRequest(
+            symbol=position.symbol,
+            side=side,
+            order_type=OrderType.MARKET,
+            quantity=position.remaining_quantity,
+            product_type=ProductType.INTRADAY,
+        )
+
+        broker.place_order(position.user_id, order_request)
+
+        # Log and notify
+        logger.info(f"Auto square-off: Closed {position.symbol} for user {position.user_id}")
+        send_notification(position.user_id, f"INTRADAY position {position.symbol} auto-squared-off")
+```
+
+**Celery Beat Schedule:**
+```python
+# In celery_app.py
+"square-off-intraday-daily": {
+    "task": "worker.tasks.intraday.square_off_intraday_positions",
+    "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
+},
+```
+
+**Tasks:**
+- [ ] Create `worker/worker/tasks/intraday.py` with square-off task
+- [ ] Add Celery beat schedule for 3:15 PM IST
+- [ ] Create `trading-engine/engine/routes/intraday.py` with manual square-off endpoint
+- [ ] Add `product_type` filter to position queries
+- [ ] Add square-off notification (email/push)
+- [ ] Add configuration for square-off time per strategy
+- [ ] Handle partial fills during square-off
+- [ ] Add retry logic for failed square-offs
+- [ ] Write tests for square-off logic
+- [ ] Run CI: `uv run ruff check && uv run pytest && uv run bandit -r`
+- [ ] Commit: `feat(algo): add auto square-off for INTRADAY positions`
+
+---
+
+#### 2.9.2 Short-Specific Strategy Signals
+
+**Problem**: Current strategies generate SELL signals primarily to close existing LONG positions, not to intentionally open SHORT positions.
+
+**Solution**: Enhance strategy signal generation to be position-aware and add short-specific strategies.
+
+**Signal Intent:**
+```python
+class SignalIntent(str, Enum):
+    OPEN_LONG = "OPEN_LONG"    # BUY to open long
+    CLOSE_LONG = "CLOSE_LONG"  # SELL to close long
+    OPEN_SHORT = "OPEN_SHORT"  # SELL to open short
+    CLOSE_SHORT = "CLOSE_SHORT"  # BUY to close short
+```
+
+**Enhanced SignalData:**
+```python
+@dataclass
+class SignalData:
+    symbol: str
+    signal_type: SignalType  # BUY, SELL, HOLD
+    intent: SignalIntent | None = None  # NEW: What this signal intends to do
+    strength: Decimal
+    confidence: Decimal
+    # ... rest of fields
+```
+
+**Short-Specific Strategies:**
+
+| Strategy | Short Signal Conditions |
+|----------|------------------------|
+| **MomentumShort** | Price < EMA200, RSI > 70 (overbought), MACD bearish crossover |
+| **BreakdownStrategy** | Price breaks below support with high volume |
+| **MeanReversionShort** | Price > 2 std dev above mean (expecting reversion) |
+| **TrendFollowingShort** | ADX > 25, -DI > +DI, price below all major MAs |
+
+**Implementation Approach:**
+
+```python
+# shared/shared/strategies/momentum_short.py
+
+class MomentumShortStrategy(BaseStrategy):
+    """Generate SHORT signals based on bearish momentum."""
+
+    def generate_signals(self, symbol: str, df: pd.DataFrame) -> list[SignalData]:
+        # ... calculate indicators
+
+        # Bearish conditions for SHORT
+        if (
+            current_price < ema200 and       # Below long-term trend
+            rsi > 70 and                     # Overbought
+            macd < macd_signal and           # Bearish MACD
+            adx > 25 and                     # Strong trend
+            minus_di > plus_di               # Bearish DI
+        ):
+            return [SignalData(
+                symbol=symbol,
+                signal_type=SignalType.SELL,
+                intent=SignalIntent.OPEN_SHORT,
+                stop_loss=calculate_short_stop_loss(current_price, atr),
+                take_profit=calculate_short_take_profit(current_price, atr),
+                # ...
+            )]
+
+        return []
+```
+
+**Executor Enhancement:**
+```python
+# In executor._process_signal()
+
+async def _process_signal(self, config: StrategyConfig, signal: SignalData) -> dict | None:
+    # Check if product type allows the intended action
+    if signal.intent == SignalIntent.OPEN_SHORT:
+        if not ProductType.allows_short_selling(config.product_type):
+            logger.warning(
+                f"Cannot open SHORT for {signal.symbol}: "
+                f"{config.product_type} does not allow short selling"
+            )
+            return None
+
+    # ... rest of processing
+```
+
+**Tasks:**
+- [ ] Add `SignalIntent` enum to `shared/shared/models/signals.py`
+- [ ] Add `intent` field to `SignalData`
+- [ ] Create `MomentumShortStrategy` in `shared/shared/strategies/`
+- [ ] Create `BreakdownStrategy` for support breakdowns
+- [ ] Update executor to check product_type compatibility with intent
+- [ ] Add strategy parameter `allow_short_signals: bool`
+- [ ] Update composite strategy to handle short components
+- [ ] Register short strategies in StrategyRegistry
+- [ ] Add frontend option to select short-enabled strategies
+- [ ] Write tests for short signal generation
+- [ ] Run CI: `uv run ruff check && uv run pytest && uv run bandit -r`
+- [ ] Commit: `feat(algo): add short-specific strategies and signal intent`
+
+---
+
+#### 2.9.3 SLB (Securities Lending & Borrowing) for Multi-Day Shorts
+
+**Problem**: INTRADAY shorts must be closed same day. For multi-day short positions, SLB (Securities Lending & Borrowing) is required.
+
+**What is SLB?**
+- SEBI-regulated mechanism to borrow securities for short selling
+- Borrower pays a fee/interest to the lender
+- Securities must be returned by settlement date
+- Available for select F&O stocks
+- Typical tenure: 1 day to 12 months
+
+**SLB Product Type:**
+```python
+class ProductType(str, Enum):
+    DELIVERY = "DELIVERY"   # CNC - Long only
+    INTRADAY = "INTRADAY"   # MIS - Intraday long/short
+    MARGIN = "MARGIN"       # MTF - Leveraged long only
+    SLB = "SLB"            # NEW: Securities Lending & Borrowing (multi-day short)
+```
+
+**SLB Rules:**
+| Aspect | Rule |
+|--------|------|
+| **Short selling** | ✅ Allowed (primary purpose) |
+| **Margin** | ~50% + borrowing fee |
+| **Tenure** | 1 day to 12 months |
+| **Settlement** | T+1 or T+2 |
+| **Eligible securities** | F&O stocks only |
+| **Borrowing fee** | Variable (0.5% - 5% annualized) |
+
+**Architecture:**
+
+```mermaid
+flowchart TB
+    subgraph SLBFlow["SLB Short Selling Flow"]
+        Signal[Strategy generates<br/>SELL signal]
+        Check{Product Type?}
+        SLB[SLB Mode]
+        Borrow[Borrow securities<br/>via SLB API]
+        Sell[Sell borrowed<br/>securities]
+        Hold[Hold short position<br/>multi-day]
+        BuyBack[Buy back to<br/>close position]
+        Return[Return securities<br/>to lender]
+    end
+
+    Signal --> Check
+    Check -->|SLB| SLB
+    SLB --> Borrow
+    Borrow --> Sell
+    Sell --> Hold
+    Hold --> BuyBack
+    BuyBack --> Return
+
+    style SLB fill:#e8f5e9,stroke:#4caf50
+    style Borrow fill:#fff3e0,stroke:#ff9800
+```
+
+**Database Schema:**
+
+```sql
+-- SLB position tracking
+CREATE TABLE slb_positions (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    algo_position_id UUID REFERENCES algo_positions(id),
+    symbol VARCHAR(50) NOT NULL,
+    quantity INTEGER NOT NULL,
+    borrow_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    return_date TIMESTAMP WITH TIME ZONE NOT NULL,  -- Must return by this date
+    borrow_rate DECIMAL(10, 4) NOT NULL,  -- Annualized rate
+    daily_fee DECIMAL(18, 4) NOT NULL,
+    total_fee_accrued DECIMAL(18, 4) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'ACTIVE',  -- ACTIVE, RETURNED, DEFAULTED
+    broker_slb_id VARCHAR(100),  -- Broker's SLB reference
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+**Broker Integration:**
+
+```python
+# shared/shared/providers/broker/base.py
+
+class Broker(ABC):
+    # ... existing methods
+
+    @abstractmethod
+    async def get_slb_availability(self, symbol: str) -> SLBAvailability:
+        """Check SLB availability and rates for a symbol."""
+        pass
+
+    @abstractmethod
+    async def borrow_securities(
+        self,
+        user_id: str,
+        symbol: str,
+        quantity: int,
+        tenure_days: int,
+    ) -> SLBBorrowResponse:
+        """Borrow securities via SLB for short selling."""
+        pass
+
+    @abstractmethod
+    async def return_securities(
+        self,
+        user_id: str,
+        slb_id: str,
+    ) -> SLBReturnResponse:
+        """Return borrowed securities."""
+        pass
+```
+
+**Fyers SLB Integration:**
+```python
+# shared/shared/providers/broker/fyers.py
+
+async def get_slb_availability(self, symbol: str) -> SLBAvailability:
+    """Check SLB availability from Fyers."""
+    # Fyers API: GET /api/v3/slb/availability
+    response = await self._request(
+        "GET",
+        "/api/v3/slb/availability",
+        params={"symbol": self._format_symbol(symbol)}
+    )
+
+    return SLBAvailability(
+        symbol=symbol,
+        available_quantity=response.get("availableQty", 0),
+        borrow_rate=Decimal(str(response.get("borrowRate", 0))),
+        min_tenure_days=response.get("minTenure", 1),
+        max_tenure_days=response.get("maxTenure", 365),
+    )
+```
+
+**Position Tracker SLB Support:**
+```python
+# In position_tracker.py
+
+async def open_slb_short_position(
+    self,
+    strategy_id: str,
+    user_id: str,
+    symbol: str,
+    quantity: int,
+    entry_price: Decimal,
+    tenure_days: int = 30,
+) -> PositionResult:
+    """Open a short position using SLB."""
+
+    # 1. Check SLB availability
+    slb_info = await self.broker.get_slb_availability(symbol)
+    if slb_info.available_quantity < quantity:
+        raise ValueError(f"Insufficient SLB availability for {symbol}")
+
+    # 2. Borrow securities
+    borrow_result = await self.broker.borrow_securities(
+        user_id, symbol, quantity, tenure_days
+    )
+
+    # 3. Sell the borrowed securities
+    order = await self.broker.place_order(user_id, OrderRequest(
+        symbol=symbol,
+        side=OrderSide.SELL,
+        quantity=quantity,
+        product_type=ProductType.SLB,
+    ))
+
+    # 4. Create position record with SLB tracking
+    position = await self.open_position(
+        strategy_id, user_id, symbol, "SELL", quantity, entry_price,
+        order_id=order.order_id,
+    )
+
+    # 5. Create SLB record
+    slb_record = SLBPosition(
+        user_id=user_id,
+        algo_position_id=position.position_id,
+        symbol=symbol,
+        quantity=quantity,
+        borrow_date=datetime.now(UTC),
+        return_date=datetime.now(UTC) + timedelta(days=tenure_days),
+        borrow_rate=slb_info.borrow_rate,
+        daily_fee=self._calculate_daily_fee(entry_price, quantity, slb_info.borrow_rate),
+        broker_slb_id=borrow_result.slb_id,
+    )
+
+    return position
+```
+
+**Daily SLB Fee Accrual Task:**
+```python
+# worker/worker/tasks/slb.py
+
+@celery_app.task(name="worker.tasks.slb.accrue_slb_fees")
+def accrue_slb_fees():
+    """Daily task to accrue SLB borrowing fees."""
+
+    active_slb = db.query(SLBPosition).filter(
+        SLBPosition.status == "ACTIVE"
+    ).all()
+
+    for slb in active_slb:
+        slb.total_fee_accrued += slb.daily_fee
+
+        # Check if approaching return date (3 days warning)
+        days_remaining = (slb.return_date - datetime.now(UTC)).days
+        if days_remaining <= 3:
+            send_notification(
+                slb.user_id,
+                f"SLB position {slb.symbol} must be closed in {days_remaining} days"
+            )
+
+@celery_app.task(name="worker.tasks.slb.auto_close_expiring_slb")
+def auto_close_expiring_slb():
+    """Close SLB positions expiring today."""
+
+    expiring = db.query(SLBPosition).filter(
+        SLBPosition.status == "ACTIVE",
+        SLBPosition.return_date <= datetime.now(UTC) + timedelta(hours=2)
+    ).all()
+
+    for slb in expiring:
+        # Force close the position
+        position_tracker.close_position(...)
+        broker.return_securities(slb.user_id, slb.broker_slb_id)
+        slb.status = "RETURNED"
+```
+
+**Safety Service Updates:**
+```python
+# In safety.py
+
+def _check_sell_funds(self, product_type: str, ...):
+    # ... existing checks
+
+    elif product_type.upper() == "SLB":
+        # SLB short selling allowed with margin + borrowing fee
+        if owned < quantity:
+            # Opening short via SLB
+            margin_required = order_value * margin_percent
+            estimated_borrow_fee = self._estimate_slb_fee(symbol, order_value)
+            total_required = margin_required + estimated_borrow_fee + fees
+
+            if funds.available_cash < total_required:
+                return SafetyCheck(
+                    passed=False,
+                    reason=(
+                        f"Insufficient funds for SLB short: "
+                        f"required ₹{total_required:.2f} "
+                        f"(margin: ₹{margin_required:.2f}, SLB fee: ₹{estimated_borrow_fee:.2f})"
+                    ),
+                )
+```
+
+**Frontend Updates:**
+- Add SLB as product type option in strategy settings
+- Show SLB fee estimates before placing order
+- Display SLB position details (borrow rate, return date, accrued fees)
+- Add SLB position warnings for approaching expiry
+
+**Tasks:**
+- [ ] Add `SLB` to `ProductType` enum
+- [ ] Create `SLBPosition` model and migration
+- [ ] Add SLB broker interface methods to `Broker` base class
+- [ ] Implement Fyers SLB API integration
+- [ ] Create SLB availability check in safety service
+- [ ] Add `open_slb_short_position()` to position tracker
+- [ ] Create `worker/worker/tasks/slb.py` with fee accrual task
+- [ ] Add SLB expiry warning notifications
+- [ ] Add auto-close for expiring SLB positions
+- [ ] Update funds provider to handle SLB fees
+- [ ] Add SLB product type to frontend strategy settings
+- [ ] Display SLB position details in portfolio view
+- [ ] Write tests for SLB flow
+- [ ] Run CI: `uv run ruff check && uv run pytest && uv run bandit -r`
+- [ ] Commit: `feat(algo): add SLB support for multi-day short positions`
+
+---
+
+#### 2.9.4 Summary: Short Selling Enhancement Phases
+
+| Phase | Component | Effort | Priority |
+|-------|-----------|--------|----------|
+| **1** | Auto square-off for INTRADAY | 6-8 hours | HIGH |
+| **2** | Short-specific strategies | 10-12 hours | MEDIUM |
+| **3** | SLB integration | 15-20 hours | LOW |
+| **Total** | | **31-40 hours** | |
+
+**Recommended Order:**
+1. Start with **auto square-off** (critical for INTRADAY safety)
+2. Then add **short strategies** (enables intentional shorting)
+3. Finally implement **SLB** (advanced feature for multi-day shorts)
 
 ---
 
