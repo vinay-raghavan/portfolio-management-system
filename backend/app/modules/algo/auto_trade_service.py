@@ -23,6 +23,8 @@ from app.modules.algo.models import (
     PositionStatus,
     ScheduleType,
     ScreenerSourceType,
+    SignalDirection,
+    StrategyProductType,
     StrategyStatus,
     StrategyTemplate,
     UserStrategy,
@@ -305,6 +307,8 @@ class AutoTradeConfigService:
             preset_category=data.preset_category,
             saved_screener_id=data.saved_screener_id,
             run_time=data.run_time,
+            product_type=StrategyProductType(data.product_type),
+            signal_direction=SignalDirection(data.signal_direction),
         )
         self.db.add(config)
         await self.db.flush()
@@ -330,6 +334,10 @@ class AutoTradeConfigService:
             update_fields["screener_source_type"] = ScreenerSourceType(
                 update_fields["screener_source_type"]
             )
+        if "product_type" in update_fields and update_fields["product_type"]:
+            update_fields["product_type"] = StrategyProductType(update_fields["product_type"])
+        if "signal_direction" in update_fields and update_fields["signal_direction"]:
+            update_fields["signal_direction"] = SignalDirection(update_fields["signal_direction"])
 
         # Validate weights if being updated
         weight_fields = ["weight_technical", "weight_fundamental", "weight_sentiment"]

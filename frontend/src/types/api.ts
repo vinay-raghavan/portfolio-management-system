@@ -1829,6 +1829,8 @@ export interface AutoTradeConfig {
   preset_category: string | null;
   saved_screener_id: string | null;
   run_time: string | null; // HH:MM format for scheduled run time
+  product_type: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction: string; // 'LONG' | 'SHORT' | 'BOTH'
   created_at: string;
   updated_at: string;
   template?: StrategyTemplate | null;
@@ -1850,6 +1852,8 @@ export interface AutoTradeConfigCreate {
   preset_category?: string | null;
   saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
+  product_type?: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction?: string; // 'LONG' | 'SHORT' | 'BOTH'
 }
 
 export interface AutoTradeConfigUpdate {
@@ -1867,6 +1871,8 @@ export interface AutoTradeConfigUpdate {
   preset_category?: string | null;
   saved_screener_id?: string | null;
   run_time?: string | null; // HH:MM format
+  product_type?: string; // 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB'
+  signal_direction?: string; // 'LONG' | 'SHORT' | 'BOTH'
 }
 
 export interface WeightConfigUpdate {

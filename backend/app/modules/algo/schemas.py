@@ -1188,6 +1188,16 @@ class AutoTradeConfigCreate(BaseModel):
         description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
         pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
     )
+    product_type: str = Field(
+        default="INTRADAY",
+        pattern="^(DELIVERY|INTRADAY|MARGIN|SLB)$",
+        description="Product type for created strategies",
+    )
+    signal_direction: str = Field(
+        default="LONG",
+        pattern="^(LONG|SHORT|BOTH)$",
+        description="Signal direction for created strategies",
+    )
 
 
 class AutoTradeConfigUpdate(BaseModel):
@@ -1211,6 +1221,16 @@ class AutoTradeConfigUpdate(BaseModel):
         description="Time to run the screener in HH:MM format (e.g., '09:20' for 9:20 AM)",
         pattern=r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
     )
+    product_type: str | None = Field(
+        default=None,
+        pattern="^(DELIVERY|INTRADAY|MARGIN|SLB)$",
+        description="Product type for created strategies",
+    )
+    signal_direction: str | None = Field(
+        default=None,
+        pattern="^(LONG|SHORT|BOTH)$",
+        description="Signal direction for created strategies",
+    )
 
 
 class AutoTradeConfigResponse(BaseModel):
@@ -1233,6 +1253,10 @@ class AutoTradeConfigResponse(BaseModel):
     preset_category: str | None
     saved_screener_id: str | None
     run_time: str | None = Field(default="09:20", description="Scheduled run time in HH:MM format")
+    product_type: str = Field(default="INTRADAY", description="Product type for created strategies")
+    signal_direction: str = Field(
+        default="LONG", description="Signal direction for created strategies"
+    )
     created_at: datetime
     updated_at: datetime
 

@@ -903,6 +903,30 @@ class AutoTradeConfig(Base):
         String(5), nullable=True, default="09:20"
     )  # HH:MM format, e.g., "09:20" for 9:20 AM IST
 
+    # Product type for created strategies (DELIVERY, INTRADAY, MARGIN, SLB)
+    product_type: Mapped[StrategyProductType] = mapped_column(
+        SQLEnum(
+            StrategyProductType,
+            name="strategyproducttype",
+            create_type=False,  # Already exists from user_strategies
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=StrategyProductType.INTRADAY,
+    )
+
+    # Signal direction for created strategies (LONG, SHORT, BOTH)
+    signal_direction: Mapped[SignalDirection] = mapped_column(
+        SQLEnum(
+            SignalDirection,
+            name="signaldirection",
+            create_type=False,  # Already exists from user_strategies
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=SignalDirection.LONG,
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
