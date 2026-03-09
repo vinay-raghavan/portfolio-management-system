@@ -40,6 +40,7 @@ class ScreenerPresetType(str, Enum):
     VALUE = "value"
     SECTOR_ROTATION = "sector_rotation"
     MINERVINI = "minervini"  # Mark Minervini Trend Template
+    BEARISH_SHORT = "bearish_short"  # Bearish momentum for short selling
 
 
 class StrictnessLevel(str, Enum):

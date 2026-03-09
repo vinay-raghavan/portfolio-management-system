@@ -461,6 +461,39 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
             ),
         ],
     ),
+    # Bearish Short Screener - Find stocks to SHORT SELL
+    # ⚠️ Requires INTRADAY or SLB product type!
+    ScreenerPresetType.BEARISH_SHORT: ScreenerPresetInfo(
+        preset=ScreenerPresetType.BEARISH_SHORT,
+        name="⚠️ Bearish Short Screener",
+        description=(
+            "Find weak stocks for SHORT SELLING. ⚠️ Requires INTRADAY (MIS) or SLB product type!"
+        ),
+        filters=[
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 100000},  # Need liquidity for shorting
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOMENTUM,
+                params={
+                    "momentum_mode": "bearish_short",
+                    "rsi_overbought": 70,
+                    "min_roc": -5,  # Looking for negative momentum
+                },
+                weight=2.5,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={
+                    "require_below_trend": True,  # Below 200MA
+                    "trend_ma": 200,
+                },
+                weight=2.0,
+            ),
+        ],
+    ),
 }
 
 
