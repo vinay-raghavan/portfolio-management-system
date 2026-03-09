@@ -23,14 +23,20 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Add starting_balance column with default 100000
-    op.add_column(
-        "user_funds",
-        sa.Column(
-            "starting_balance",
-            sa.Numeric(precision=18, scale=4),
-            nullable=False,
-            server_default="100000",
-        ),
+    # Use IF NOT EXISTS pattern via raw SQL since Alembic doesn't support it directly
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'user_funds' AND column_name = 'starting_balance'
+            ) THEN
+                ALTER TABLE user_funds
+                ADD COLUMN starting_balance NUMERIC(18, 4) NOT NULL DEFAULT 100000;
+            END IF;
+        END $$;
+        """
     )
 
 
