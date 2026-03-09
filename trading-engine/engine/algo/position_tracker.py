@@ -11,7 +11,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from engine.models.algo import AlgoPosition, PositionSide, PositionStatus, UserStrategy
+from engine.models.algo import (
+    AlgoPosition,
+    PositionSide,
+    PositionStatus,
+    StrategyProductType,
+    UserStrategy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,7 @@ class PositionResult:
     realized_pnl: Decimal = Decimal("0")
     is_winner: bool | None = None
     status: str = "OPEN"
+    product_type: StrategyProductType | None = None  # Product type at position open
 
 
 @dataclass
@@ -168,6 +175,7 @@ class PositionTracker:
         order_id: str | None = None,
         stop_loss: Decimal | None = None,
         take_profit: Decimal | None = None,
+        product_type: StrategyProductType | None = None,
     ) -> PositionResult:
         """Open a new position or add to existing one.
 
@@ -268,6 +276,11 @@ class PositionTracker:
             profit_lock_enabled = True
             logger.info(f"Initialized profit lock for {symbol}: enabled={profit_lock_enabled}")
 
+        # Get product_type from strategy if not provided
+        position_product_type = product_type
+        if position_product_type is None and strategy:
+            position_product_type = strategy.product_type
+
         # Create new position with trailing stop and profit lock settings
         position = AlgoPosition(
             strategy_id=strategy_id,
@@ -281,6 +294,7 @@ class PositionTracker:
             stop_loss=stop_loss,
             take_profit=take_profit,
             status=PositionStatus.OPEN,
+            product_type=position_product_type,
             trailing_stop_enabled=trailing_stop_enabled,
             trailing_stop_pct=trailing_stop_pct,
             trailing_stop_price=trailing_stop_price,
@@ -366,6 +380,7 @@ class PositionTracker:
             realized_pnl=pnl,
             is_winner=is_winner,
             status=position.status.value,
+            product_type=position.product_type,
         )
 
     async def _cleanup_exit_only_symbol(self, strategy_id: str, symbol: str) -> None:

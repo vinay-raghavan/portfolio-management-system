@@ -514,6 +514,12 @@ class AlgoPosition(Base):
         default=PositionStatus.OPEN,
     )
 
+    # Product type at time of position opening (to ensure correct margin handling on close)
+    product_type: Mapped[StrategyProductType | None] = mapped_column(
+        SQLEnum(StrategyProductType, name="strategyproducttype", create_type=False),
+        nullable=True,  # Nullable for backward compatibility with existing positions
+    )
+
     # Entry details
     entry_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
