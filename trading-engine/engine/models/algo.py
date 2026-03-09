@@ -222,11 +222,13 @@ class StrategyProductType(str, Enum):
     - DELIVERY (CNC): Full payment required, no shorting, hold indefinitely
     - INTRADAY (MIS): Margin required (25%), shorting allowed, must square off same day
     - MARGIN (MTF): Margin required (50%) + interest, leveraged buying only, no shorting
+    - SLB: Securities Lending & Borrowing, multi-day shorting with borrowing fee
     """
 
     DELIVERY = "DELIVERY"  # CNC - Cash and Carry (default, safest)
     INTRADAY = "INTRADAY"  # MIS - Margin Intraday Square-off
     MARGIN = "MARGIN"  # MTF - Margin Trading Facility
+    SLB = "SLB"  # Securities Lending & Borrowing (multi-day short selling)
 
 
 class UserStrategy(Base):

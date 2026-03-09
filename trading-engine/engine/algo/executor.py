@@ -323,7 +323,7 @@ class StrategyExecutor:
             # Short selling requires INTRADAY or SLB product type
             if config.product_type not in (
                 StrategyProductType.INTRADAY,
-                # StrategyProductType.SLB,  # Will be added in SLB implementation
+                StrategyProductType.SLB,
             ):
                 logger.warning(
                     f"Cannot open SHORT for {signal.symbol}: "
