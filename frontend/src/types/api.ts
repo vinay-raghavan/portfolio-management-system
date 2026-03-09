@@ -635,7 +635,7 @@ export type ScheduleType = 'INTERVAL' | 'CRON' | 'MARKET_OPEN' | 'MARKET_CLOSE' 
 export type PositionSizingMethod = 'FIXED_QUANTITY' | 'FIXED_AMOUNT' | 'PERCENT_OF_PORTFOLIO' | 'RISK_BASED' | 'VOLATILITY_ADJUSTED';
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type ProfitCutoffAction = 'PAUSE_STRATEGY' | 'CLOSE_POSITIONS_AND_PAUSE' | 'CLOSE_POSITIONS_AND_CONTINUE' | 'NOTIFY_ONLY';
-export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN';
+export type StrategyProductType = 'DELIVERY' | 'INTRADAY' | 'MARGIN' | 'SLB';
 
 export interface AlgoStrategy {
   id: string;

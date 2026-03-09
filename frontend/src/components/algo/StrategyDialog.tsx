@@ -73,6 +73,7 @@ const productTypes: { value: StrategyProductType; label: string; description: st
   { value: 'DELIVERY', label: 'Delivery (CNC)', description: 'Full payment, no shorting, hold indefinitely' },
   { value: 'INTRADAY', label: 'Intraday (MIS)', description: '25% margin, shorting allowed, same-day square off' },
   { value: 'MARGIN', label: 'Margin (MTF)', description: '50% margin, no shorting, leveraged buying' },
+  { value: 'SLB', label: 'SLB (Short Sell)', description: '50% margin + borrowing fee, multi-day short selling' },
 ];
 
 export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogProps) {
