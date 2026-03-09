@@ -28,6 +28,7 @@ from engine.models.algo import (
     ExecutionStatus,
     Order,
     PositionSizingMethod,
+    SignalDirection,
     StrategyExecution,
     StrategyProductType,
 )
@@ -79,6 +80,8 @@ class StrategyConfig:
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
     product_type: ProductType = ProductType.DELIVERY
+    # Signal direction (LONG/SHORT/BOTH)
+    signal_direction: SignalDirection = SignalDirection.LONG
     # Trading time window fields
     trading_start_time: time | None = None
     trading_end_time: time | None = None
@@ -318,6 +321,23 @@ class StrategyExecutor:
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
+        # Check if signal direction is allowed by strategy configuration
+        if config.signal_direction == SignalDirection.LONG:
+            # LONG only: block SHORT signals
+            if signal.intent in (SignalIntent.OPEN_SHORT, SignalIntent.CLOSE_SHORT):
+                logger.debug(
+                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is LONG only"
+                )
+                return None
+        elif config.signal_direction == SignalDirection.SHORT:
+            # SHORT only: block LONG signals
+            if signal.intent in (SignalIntent.OPEN_LONG, SignalIntent.CLOSE_LONG):
+                logger.debug(
+                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is SHORT only"
+                )
+                return None
+        # BOTH: allow all signals
+
         # Check if signal intent is compatible with product type
         if signal.intent == SignalIntent.OPEN_SHORT:
             # Short selling requires INTRADAY or SLB product type
