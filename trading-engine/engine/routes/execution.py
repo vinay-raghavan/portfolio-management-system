@@ -131,11 +131,14 @@ async def _check_exit_conditions_for_strategy(
         )
 
         # Update user funds for closed positions (credit proceeds, release margin, update P&L)
+        # Note: Each position stores its own product_type, which is used for margin handling.
+        # The strategy's current product_type is passed as a fallback for legacy positions
+        # that don't have product_type stored.
         await _update_funds_for_closed_positions(
             db=db,
             user_id=strategy.user_id,
             closed_positions=closed_positions,
-            product_type=strategy.product_type or ProductType.DELIVERY,
+            default_product_type=strategy.product_type or ProductType.DELIVERY,
         )
 
     return closed_positions, pnl_stats
@@ -145,7 +148,7 @@ async def _update_funds_for_closed_positions(
     db: AsyncSession,
     user_id: str,
     closed_positions: list[PositionResult],
-    product_type: ProductType = ProductType.DELIVERY,
+    default_product_type: ProductType = ProductType.DELIVERY,
 ) -> None:
     """Update user funds when positions are closed via SL/TP/trailing stop.
 
@@ -158,7 +161,7 @@ async def _update_funds_for_closed_positions(
         db: Database session
         user_id: User ID
         closed_positions: List of PositionResult objects from closed positions
-        product_type: Product type for margin handling
+        default_product_type: Fallback product type if position doesn't have one stored
     """
     from shared.providers.funds import DatabaseFundsProvider
 
@@ -180,6 +183,10 @@ async def _update_funds_for_closed_positions(
             side = "SELL" if pos.side == "LONG" else "BUY"
             exit_price = pos.exit_price if pos.exit_price else Decimal("0")
 
+            # Use position's product_type if available, otherwise use default
+            # This ensures correct margin handling even if strategy's product_type changed
+            pos_product_type = pos.product_type or default_product_type
+
             # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
@@ -187,13 +194,14 @@ async def _update_funds_for_closed_positions(
                 quantity=Decimal(str(pos.quantity)),
                 price=exit_price,
                 fees=Decimal("0"),  # Fees handled separately
-                product_type=product_type,
+                product_type=pos_product_type,
                 existing_position_qty=Decimal(str(pos.quantity)),  # Closing position
                 entry_price=pos.entry_price,  # Required for P&L calculation
             )
             logger.debug(
                 f"Updated funds for closed position {pos.symbol}: "
-                f"side={side}, qty={pos.quantity}, price={exit_price}, pnl={pos.realized_pnl}"
+                f"side={side}, qty={pos.quantity}, price={exit_price}, "
+                f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
             )
 
             # Accumulate realized P&L
