@@ -23,6 +23,8 @@ celery_app = Celery(
         "worker.tasks.screener",
         "worker.tasks.research",
         "worker.tasks.reporting",
+        "worker.tasks.intraday",
+        "worker.tasks.slb",
     ],
 )
 

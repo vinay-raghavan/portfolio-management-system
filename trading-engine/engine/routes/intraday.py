@@ -105,8 +105,12 @@ async def square_off_intraday_positions(
 
     # Get current prices for all symbols
     symbols = list({pos.symbol for pos in intraday_positions})
+    current_prices: dict[str, Decimal] = {}
     try:
-        current_prices = await data_provider.get_quotes_batch(symbols)
+        for symbol in symbols:
+            quote = await data_provider.get_quote(symbol)
+            if quote and quote.price:
+                current_prices[symbol] = Decimal(str(quote.price))
     except Exception as e:
         logger.error(f"Failed to fetch prices for square-off: {e}")
         return SquareOffResult(
@@ -129,11 +133,16 @@ async def square_off_intraday_positions(
 
                 # Close the position
                 close_result = await position_tracker.close_position(
-                    position_id=position.id,
+                    strategy_id=position.strategy_id,
+                    user_id=user_id,
+                    symbol=position.symbol,
+                    quantity=position.remaining_quantity,
                     exit_price=current_price,
-                    exit_quantity=position.remaining_quantity,
-                    reason="intraday_square_off",
                 )
+
+                if close_result is None:
+                    errors.append(f"No open position found for {position.symbol}")
+                    continue
 
                 closed_positions.append(
                     {
