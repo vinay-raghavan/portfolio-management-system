@@ -29,8 +29,9 @@ from engine.models.algo import (
     Order,
     PositionSizingMethod,
     StrategyExecution,
+    StrategyProductType,
 )
-from engine.models.signals import SignalData, SignalType
+from engine.models.signals import SignalData, SignalIntent, SignalType
 from engine.providers.broker import Broker
 from engine.providers.data import DataProvider
 from engine.providers.schemas import OrderRequest, OrderSide, OrderType, ProductType
@@ -317,6 +318,27 @@ class StrategyExecutor:
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
+        # Check if signal intent is compatible with product type
+        if signal.intent == SignalIntent.OPEN_SHORT:
+            # Short selling requires INTRADAY or SLB product type
+            if config.product_type not in (
+                StrategyProductType.INTRADAY,
+                # StrategyProductType.SLB,  # Will be added in SLB implementation
+            ):
+                logger.warning(
+                    f"Cannot open SHORT for {signal.symbol}: "
+                    f"{config.product_type.value} does not allow short selling. "
+                    f"Use INTRADAY or SLB product type."
+                )
+                return {
+                    "symbol": signal.symbol,
+                    "status": "BLOCKED",
+                    "reason": (
+                        f"Short selling not allowed with {config.product_type.value}. "
+                        f"Switch to INTRADAY or SLB product type."
+                    ),
+                }
+
         # Calculate position size (async to fetch funds for percent-based sizing)
         quantity = await self._calculate_position_size(config, signal)
         if quantity <= 0:
