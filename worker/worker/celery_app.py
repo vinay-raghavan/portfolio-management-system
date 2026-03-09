@@ -171,4 +171,22 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.reporting.sync_reporting_tables",
         "schedule": 900.0,  # Every 15 minutes
     },
+    # =========================================================================
+    # SLB (Securities Lending & Borrowing) Tasks
+    # =========================================================================
+    # Daily SLB fee accrual - after market close 4:30 PM IST (11:00 UTC)
+    "slb-accrue-fees-daily": {
+        "task": "worker.tasks.slb.accrue_slb_fees",
+        "schedule": crontab(hour=11, minute=0),  # 4:30 PM IST = 11:00 UTC
+    },
+    # Check SLB expiry warnings - daily at 9:00 AM IST (3:30 UTC)
+    "slb-check-expiry-daily": {
+        "task": "worker.tasks.slb.check_slb_expiry",
+        "schedule": crontab(hour=3, minute=30),  # 9:00 AM IST = 3:30 UTC
+    },
+    # Auto-close expiring SLB positions - daily at 9:10 AM IST (3:40 UTC)
+    "slb-auto-close-expiring-daily": {
+        "task": "worker.tasks.slb.auto_close_expiring_slb",
+        "schedule": crontab(hour=3, minute=40),  # 9:10 AM IST = 3:40 UTC
+    },
 }
