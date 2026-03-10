@@ -1141,7 +1141,8 @@ async def reconcile_all_funds(
 
     for user_id in user_ids:
         try:
-            # Calculate expected margin from open positions
+            # Calculate expected margin from OPEN and PARTIAL positions
+            # PARTIAL positions still have remaining_quantity that needs margin
             margin_result = await db.execute(
                 text("""
                     SELECT COALESCE(SUM(
@@ -1155,7 +1156,7 @@ async def reconcile_all_funds(
                         END
                     ), 0) as expected_margin
                     FROM algo_positions
-                    WHERE user_id = :user_id AND status = 'OPEN'
+                    WHERE user_id = :user_id AND status IN ('OPEN', 'PARTIAL')
                 """),
                 {"user_id": str(user_id)},
             )
