@@ -993,6 +993,9 @@ class ScreenerService:
                         scorer = MultiFactorScorer(self.db)
                         scored_results = []
 
+                        # Detect signal direction from screener filters
+                        screener_direction = _detect_signal_direction(filters)
+
                         for r in results:
                             fund_data = fundamentals_by_symbol.get(r.symbol)
                             scores = await scorer.score_symbol(
@@ -1000,6 +1003,7 @@ class ScreenerService:
                                 category="custom",
                                 technical_data={"score": r.score},  # Pass technical score as data
                                 fundamental_data=fund_data,  # Pass fundamental data
+                                screener_signal_direction=screener_direction.value,  # Pass screener direction
                             )
                             if scores.confidence.value != "skip":
                                 scored_results.append(
