@@ -1136,7 +1136,7 @@ async def check_stop_monitors(
     }
 
 
-@router.post("/internal/reconcile-funds")
+@router.post("/reconcile-funds")
 async def reconcile_all_funds(
     db: Annotated[AsyncSession, Depends(get_db)],
     x_internal_key: Annotated[str | None, Header()] = None,
