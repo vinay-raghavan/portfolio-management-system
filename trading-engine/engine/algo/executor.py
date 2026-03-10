@@ -611,8 +611,14 @@ class StrategyExecutor:
                 exit_price = pos.exit_price if pos.exit_price else Decimal("0")
 
                 # Pass product_type and existing_position_qty to properly release margin
-                # For closing positions, existing_position_qty is the quantity being closed
+                # For closing positions, existing_position_qty indicates the position direction:
+                # - Positive for LONG positions (closing long)
+                # - Negative for SHORT positions (closing short)
                 # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
+                existing_qty = Decimal(str(pos.quantity))
+                if pos.side == "SHORT":
+                    existing_qty = -existing_qty  # Negative to indicate short position
+
                 await funds_provider.update_funds_for_trade(
                     user_id=user_id,
                     side=side,
@@ -620,7 +626,7 @@ class StrategyExecutor:
                     price=exit_price,
                     fees=Decimal("0"),  # Fees already accounted for in P&L
                     product_type=product_type,
-                    existing_position_qty=Decimal(str(pos.quantity)),  # Closing full position
+                    existing_position_qty=existing_qty,  # Negative for SHORT positions
                     entry_price=pos.entry_price,  # Required for P&L calculation
                 )
                 logger.debug(

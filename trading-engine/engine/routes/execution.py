@@ -188,6 +188,13 @@ async def _update_funds_for_closed_positions(
             # This ensures correct margin handling even if strategy's product_type changed
             pos_product_type = pos.product_type or default_product_type
 
+            # existing_position_qty indicates the position direction:
+            # - Positive for LONG positions (closing long)
+            # - Negative for SHORT positions (closing short)
+            existing_qty = Decimal(str(pos.quantity))
+            if pos.side == "SHORT":
+                existing_qty = -existing_qty  # Negative to indicate short position
+
             # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
@@ -196,7 +203,7 @@ async def _update_funds_for_closed_positions(
                 price=exit_price,
                 fees=Decimal("0"),  # Fees handled separately
                 product_type=pos_product_type,
-                existing_position_qty=Decimal(str(pos.quantity)),  # Closing position
+                existing_position_qty=existing_qty,  # Negative for SHORT positions
                 entry_price=pos.entry_price,  # Required for P&L calculation
             )
             logger.debug(
