@@ -1192,9 +1192,23 @@ async def reconcile_all_funds(
             )
             expected_margin = Decimal(str(margin_result.scalar() or 0))
 
-            # Get current margin_used
+            # Calculate expected realized_pnl from closed positions
+            pnl_result = await db.execute(
+                text("""
+                    SELECT COALESCE(SUM(realized_pnl), 0) as total_pnl
+                    FROM algo_positions
+                    WHERE user_id = :user_id AND status = 'CLOSED'
+                """),
+                {"user_id": str(user_id)},
+            )
+            expected_pnl = Decimal(str(pnl_result.scalar() or 0))
+
+            # Get current funds
             funds_result = await db.execute(
-                text("SELECT margin_used FROM user_funds WHERE user_id = :user_id"),
+                text("""
+                    SELECT margin_used, realized_pnl, starting_balance
+                    FROM user_funds WHERE user_id = :user_id
+                """),
                 {"user_id": str(user_id)},
             )
             row = funds_result.fetchone()
@@ -1202,24 +1216,41 @@ async def reconcile_all_funds(
                 continue
 
             current_margin = Decimal(str(row[0]))
-            discrepancy = current_margin - expected_margin
+            current_pnl = Decimal(str(row[1] or 0))
+            starting_balance = Decimal(str(row[2] or 100000))
+
+            margin_discrepancy = current_margin - expected_margin
+            pnl_discrepancy = current_pnl - expected_pnl
             users_checked += 1
 
-            # Fix if discrepancy > ₹1
-            if abs(discrepancy) > Decimal("1.0"):
+            # Fix if any discrepancy > ₹1
+            needs_fix = abs(margin_discrepancy) > Decimal("1.0") or abs(pnl_discrepancy) > Decimal(
+                "1.0"
+            )
+            if needs_fix:
+                expected_cash = starting_balance + expected_pnl
                 await db.execute(
                     text("""
                         UPDATE user_funds
-                        SET margin_used = :expected, updated_at = NOW()
+                        SET margin_used = :expected_margin,
+                            realized_pnl = :expected_pnl,
+                            cash_balance = :expected_cash,
+                            updated_at = NOW()
                         WHERE user_id = :user_id
                     """),
-                    {"expected": expected_margin, "user_id": str(user_id)},
+                    {
+                        "expected_margin": expected_margin,
+                        "expected_pnl": expected_pnl,
+                        "expected_cash": expected_cash,
+                        "user_id": str(user_id),
+                    },
                 )
                 users_fixed += 1
-                total_discrepancy += abs(discrepancy)
+                total_discrepancy += abs(margin_discrepancy) + abs(pnl_discrepancy)
                 logger.info(
-                    f"Fixed margin for user {str(user_id)[:8]}: "
-                    f"{current_margin:.2f} -> {expected_margin:.2f} (diff: {discrepancy:.2f})"
+                    f"Fixed funds for user {str(user_id)[:8]}: "
+                    f"margin {current_margin:.2f} -> {expected_margin:.2f}, "
+                    f"pnl {current_pnl:.2f} -> {expected_pnl:.2f}"
                 )
 
         except Exception as e:
