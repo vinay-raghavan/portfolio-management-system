@@ -540,6 +540,17 @@ class PendingAutoTradeService:
             )
             screener_name = result.scalar_one_or_none()
 
+        # Fetch AutoTradeConfig to get product_type and signal_direction
+        config_result = await self.db.execute(
+            select(AutoTradeConfig).where(
+                and_(
+                    AutoTradeConfig.user_id == user_id,
+                    AutoTradeConfig.category == pending.category,
+                )
+            )
+        )
+        auto_trade_config = config_result.scalar_one_or_none()
+
         # Check for existing strategy linked to this screener
         existing_strategy = await self._find_existing_strategy_for_screener(user_id, screener_id)
 
@@ -673,6 +684,18 @@ class PendingAutoTradeService:
                     {"profit_percent": 15.0, "book_percent": 25.0},
                 ]
 
+                # Get product_type and signal_direction from auto-trade config
+                # Default to DELIVERY/LONG if config not found
+                product_type = StrategyProductType.DELIVERY
+                signal_direction = SignalDirection.LONG
+                if auto_trade_config:
+                    product_type = auto_trade_config.product_type
+                    signal_direction = auto_trade_config.signal_direction
+                    logger.info(
+                        f"Using auto-trade config: product_type={product_type.value}, "
+                        f"signal_direction={signal_direction.value}"
+                    )
+
                 strategy = UserStrategy(
                     user_id=user_id,
                     name=strategy_name_display,
@@ -702,6 +725,9 @@ class PendingAutoTradeService:
                     default_trailing_stop_pct=Decimal("0.01"),  # 1%
                     # Profit booking rules
                     default_profit_booking_rules=default_profit_booking,
+                    # Product type and signal direction from auto-trade config
+                    product_type=product_type,
+                    signal_direction=signal_direction,
                 )
 
                 self.db.add(strategy)
