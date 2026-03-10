@@ -191,4 +191,17 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.slb.auto_close_expiring_slb",
         "schedule": crontab(hour=3, minute=40),  # 9:10 AM IST = 3:40 UTC
     },
+    # =========================================================================
+    # Funds Reconciliation Tasks
+    # =========================================================================
+    # Reconcile funds every 15 minutes during market hours
+    "reconcile-funds-every-15-minutes": {
+        "task": "funds.reconcile_all_users",
+        "schedule": 900.0,  # Every 15 minutes
+    },
+    # Full reconciliation after market close - 4:00 PM IST (10:30 UTC)
+    "reconcile-funds-after-market-close": {
+        "task": "funds.reconcile_all_users",
+        "schedule": crontab(hour=10, minute=30),  # 4:00 PM IST = 10:30 UTC
+    },
 }
