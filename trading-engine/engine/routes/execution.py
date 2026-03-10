@@ -1134,3 +1134,107 @@ async def check_stop_monitors(
         "circuit_breakers_triggered": circuit_breakers_triggered,
         "errors": errors if errors else None,
     }
+
+
+@router.post("/internal/reconcile-funds")
+async def reconcile_all_funds(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    x_internal_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Reconcile funds for all users with open positions.
+
+    Calculates expected margin_used from open positions and fixes any discrepancies.
+    This catches issues caused by failed transactions or bugs in funds updates.
+
+    Returns:
+        dict: Summary with users_checked, users_fixed, total_discrepancy
+    """
+    # Verify internal key
+    expected_key = getattr(settings, "INTERNAL_API_KEY", "internal-worker-key")
+    if x_internal_key != expected_key:
+        raise HTTPException(status_code=403, detail="Invalid internal key")
+
+    from sqlalchemy import text
+
+    logger.info("Starting funds reconciliation for all users")
+
+    # Get all users with open positions
+    result = await db.execute(
+        text("""
+            SELECT DISTINCT user_id FROM algo_positions WHERE status = 'OPEN'
+        """)
+    )
+    user_ids = [row[0] for row in result.fetchall()]
+
+    users_checked = 0
+    users_fixed = 0
+    total_discrepancy = Decimal("0")
+
+    for user_id in user_ids:
+        try:
+            # Calculate expected margin from open positions
+            margin_result = await db.execute(
+                text("""
+                    SELECT COALESCE(SUM(
+                        entry_price * remaining_quantity *
+                        CASE COALESCE(product_type::text, 'INTRADAY')
+                            WHEN 'DELIVERY' THEN 1.0
+                            WHEN 'INTRADAY' THEN 0.25
+                            WHEN 'MARGIN' THEN 0.50
+                            WHEN 'SLB' THEN 0.50
+                            ELSE 0.25
+                        END
+                    ), 0) as expected_margin
+                    FROM algo_positions
+                    WHERE user_id = :user_id AND status = 'OPEN'
+                """),
+                {"user_id": str(user_id)},
+            )
+            expected_margin = Decimal(str(margin_result.scalar() or 0))
+
+            # Get current margin_used
+            funds_result = await db.execute(
+                text("SELECT margin_used FROM user_funds WHERE user_id = :user_id"),
+                {"user_id": str(user_id)},
+            )
+            row = funds_result.fetchone()
+            if not row:
+                continue
+
+            current_margin = Decimal(str(row[0]))
+            discrepancy = current_margin - expected_margin
+            users_checked += 1
+
+            # Fix if discrepancy > ₹1
+            if abs(discrepancy) > Decimal("1.0"):
+                await db.execute(
+                    text("""
+                        UPDATE user_funds
+                        SET margin_used = :expected, updated_at = NOW()
+                        WHERE user_id = :user_id
+                    """),
+                    {"expected": expected_margin, "user_id": str(user_id)},
+                )
+                users_fixed += 1
+                total_discrepancy += abs(discrepancy)
+                logger.info(
+                    f"Fixed margin for user {str(user_id)[:8]}: "
+                    f"{current_margin:.2f} -> {expected_margin:.2f} (diff: {discrepancy:.2f})"
+                )
+
+        except Exception as e:
+            logger.error(f"Error reconciling user {str(user_id)[:8]}: {e}")
+
+    await db.commit()
+
+    logger.info(
+        f"Funds reconciliation complete: checked={users_checked}, "
+        f"fixed={users_fixed}, total_discrepancy={total_discrepancy:.2f}"
+    )
+
+    return {
+        "status": "success",
+        "users_checked": users_checked,
+        "users_fixed": users_fixed,
+        "total_discrepancy": float(total_discrepancy),
+    }
