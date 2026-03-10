@@ -194,10 +194,10 @@ celery_app.conf.beat_schedule = {
     # =========================================================================
     # Funds Reconciliation Tasks
     # =========================================================================
-    # Reconcile funds every 15 minutes during market hours
-    "reconcile-funds-every-15-minutes": {
+    # Reconcile funds every 2 minutes to catch any discrepancies quickly
+    "reconcile-funds-every-2-minutes": {
         "task": "funds.reconcile_all_users",
-        "schedule": 900.0,  # Every 15 minutes
+        "schedule": 120.0,  # Every 2 minutes
     },
     # Full reconciliation after market close - 4:00 PM IST (10:30 UTC)
     "reconcile-funds-after-market-close": {
