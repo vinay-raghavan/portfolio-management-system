@@ -1192,12 +1192,13 @@ async def reconcile_all_funds(
             )
             expected_margin = Decimal(str(margin_result.scalar() or 0))
 
-            # Calculate expected realized_pnl from closed positions
+            # Calculate expected realized_pnl from closed AND partial positions
+            # PARTIAL positions have realized_pnl from the sold portion
             pnl_result = await db.execute(
                 text("""
                     SELECT COALESCE(SUM(realized_pnl), 0) as total_pnl
                     FROM algo_positions
-                    WHERE user_id = :user_id AND status = 'CLOSED'
+                    WHERE user_id = :user_id AND status IN ('CLOSED', 'PARTIAL')
                 """),
                 {"user_id": str(user_id)},
             )
