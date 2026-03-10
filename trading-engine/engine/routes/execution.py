@@ -151,18 +151,16 @@ async def _update_funds_for_closed_positions(
     closed_positions: list[PositionResult],
     default_product_type: ProductType = ProductType.DELIVERY,
 ) -> None:
-    """Update user funds when positions are closed via SL/TP/trailing stop.
+    """Update user funds after positions are closed.
 
-    This handles:
-    1. Crediting sale proceeds (for LONG) or debiting buy cost (for SHORT)
-    2. Releasing margin (for INTRADAY/MARGIN products)
-    3. Updating cumulative realized P&L
+    Uses recalculate_funds() to derive all values from positions,
+    ensuring funds are always in sync with actual position state.
 
     Args:
         db: Database session
         user_id: User ID
-        closed_positions: List of PositionResult objects from closed positions
-        default_product_type: Fallback product type if position doesn't have one stored
+        closed_positions: List of PositionResult objects (for logging only)
+        default_product_type: Unused, kept for API compatibility
     """
     from shared.providers.funds import DatabaseFundsProvider
 
@@ -172,60 +170,31 @@ async def _update_funds_for_closed_positions(
         funds_provider = DatabaseFundsProvider(
             db=db,
             user_funds_model=UserFunds,
-            initial_balance=Decimal("0"),  # Not used for updates
+            initial_balance=Decimal("0"),
             algo_position_model=AlgoPosition,
         )
 
+        # Log the positions being closed
         total_realized_pnl = Decimal("0")
-
         for pos in closed_positions:
-            # For LONG positions, closing means SELL (credit proceeds)
-            # For SHORT positions, closing means BUY (debit cost)
-            side = "SELL" if pos.side == "LONG" else "BUY"
-            exit_price = pos.exit_price if pos.exit_price else Decimal("0")
-
-            # Use position's product_type if available, otherwise use default
-            # This ensures correct margin handling even if strategy's product_type changed
-            pos_product_type = pos.product_type or default_product_type
-
-            # existing_position_qty indicates the position direction:
-            # - Positive for LONG positions (closing long)
-            # - Negative for SHORT positions (closing short)
-            existing_qty = Decimal(str(pos.quantity))
-            if pos.side == "SHORT":
-                existing_qty = -existing_qty  # Negative to indicate short position
-
-            # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
-            await funds_provider.update_funds_for_trade(
-                user_id=user_id,
-                side=side,
-                quantity=Decimal(str(pos.quantity)),
-                price=exit_price,
-                fees=Decimal("0"),  # Fees handled separately
-                product_type=pos_product_type,
-                existing_position_qty=existing_qty,  # Negative for SHORT positions
-                entry_price=pos.entry_price,  # Required for P&L calculation
-            )
-            logger.debug(
-                f"Updated funds for closed position {pos.symbol}: "
-                f"side={side}, qty={pos.quantity}, price={exit_price}, "
-                f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
-            )
-
-            # Accumulate for logging
             if pos.realized_pnl:
                 total_realized_pnl += Decimal(str(pos.realized_pnl))
+            logger.debug(
+                f"Closed position {pos.symbol}: side={pos.side}, "
+                f"qty={pos.quantity}, pnl={pos.realized_pnl}"
+            )
 
-        # Note: realized_pnl is now updated inside update_funds_for_trade
-        # Just log the total
+        # Recalculate funds from positions (single source of truth)
+        await funds_provider.recalculate_funds(user_id)
+
         if total_realized_pnl != Decimal("0"):
             logger.info(
-                f"Total realized P&L for user {user_id[:8]}...: "
-                f"{'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
+                f"Positions closed for user {user_id[:8]}...: "
+                f"total_pnl={'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
             )
 
     except Exception as e:
-        logger.warning(f"Failed to update funds for closed positions: {e}")
+        logger.warning(f"Failed to recalculate funds: {e}")
 
 
 def _configure_broker_price_fetcher(broker, data_provider: DataProvider) -> None:

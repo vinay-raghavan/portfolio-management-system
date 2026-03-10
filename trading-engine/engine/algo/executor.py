@@ -578,76 +578,51 @@ class StrategyExecutor:
         db,
         product_type: ProductType = ProductType.DELIVERY,
     ) -> None:
-        """Update user funds for closed positions.
+        """Update user funds after positions are closed.
 
-        When positions are closed via SL/TP, the broker order isn't placed,
-        so we need to manually update funds to reflect the sale proceeds.
+        Uses recalculate_funds() to derive all values from positions,
+        ensuring funds are always in sync with actual position state.
 
         Args:
             user_id: The user ID
-            closed_positions: List of PositionResult objects
+            closed_positions: List of PositionResult objects (for logging only)
             db: Database session
-            product_type: Product type (DELIVERY/INTRADAY/MARGIN) for margin handling
+            product_type: Product type (unused, kept for API compatibility)
         """
         from shared.providers.funds import DatabaseFundsProvider
 
         from engine.models import AlgoPosition, UserFunds
 
         try:
-            # Create a funds provider for this operation
+            # Create a funds provider
             funds_provider = DatabaseFundsProvider(
                 db=db,
                 user_funds_model=UserFunds,
-                initial_balance=Decimal("0"),  # Not used for updates
+                initial_balance=Decimal("0"),
                 algo_position_model=AlgoPosition,
             )
 
+            # Log the positions being closed
             total_realized_pnl = Decimal("0")
-
             for pos in closed_positions:
-                # For LONG positions, closing means SELL (credit proceeds)
-                # For SHORT positions, closing means BUY (debit cost)
-                side = "SELL" if pos.side == "LONG" else "BUY"
-                exit_price = pos.exit_price if pos.exit_price else Decimal("0")
-
-                # Pass product_type and existing_position_qty to properly release margin
-                # For closing positions, existing_position_qty indicates the position direction:
-                # - Positive for LONG positions (closing long)
-                # - Negative for SHORT positions (closing short)
-                # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
-                existing_qty = Decimal(str(pos.quantity))
-                if pos.side == "SHORT":
-                    existing_qty = -existing_qty  # Negative to indicate short position
-
-                await funds_provider.update_funds_for_trade(
-                    user_id=user_id,
-                    side=side,
-                    quantity=Decimal(str(pos.quantity)),
-                    price=exit_price,
-                    fees=Decimal("0"),  # Fees already accounted for in P&L
-                    product_type=product_type,
-                    existing_position_qty=existing_qty,  # Negative for SHORT positions
-                    entry_price=pos.entry_price,  # Required for P&L calculation
-                )
-                logger.debug(
-                    f"Updated funds for closed position {pos.symbol}: "
-                    f"side={side}, qty={pos.quantity}, price={exit_price}, "
-                    f"pnl={pos.realized_pnl}, product_type={product_type.value}"
-                )
-
-                # Accumulate for logging
                 if pos.realized_pnl:
                     total_realized_pnl += Decimal(str(pos.realized_pnl))
+                logger.debug(
+                    f"Closed position {pos.symbol}: side={pos.side}, "
+                    f"qty={pos.quantity}, pnl={pos.realized_pnl}"
+                )
 
-            # Note: realized_pnl is now updated inside update_funds_for_trade
-            # Just log the total
+            # Recalculate funds from positions (single source of truth)
+            await funds_provider.recalculate_funds(user_id)
+
             if total_realized_pnl != Decimal("0"):
                 logger.info(
-                    f"Total realized P&L for user {user_id[:8]}...: +₹{total_realized_pnl:.2f}"
+                    f"Positions closed for user {user_id[:8]}...: "
+                    f"total_pnl=₹{total_realized_pnl:.2f}"
                 )
 
         except Exception as e:
-            logger.warning(f"Failed to update funds for closed positions: {e}")
+            logger.warning(f"Failed to recalculate funds: {e}")
 
     def _signal_to_dict(self, signal: SignalData) -> dict:
         """Convert SignalData to dictionary."""
@@ -791,45 +766,19 @@ class StrategyExecutor:
                                 algo_position_model=AlgoPosition,
                             )
 
-                            # Update funds based on whether position was opened or closed
-                            if pnl_stats.trades_closed > 0 and position_result:
-                                # Position was closed - release margin and credit P&L
-                                # Determine the side (opposite of what was done to close)
-                                close_side = "SELL" if order_data.get("side") == "SELL" else "BUY"
-                                await funds_provider.update_funds_for_trade(
-                                    user_id=config.user_id,
-                                    side=close_side,
-                                    quantity=Decimal(str(position_result.quantity)),
-                                    price=Decimal(str(filled_price)),
-                                    fees=Decimal("0"),
-                                    product_type=config.product_type,
-                                    existing_position_qty=Decimal(str(position_result.quantity)),
-                                    entry_price=position_result.entry_price,
-                                )
-                                logger.info(
-                                    f"Released margin for closed position {order_data.get('symbol')}: "
-                                    f"pnl={pnl_stats.total_pnl:.2f}, product_type={config.product_type.value}"
-                                )
+                            # Recalculate funds from positions (single source of truth)
+                            # This handles both opening new positions and closing existing ones
+                            await funds_provider.recalculate_funds(config.user_id)
 
-                            elif pnl_stats.trades_closed == 0 and position_result:
-                                order_side = order_data.get("side", "BUY")
-                                order_qty = Decimal(str(order_data.get("quantity", 0)))
-                                order_price = Decimal(str(filled_price))
-
-                                await funds_provider.update_funds_for_trade(
-                                    user_id=config.user_id,
-                                    side=order_side,
-                                    quantity=order_qty,
-                                    price=order_price,
-                                    fees=Decimal("0"),
-                                    product_type=config.product_type,
-                                    existing_position_qty=None,  # Opening new position
-                                    entry_price=None,
-                                )
+                            if pnl_stats.trades_closed > 0:
                                 logger.info(
-                                    f"Blocked margin for new position {order_data.get('symbol')}: "
-                                    f"side={order_side}, qty={order_qty}, price={order_price}, "
-                                    f"product_type={config.product_type.value}"
+                                    f"Position closed {order_data.get('symbol')}: "
+                                    f"pnl={pnl_stats.total_pnl:.2f}"
+                                )
+                            else:
+                                logger.info(
+                                    f"Position opened {order_data.get('symbol')}: "
+                                    f"side={order_data.get('side')}, qty={order_data.get('quantity')}"
                                 )
                         except Exception as e:
                             logger.warning(

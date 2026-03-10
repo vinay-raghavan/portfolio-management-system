@@ -630,3 +630,92 @@ class DatabaseFundsProvider(FundsProvider):
         db_funds.unrealized_pnl = unrealized_pnl
         await self.db.flush()
         logger.info(f"Updated unrealized P&L for user {user_id[:8]}...: ₹{unrealized_pnl:.2f}")
+
+    async def recalculate_funds(self, user_id: str) -> Funds:
+        """Recalculate funds by deriving values from positions.
+
+        This is the CORRECT way to update funds - derive everything from
+        the single source of truth (positions), rather than incremental updates.
+
+        Calculates:
+        - margin_used: SUM of margin for OPEN + PARTIAL positions
+        - realized_pnl: SUM of realized_pnl from CLOSED + PARTIAL positions
+        - cash_balance: starting_balance + realized_pnl
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Updated Funds object
+        """
+        from sqlalchemy import text
+
+        db_funds = await self._get_or_create_funds(user_id)
+
+        # Calculate margin_used from OPEN and PARTIAL positions
+        # margin = entry_price * remaining_quantity * margin_percent
+        margin_result = await self.db.execute(
+            text("""
+                SELECT COALESCE(SUM(
+                    entry_price * remaining_quantity *
+                    CASE COALESCE(product_type::text, 'INTRADAY')
+                        WHEN 'DELIVERY' THEN 1.0
+                        WHEN 'INTRADAY' THEN 0.25
+                        WHEN 'MARGIN' THEN 0.50
+                        WHEN 'SLB' THEN 0.50
+                        ELSE 0.25
+                    END
+                ), 0) as margin_used
+                FROM algo_positions
+                WHERE user_id = :user_id AND status IN ('OPEN', 'PARTIAL')
+            """),
+            {"user_id": user_id},
+        )
+        new_margin_used = Decimal(str(margin_result.scalar() or 0))
+
+        # Calculate realized_pnl from CLOSED and PARTIAL positions
+        pnl_result = await self.db.execute(
+            text("""
+                SELECT COALESCE(SUM(realized_pnl), 0) as total_pnl
+                FROM algo_positions
+                WHERE user_id = :user_id AND status IN ('CLOSED', 'PARTIAL')
+            """),
+            {"user_id": user_id},
+        )
+        new_realized_pnl = Decimal(str(pnl_result.scalar() or 0))
+
+        # Get starting_balance (default to 100000 if not set)
+        starting_balance = db_funds.starting_balance or Decimal("100000")
+
+        # Calculate cash_balance from starting_balance + realized_pnl
+        new_cash_balance = starting_balance + new_realized_pnl
+
+        # Only update if values changed
+        old_margin = db_funds.margin_used or Decimal("0")
+        old_pnl = db_funds.realized_pnl or Decimal("0")
+        old_cash = db_funds.cash_balance or starting_balance
+
+        margin_changed = abs(new_margin_used - old_margin) > Decimal("0.01")
+        pnl_changed = abs(new_realized_pnl - old_pnl) > Decimal("0.01")
+        cash_changed = abs(new_cash_balance - old_cash) > Decimal("0.01")
+
+        if margin_changed or pnl_changed or cash_changed:
+            db_funds.margin_used = new_margin_used
+            db_funds.realized_pnl = new_realized_pnl
+            db_funds.cash_balance = new_cash_balance
+            await self.db.flush()
+
+            logger.info(
+                f"Recalculated funds for user {user_id[:8]}: "
+                f"margin={new_margin_used:.2f}, pnl={new_realized_pnl:.2f}, "
+                f"cash={new_cash_balance:.2f}"
+            )
+
+        return Funds(
+            available_cash=new_cash_balance - new_margin_used,
+            used_margin=new_margin_used,
+            total_balance=new_cash_balance,
+            collateral=db_funds.collateral or Decimal("0"),
+            realized_pnl=new_realized_pnl,
+            unrealized_pnl=db_funds.unrealized_pnl or Decimal("0"),
+        )
