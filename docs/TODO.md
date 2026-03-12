@@ -7195,3 +7195,184 @@ Before moving to Phase 2, ensure:
 - **Celery workers**: Background jobs for data updates, signals, algo execution, notifications
 - **Strategy abstraction**: Easy to add new strategies without changing core code
 - **Notification abstraction**: Easy to add new channels (Telegram, Discord, etc.) later
+
+---
+
+## 📋 Backlog: Broker Charges Integration
+
+> **Status**: Planned
+> **Priority**: Medium
+> **Branch**: `phase-3/broker-charges`
+
+### Overview
+
+Integrate broker charges (brokerage, STT, exchange fees, etc.) into P&L calculations for accurate profit tracking.
+
+### Fyers Charges Reference (as of March 2025)
+
+#### Brokerage (Per Executed Order)
+
+| Product Type | Brokerage |
+|--------------|-----------|
+| **Intraday** | ₹20 or 0.03% (whichever is lower) |
+| **Delivery** | ₹20 or 0.3% (whichever is lower) |
+| **MTF** | ₹20 or 0.3% (whichever is lower) |
+| **Futures** | ₹20 or 0.03% (whichever is lower) |
+| **Options** | Flat ₹20 |
+| **MF & IPO** | ₹0 (Free) |
+
+#### Regulatory Charges (Equity)
+
+| Charge | Delivery | Intraday | Futures | Options |
+|--------|----------|----------|---------|---------|
+| **STT** | 0.1% on Buy & Sell | 0.025% on Sell only | 0.02% on Sell | 0.1% on Sell (Premium) |
+| **Exchange Txn (NSE)** | 0.0030699% | 0.0030699% | 0.0018299% | 0.0355299% (on premium) |
+| **Exchange Txn (BSE)** | 0.00375% | 0.00375% | - | Varies |
+| **SEBI Fee** | ₹10/Crore | ₹10/Crore | ₹10/Crore | ₹10/Crore |
+| **Stamp Duty** | 0.015% on Buy | 0.003% on Buy | 0.002% on Buy | 0.003% on Buy |
+| **NSE IPFT** | ₹0.01/Crore | ₹0.01/Crore | ₹0.01/Crore | ₹0.01/Crore |
+| **GST** | 18% on (Brokerage + Txn + SEBI + IPFT) | Same | Same | Same |
+| **Clearing Charges** | 0 | 0 | 0.0005% | 0.009% |
+
+#### Other Charges
+
+| Charge | Amount |
+|--------|--------|
+| Admin Square Off | ₹50 + GST per order |
+| Debit Charges (Sell) | ₹12.5 + GST per scrip |
+| Call & Trade | ₹50 + GST per order |
+
+#### Estimated Total Charges (Round-Trip)
+
+| Product | Estimated % of Trade Value |
+|---------|---------------------------|
+| **Intraday** | ~0.08% - 0.10% |
+| **Delivery** | ~0.15% - 0.20% |
+| **F&O Futures** | ~0.05% - 0.08% |
+| **F&O Options** | ~0.05% + ₹40 fixed |
+
+### Implementation Plan
+
+#### Approach: Track Separately, Display Net P&L
+
+**Rationale**: Don't bake charges into entry/exit prices (distorts technical analysis). Instead:
+1. Keep entry/exit prices clean (actual market prices)
+2. Calculate charges separately
+3. Display gross P&L, charges, and net P&L
+4. Adjust take-profit thresholds to account for charges
+
+#### Tasks
+
+- [ ] **Create Charges Calculator Module**
+  ```
+  shared/providers/charges/
+  ├── __init__.py
+  ├── base.py           # Abstract ChargesCalculator interface
+  ├── fyers.py          # Fyers-specific charges
+  ├── angel.py          # Angel One charges (future)
+  └── factory.py        # ChargesCalculatorFactory
+  ```
+
+- [ ] **ChargesCalculator Interface**
+  ```python
+  class ChargesCalculator(ABC):
+      @abstractmethod
+      def calculate_entry_charges(
+          self,
+          price: Decimal,
+          quantity: int,
+          product_type: ProductType,
+          exchange: str = "NSE",
+      ) -> ChargesBreakdown:
+          """Calculate charges for entry (buy) order."""
+          pass
+
+      @abstractmethod
+      def calculate_exit_charges(
+          self,
+          price: Decimal,
+          quantity: int,
+          product_type: ProductType,
+          exchange: str = "NSE",
+      ) -> ChargesBreakdown:
+          """Calculate charges for exit (sell) order."""
+          pass
+
+      @abstractmethod
+      def calculate_round_trip(
+          self,
+          entry_price: Decimal,
+          exit_price: Decimal,
+          quantity: int,
+          product_type: ProductType,
+          num_orders: int = 2,  # 1 buy + 1 sell
+      ) -> TotalCharges:
+          """Calculate total charges for complete trade."""
+          pass
+  ```
+
+- [ ] **ChargesBreakdown Schema**
+  ```python
+  class ChargesBreakdown(BaseModel):
+      brokerage: Decimal
+      stt: Decimal
+      exchange_txn: Decimal
+      sebi_fee: Decimal
+      stamp_duty: Decimal
+      gst: Decimal
+      clearing_charges: Decimal
+      total: Decimal
+  ```
+
+- [ ] **Database Changes**
+  - Add `estimated_charges` to `algo_positions` table
+  - Add `actual_charges` to `algo_positions` table
+  - Add `gross_pnl` and `net_pnl` columns (net = gross - charges)
+
+- [ ] **P&L Display Updates**
+  - Show gross P&L, charges, net P&L in position cards
+  - Add charges column to trade history
+  - Update dashboard P&L summary to show net values
+
+- [ ] **Take-Profit Adjustment**
+  - Add option to auto-adjust take-profit to cover charges
+  - E.g., if target is 2% net, set 2.1% gross (for 0.1% charges)
+  - Formula: `adjusted_tp = target_net_pct + estimated_charges_pct`
+
+- [ ] **Order Consolidation Tracking**
+  - Track number of orders per position
+  - Warn user when placing multiple small orders (higher fees)
+  - Show "orders: 3" in position card if position built from 3 orders
+
+### Example: ₹1,00,000 Intraday Trade Charges
+
+| Charge | Buy Side | Sell Side | Total |
+|--------|----------|-----------|-------|
+| Brokerage | ₹20 | ₹20 | ₹40 |
+| STT (0.025% sell) | - | ₹25 | ₹25 |
+| Exchange Txn (0.003%) | ₹3.07 | ₹3.07 | ₹6.14 |
+| Stamp Duty (0.003% buy) | ₹3 | - | ₹3 |
+| SEBI Fee | ₹0.10 | ₹0.10 | ₹0.20 |
+| GST (18%) | ₹4.17 | ₹4.17 | ₹8.34 |
+| **Total** | **₹30.34** | **₹52.34** | **₹82.68** |
+
+**Break-even**: Need 0.083% profit just to cover charges.
+
+### Per-Order Consideration
+
+Since brokerage is **per order** (not per share), consolidating orders saves money:
+
+| Scenario | Orders | Brokerage | Total Charges |
+|----------|--------|-----------|---------------|
+| 1 order of 100 shares | 1 buy + 1 sell | ₹40 | ~₹82 |
+| 5 orders of 20 shares | 5 buy + 5 sell | ₹200 | ~₹242 |
+| 10 orders of 10 shares | 10 buy + 10 sell | ₹400 | ~₹442 |
+
+**Recommendation**: Track order count per position and warn users about fragmented orders.
+
+### Future Enhancements
+
+- [ ] Support multiple brokers (Angel One, Zerodha, etc.)
+- [ ] MTF interest calculation for overnight positions
+- [ ] DP charges for delivery trades
+- [ ] Contract note reconciliation (match calculated vs actual)
