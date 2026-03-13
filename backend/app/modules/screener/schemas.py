@@ -41,6 +41,7 @@ class ScreenerPresetType(str, Enum):
     SECTOR_ROTATION = "sector_rotation"
     MINERVINI = "minervini"  # Mark Minervini Trend Template
     BEARISH_SHORT = "bearish_short"  # Bearish momentum for short selling
+    ADAPTIVE = "adaptive"  # Market-adaptive: auto-switches bullish/bearish based on regime
 
 
 class StrictnessLevel(str, Enum):
