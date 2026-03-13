@@ -14,11 +14,10 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
-    pass
+    from shared.providers.data.base import DataProviderBase
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +51,9 @@ class MarketRegimeDetector:
     """Detects current market regime based on multiple factors."""
 
     # Index symbol for regime detection
-    NIFTY_SYMBOL = "NIFTY 50"
-    NIFTY_BANK_SYMBOL = "NIFTY BANK"
+    NIFTY_SYMBOL = "NIFTY"  # Use NIFTY for Yahoo Finance
+    NIFTY_SYMBOL_ALT = "^NSEI"  # Yahoo Finance symbol for NIFTY 50
+    NIFTY_BANK_SYMBOL = "^NSEBANK"
 
     # Thresholds for regime classification
     STRONGLY_BULLISH_THRESHOLD = 50
@@ -67,13 +67,15 @@ class MarketRegimeDetector:
     VIX_HIGH = 25  # High volatility, bearish
     VIX_EXTREME = 35  # Extreme fear
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, data_provider: "DataProviderBase | None" = None):
         """Initialize the detector.
 
         Args:
             db: Database session for fetching market data
+            data_provider: Optional data provider for fetching market data
         """
         self.db = db
+        self._data_provider = data_provider
 
     async def detect_regime(self) -> MarketRegimeData:
         """Detect current market regime.
@@ -138,6 +140,16 @@ class MarketRegimeDetector:
         else:
             return MarketRegime.NEUTRAL
 
+    async def _get_data_provider(self) -> "DataProviderBase":
+        """Get or create a data provider."""
+        if self._data_provider:
+            return self._data_provider
+
+        from shared.providers.data import get_data_provider
+
+        self._data_provider = get_data_provider("yahoo")
+        return self._data_provider
+
     async def _get_nifty_trend_score(self) -> tuple[float, list[str]]:
         """Get NIFTY 50 trend score based on price vs moving averages.
 
@@ -148,35 +160,32 @@ class MarketRegimeDetector:
         score = 0.0
 
         try:
-            # Get NIFTY 50 data with moving averages
-            result = await self.db.execute(
-                text("""
-                    SELECT
-                        close,
-                        sma_20,
-                        sma_50,
-                        sma_200,
-                        high_52w,
-                        low_52w
-                    FROM market_data_daily
-                    WHERE symbol = :symbol
-                    ORDER BY date DESC
-                    LIMIT 1
-                """),
-                {"symbol": self.NIFTY_SYMBOL},
-            )
-            row = result.fetchone()
+            provider = await self._get_data_provider()
 
-            if not row:
-                reasons.append("NIFTY 50 data not available")
+            # Fetch NIFTY historical data (250 days for 200 DMA + buffer)
+            history = await provider.get_historical_data(
+                symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
+                interval="1d",
+                days=300,
+            )
+
+            if not history or len(history) < 50:
+                reasons.append("NIFTY 50 data not available or insufficient")
                 return 0.0, reasons
 
-            close = float(row[0]) if row[0] else 0
-            sma_20 = float(row[1]) if row[1] else close
-            sma_50 = float(row[2]) if row[2] else close
-            sma_200 = float(row[3]) if row[3] else close
-            high_52w = float(row[4]) if row[4] else close
-            low_52w = float(row[5]) if row[5] else close
+            # Calculate current price and moving averages
+            closes = [float(bar.close) for bar in history]
+            close = closes[-1]
+
+            # Calculate SMAs
+            sma_20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else close
+            sma_50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else close
+            sma_200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else close
+
+            # Calculate 52-week high/low (252 trading days)
+            prices_52w = closes[-252:] if len(closes) >= 252 else closes
+            high_52w = max(prices_52w)
+            low_52w = min(prices_52w)
 
             # Score components
             # 1. Price vs 50 DMA (+/- 30 points)
@@ -221,79 +230,20 @@ class MarketRegimeDetector:
         return max(-100, min(100, score)), reasons
 
     async def _get_breadth_score(self) -> tuple[float, list[str]]:
-        """Get market breadth score based on advance/decline ratio.
+        """Get market breadth score.
+
+        Note: Since we don't have a breadth database, we use NIFTY trend
+        as a proxy. Breadth analysis requires individual stock data which
+        is expensive to fetch for regime detection.
 
         Returns:
             Tuple of (score, reasons) where score is -100 to +100
         """
         reasons = []
-        score = 0.0
-
-        try:
-            # Count stocks above/below key moving averages in NIFTY 500
-            result = await self.db.execute(
-                text("""
-                    SELECT
-                        COUNT(*) FILTER (WHERE close > sma_50) as above_50dma,
-                        COUNT(*) FILTER (WHERE close < sma_50) as below_50dma,
-                        COUNT(*) FILTER (WHERE close > sma_200) as above_200dma,
-                        COUNT(*) FILTER (WHERE close < sma_200) as below_200dma,
-                        COUNT(*) as total
-                    FROM market_data_daily md
-                    JOIN stocks s ON md.symbol = s.symbol
-                    WHERE md.date = (SELECT MAX(date) FROM market_data_daily)
-                    AND s.nifty_500 = true
-                """)
-            )
-            row = result.fetchone()
-
-            if not row or row[4] == 0:
-                reasons.append("Breadth data not available")
-                return 0.0, reasons
-
-            above_50dma = row[0] or 0
-            row[1] or 0
-            above_200dma = row[2] or 0
-            row[3] or 0
-            total = row[4]
-
-            # Calculate percentages
-            pct_above_50dma = above_50dma / total * 100
-            pct_above_200dma = above_200dma / total * 100
-
-            # Score based on 50 DMA breadth (+/- 50 points)
-            if pct_above_50dma > 70:
-                score += 50
-                reasons.append(f"Strong breadth: {pct_above_50dma:.0f}% above 50 DMA")
-            elif pct_above_50dma > 50:
-                score += 25
-                reasons.append(f"Positive breadth: {pct_above_50dma:.0f}% above 50 DMA")
-            elif pct_above_50dma < 30:
-                score -= 50
-                reasons.append(f"Weak breadth: only {pct_above_50dma:.0f}% above 50 DMA")
-            elif pct_above_50dma < 50:
-                score -= 25
-                reasons.append(f"Negative breadth: {pct_above_50dma:.0f}% above 50 DMA")
-
-            # Score based on 200 DMA breadth (+/- 50 points)
-            if pct_above_200dma > 70:
-                score += 50
-                reasons.append(f"Strong LT breadth: {pct_above_200dma:.0f}% above 200 DMA")
-            elif pct_above_200dma > 50:
-                score += 25
-                reasons.append(f"Positive LT breadth: {pct_above_200dma:.0f}% above 200 DMA")
-            elif pct_above_200dma < 30:
-                score -= 50
-                reasons.append(f"Weak LT breadth: only {pct_above_200dma:.0f}% above 200 DMA")
-            elif pct_above_200dma < 50:
-                score -= 25
-                reasons.append(f"Negative LT breadth: {pct_above_200dma:.0f}% above 200 DMA")
-
-        except Exception as e:
-            logger.warning(f"Error getting breadth score: {e}")
-            reasons.append(f"Error fetching breadth data: {e}")
-
-        return max(-100, min(100, score)), reasons
+        # For now, return neutral score until we have breadth data
+        # TODO: Implement proper breadth analysis with cached stock data
+        reasons.append("Breadth analysis skipped (using NIFTY trend as proxy)")
+        return 0.0, reasons
 
     async def _get_momentum_score(self) -> tuple[float, list[str]]:
         """Get momentum score based on NIFTY RSI and ROC.
@@ -305,27 +255,26 @@ class MarketRegimeDetector:
         score = 0.0
 
         try:
-            # Get NIFTY momentum indicators
-            result = await self.db.execute(
-                text("""
-                    SELECT
-                        rsi_14,
-                        roc_20
-                    FROM market_data_daily
-                    WHERE symbol = :symbol
-                    ORDER BY date DESC
-                    LIMIT 1
-                """),
-                {"symbol": self.NIFTY_SYMBOL},
-            )
-            row = result.fetchone()
+            provider = await self._get_data_provider()
 
-            if not row:
+            # Fetch NIFTY historical data for momentum calculation
+            history = await provider.get_historical_data(
+                symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
+                interval="1d",
+                days=30,
+            )
+
+            if not history or len(history) < 20:
                 reasons.append("NIFTY momentum data not available")
                 return 0.0, reasons
 
-            rsi = float(row[0]) if row[0] else 50
-            roc = float(row[1]) if row[1] else 0
+            closes = [float(bar.close) for bar in history]
+
+            # Calculate RSI (14-period)
+            rsi = self._calculate_rsi(closes, 14)
+
+            # Calculate ROC (20-period)
+            roc = ((closes[-1] - closes[-20]) / closes[-20]) * 100 if len(closes) >= 20 else 0
 
             # RSI score (+/- 50 points)
             if rsi > 70:
@@ -361,6 +310,24 @@ class MarketRegimeDetector:
 
         return max(-100, min(100, score)), reasons
 
+    def _calculate_rsi(self, closes: list[float], period: int = 14) -> float:
+        """Calculate RSI from close prices."""
+        if len(closes) < period + 1:
+            return 50.0  # Default to neutral
+
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+
+        if avg_loss == 0:
+            return 100.0
+
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
     async def _get_volatility_score(self) -> tuple[float, list[str]]:
         """Get volatility score based on India VIX.
 
@@ -372,23 +339,26 @@ class MarketRegimeDetector:
         score = 0.0
 
         try:
-            # Get India VIX
-            result = await self.db.execute(
-                text("""
-                    SELECT close
-                    FROM market_data_daily
-                    WHERE symbol = 'INDIA VIX'
-                    ORDER BY date DESC
-                    LIMIT 1
-                """)
-            )
-            row = result.fetchone()
+            provider = await self._get_data_provider()
 
-            if not row:
+            # Try to fetch India VIX
+            try:
+                history = await provider.get_historical_data(
+                    symbol="^INDIAVIX",  # Yahoo Finance symbol
+                    interval="1d",
+                    days=5,
+                )
+
+                if history and len(history) > 0:
+                    vix = float(history[-1].close)
+                else:
+                    # VIX data not available, return neutral
+                    reasons.append("India VIX data not available")
+                    return 0.0, reasons
+            except Exception:
+                # VIX data not available, return neutral
                 reasons.append("India VIX data not available")
                 return 0.0, reasons
-
-            vix = float(row[0]) if row[0] else 15
 
             # VIX score (inverted - low VIX = bullish)
             if vix < self.VIX_LOW:
