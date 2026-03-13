@@ -1,5 +1,65 @@
 # Release Notes
 
+## v1.5.4 (2026-03-13)
+
+### 🧠 Market-Adaptive Screener & Capital Safety
+
+This release introduces intelligent market regime detection that automatically adapts screening filters based on market conditions, along with critical capital validation improvements to prevent over-leveraging.
+
+**New Features:**
+
+#### Market Regime Detection
+- **Composite Scoring System**: Scores market from -100 (strongly bearish) to +100 (strongly bullish) based on:
+  - **NIFTY 50 Trend (35%)**: Price vs 50/200 DMA, MA alignment, position in 52-week range
+  - **Market Breadth (25%)**: Advance/decline analysis (placeholder for future enhancement)
+  - **Momentum (25%)**: RSI and ROC indicators on NIFTY 50
+  - **Volatility (15%)**: India VIX levels (low VIX = bullish, high VIX = bearish)
+- **Five Regime Classifications**: Strongly Bullish, Bullish, Neutral, Bearish, Strongly Bearish
+- **Real-time Detection**: Uses Yahoo Finance data provider for live index data
+
+#### Adaptive Screener (ADAPTIVE Preset)
+- **Automatic Filter Switching**: Applies bullish or bearish filters based on detected regime
+- **Bullish Filters (Minervini Trend Template)**:
+  - Price > 50 DMA > 200 DMA (uptrend structure)
+  - RS Rating > 70, within 25% of 52-week high
+  - Volume surge confirmation
+- **Bearish Filters (Inverse Minervini)**:
+  - Price < 50 DMA < 200 DMA (downtrend structure)
+  - Relative weakness, near 52-week low
+  - Relaxed filtering to find SHORT candidates in bear markets
+- **Side Auto-Detection**: Returns "LONG" candidates in bullish regime, "SHORT" candidates in bearish
+
+#### Strict Capital Validation
+- **Block Orders on Broker Disconnect**: Previously allowed orders when broker was None
+- **Block Orders on Funds Fetch Failure**: Previously allowed orders when get_funds() failed
+- **Negative Cash Block**: Prevents new BUY orders when `available_cash < 0`
+- **Negative Cash Short Block**: Prevents new SHORT positions when `available_cash < 0`
+- **SLB Margin Enforcement**: 30% margin check for SLB short positions
+
+**Bug Fixes:**
+
+- **SLB Margin**: Corrected SLB margin from 50% to 30% (per SEBI guidelines)
+- **INTRADAY Margin**: Fixed margin staying at 25% (was incorrectly changed to 30%)
+- **Yahoo Provider**: Fixed `get_historical()` to use `period` parameter instead of `days`
+- **Data Provider Import**: Fixed method name from `get_historical_data` to `get_historical`
+- **Auto-Trade Direction**: Fixed SHORT signal execution with correct product types
+
+**New Files:**
+
+- `backend/app/modules/screener/market_regime.py` - Market regime detection module
+- `MarketRegimeDetector` class with scoring algorithms
+- `MarketRegime` enum (STRONGLY_BULLISH to STRONGLY_BEARISH)
+- `MarketRegimeData` dataclass with all scores and reasons
+
+**Testing:**
+
+- All 399 backend tests pass
+- All 81 trading-engine tests pass
+- Market regime detection validated against live NIFTY data
+- Adaptive screener verified for both bullish and bearish conditions
+
+---
+
 ## v1.5.3 (2026-03-09)
 
 ### 🩳 Short Selling & Intraday Enhancements

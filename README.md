@@ -1,6 +1,6 @@
 # Portfolio Management System
 
-[![Version](https://img.shields.io/badge/version-1.5.3-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.5.3)
+[![Version](https://img.shields.io/badge/version-1.5.4-blue.svg)](https://github.com/vinay-raghavan/portfolio-management-system/releases/tag/v1.5.4)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A personal automated financial portfolio management system with algorithmic trading, paper trading, technical/fundamental analysis, and real-time market data for Indian markets (NSE/BSE).
@@ -27,6 +27,7 @@ This system performs comprehensive market analysis, executes automated trading s
 
 #### 📈 Stock Screener
 - **Preset Screeners**: Momentum, Breakout, Consolidation, Pullback, Sector
+- **Market-Adaptive Screener**: Auto-switches between bullish/bearish filters based on market regime
 - **Daily Recommendations**: Auto-generated picks with performance tracking
 - **Custom Filters**: Build your own screener configurations
 
