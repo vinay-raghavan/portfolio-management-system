@@ -573,7 +573,11 @@ class SafetyService:
             return basic_check
 
         if self.broker is None:
-            return SafetyCheck(passed=True)
+            logger.error("Broker not configured - cannot validate funds")
+            return SafetyCheck(
+                passed=False,
+                reason="Broker not configured - cannot validate funds. Order blocked.",
+            )
 
         # Get margin percentage based on product type
         margin_percent = self._get_margin_percent(product_type)
@@ -599,12 +603,22 @@ class SafetyService:
                 )
 
         except Exception as e:
-            logger.warning(f"Failed to check funds for {user_id}: {e}")
-            # Continue with order - broker will validate at execution time
-            return SafetyCheck(passed=True)
+            logger.error(f"Failed to check funds for {user_id}: {e}")
+            # BLOCK order - funds validation is critical for capital protection
+            return SafetyCheck(
+                passed=False,
+                reason=f"Unable to validate funds: {e}. Order blocked for safety.",
+            )
 
     def _get_margin_percent(self, product_type: str) -> Decimal:
-        """Get margin percentage for product type."""
+        """Get margin percentage for product type.
+
+        Margin percentages:
+        - DELIVERY (CNC): 100% - full payment required
+        - INTRADAY (MIS): 20% - day trading margin (varies 20-40% by stock)
+        - MARGIN (MTF): 50% - leveraged buying
+        - SLB: 30% - short selling with stock borrowing
+        """
         margins = {
             "DELIVERY": Decimal("1.0"),
             "CNC": Decimal("1.0"),
@@ -612,6 +626,7 @@ class SafetyService:
             "MIS": Decimal("0.25"),
             "MARGIN": Decimal("0.50"),
             "MTF": Decimal("0.50"),
+            "SLB": Decimal("0.30"),
         }
         return margins.get(product_type.upper(), Decimal("1.0"))
 
@@ -624,6 +639,16 @@ class SafetyService:
         funds,
     ) -> SafetyCheck:
         """Check funds for BUY order based on product type."""
+        # Block any order if available cash is negative
+        if funds.available_cash < Decimal("0"):
+            return SafetyCheck(
+                passed=False,
+                reason=(
+                    f"Negative available cash (₹{funds.available_cash:.2f}). "
+                    f"Cannot open new positions until existing positions are closed."
+                ),
+            )
+
         if product_type.upper() in ("DELIVERY", "CNC"):
             # Full payment required
             total_required = order_value + fees
@@ -662,6 +687,16 @@ class SafetyService:
         """Check funds/position for SELL order based on product type."""
         owned = existing_position_qty or Decimal("0")
 
+        # Block any new short position if available cash is negative
+        if owned <= 0 and funds.available_cash < Decimal("0"):
+            return SafetyCheck(
+                passed=False,
+                reason=(
+                    f"Negative available cash (₹{funds.available_cash:.2f}). "
+                    f"Cannot open new short positions until existing positions are closed."
+                ),
+            )
+
         if product_type.upper() in ("DELIVERY", "CNC"):
             # Must own shares to sell
             if owned < quantity:
@@ -697,6 +732,21 @@ class SafetyService:
                         f"trying to sell {quantity} but only own {owned}"
                     ),
                 )
+
+        elif product_type.upper() == "SLB":
+            # SLB (Stock Lending & Borrowing) requires margin for short selling
+            if owned <= 0:
+                # Opening short via SLB - check margin
+                margin_required = order_value * margin_percent + fees
+                if funds.available_cash < margin_required:
+                    return SafetyCheck(
+                        passed=False,
+                        reason=(
+                            f"Insufficient margin for SLB short: "
+                            f"required ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
+                            f"available ₹{funds.available_cash:.2f}"
+                        ),
+                    )
 
         return SafetyCheck(passed=True)
 

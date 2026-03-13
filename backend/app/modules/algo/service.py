@@ -660,11 +660,12 @@ class AlgoService:
 
     async def get_pnl_history(self, user_id: str, days: int = 30) -> PnLHistoryResponse:
         """Get P&L history over time for a user."""
-        # Get all closed positions for the user
+        # Get all CLOSED and PARTIAL positions for the user
+        # PARTIAL positions have realized_pnl from the sold portion
         result = await self.db.execute(
             select(AlgoPosition).where(
                 AlgoPosition.user_id == user_id,
-                AlgoPosition.status == PositionStatus.CLOSED,
+                AlgoPosition.status.in_([PositionStatus.CLOSED, PositionStatus.PARTIAL]),
             )
         )
         positions = list(result.scalars().all())
@@ -673,17 +674,26 @@ class AlgoService:
         end_date = date.today()
         start_date = end_date - timedelta(days=days - 1)
 
-        # Group positions by exit date
+        # Group positions by exit date (for CLOSED) or updated_at (for PARTIAL)
         pnl_by_date: dict[str, dict] = defaultdict(
             lambda: {"realized_pnl": Decimal("0"), "trades_closed": 0, "trades_opened": 0}
         )
 
         for p in positions:
-            if p.exit_at:
-                exit_date_str = p.exit_at.date().isoformat()
-                if start_date.isoformat() <= exit_date_str <= end_date.isoformat():
-                    pnl_by_date[exit_date_str]["realized_pnl"] += p.realized_pnl
-                    pnl_by_date[exit_date_str]["trades_closed"] += 1
+            # For CLOSED positions, use exit_at
+            # For PARTIAL positions, use updated_at (when partial sale happened)
+            if p.status == PositionStatus.CLOSED and p.exit_at:
+                pnl_date = p.exit_at.date()
+            elif p.status == PositionStatus.PARTIAL and p.updated_at:
+                pnl_date = p.updated_at.date()
+            else:
+                continue
+
+            pnl_date_str = pnl_date.isoformat()
+            if start_date.isoformat() <= pnl_date_str <= end_date.isoformat():
+                pnl_by_date[pnl_date_str]["realized_pnl"] += p.realized_pnl
+                if p.status == PositionStatus.CLOSED:
+                    pnl_by_date[pnl_date_str]["trades_closed"] += 1
 
             if p.entry_at:
                 entry_date_str = p.entry_at.date().isoformat()

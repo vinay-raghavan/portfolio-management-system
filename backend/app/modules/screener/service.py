@@ -19,6 +19,7 @@ from app.modules.screener.filters import (
     SectorPerformanceFilter,
     VolumeFilter,
 )
+from app.modules.screener.market_regime import MarketRegimeData
 from app.modules.screener.models import CustomScreener, ScreenerResultRecord, ScreenerRun
 from app.modules.screener.schemas import (
     CustomScreenerCreate,
@@ -498,25 +499,55 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         filters=[
             FilterConfig(
                 filter_type=FilterTypeEnum.VOLUME,
-                params={"min_avg_volume": 100000},  # Need liquidity for shorting
+                params={"min_avg_volume": 50000},  # Relaxed volume requirement
                 weight=1.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
                 params={
                     "momentum_mode": "bearish_short",
-                    "rsi_overbought": 70,
-                    "min_roc": -5,  # Looking for negative momentum
+                    "rsi_overbought": 60,  # Relaxed from 70
+                    "min_roc": -2,  # Relaxed from -5 (negative momentum)
                 },
-                weight=2.5,
+                weight=2.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOVING_AVERAGE,
                 params={
-                    "require_below_trend": True,  # Below 200MA
-                    "trend_ma": 200,
+                    "require_below_trend": True,  # Below 50MA (relaxed from 200MA)
+                    "trend_ma": 50,
                 },
+                weight=1.5,
+            ),
+        ],
+    ),
+    # Adaptive Screener - Auto-switches between bullish/bearish based on market regime
+    # This is a placeholder - actual filters are determined at runtime
+    ScreenerPresetType.ADAPTIVE: ScreenerPresetInfo(
+        preset=ScreenerPresetType.ADAPTIVE,
+        name="Market Adaptive",
+        description=(
+            "Automatically detects market regime (bullish/bearish) and selects "
+            "appropriate stocks. Uses NIFTY trend, market breadth, momentum, and VIX "
+            "to determine direction. In bullish markets: finds breakout stocks. "
+            "In bearish markets: finds breakdown stocks for shorting."
+        ),
+        filters=[
+            # Default filters - will be overridden by regime detection
+            FilterConfig(
+                filter_type=FilterTypeEnum.VOLUME,
+                params={"min_avg_volume": 50000},
+                weight=1.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOMENTUM,
+                params={"momentum_mode": "bullish"},  # Default, changed at runtime
                 weight=2.0,
+            ),
+            FilterConfig(
+                filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                params={"trend_ma": 50, "require_above_trend": True},
+                weight=1.5,
             ),
         ],
     ),
@@ -830,6 +861,160 @@ class ScreenerService:
         """Get a specific preset definition."""
         return PRESET_DEFINITIONS.get(preset)
 
+    async def get_adaptive_filters(
+        self, strictness: StrictnessLevel = StrictnessLevel.MODERATE
+    ) -> tuple[list[FilterConfig], MarketRegimeData]:
+        """Get filters based on current market regime.
+
+        Detects whether market is bullish/bearish and returns appropriate filters.
+
+        Args:
+            strictness: How strict the filter criteria should be
+
+        Returns:
+            Tuple of (filters, regime_data)
+        """
+        from app.modules.screener.market_regime import MarketRegime, MarketRegimeDetector
+
+        # Detect market regime
+        detector = MarketRegimeDetector(self.db)
+        regime_data = await detector.detect_regime()
+
+        logger.info(
+            f"Market regime detected: {regime_data.regime.value} "
+            f"(confidence: {regime_data.confidence:.0f}%, score: {regime_data.composite_score:.1f})"
+        )
+        for reason in regime_data.reasons:
+            logger.debug(f"  - {reason}")
+
+        # Select filters based on regime
+        # Combines Minervini Trend Template + Momentum criteria based on direction
+        if regime_data.regime in [MarketRegime.STRONGLY_BULLISH, MarketRegime.BULLISH]:
+            # BULLISH: Minervini Trend Template for long positions
+            # - Price above 150 & 200 DMA
+            # - 150 DMA above 200 DMA
+            # - Price at least 25% above 52-week low
+            # - Price within 25% of 52-week high
+            # - Strong relative strength
+            base_filters = [
+                FilterConfig(
+                    filter_type=FilterTypeEnum.VOLUME,
+                    params={"min_avg_volume": 50000},
+                    weight=1.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOMENTUM,
+                    params={
+                        "momentum_mode": "bullish",
+                        "min_roc": 5,  # Strong momentum
+                        "near_52w_high_pct": 25,  # Within 25% of 52w high
+                        "min_rs_rating": 70,  # Relative strength > 70
+                    },
+                    weight=2.5,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                    params={
+                        "trend_ma": 50,
+                        "require_above_trend": True,
+                        "require_ma_alignment": True,  # 50 > 150 > 200
+                    },
+                    weight=2.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.BREAKOUT,
+                    params={
+                        "consolidation_days": 20,
+                        "volume_surge": 1.5,  # 50% above average
+                    },
+                    weight=1.5,
+                ),
+            ]
+            logger.info(
+                f"Using BULLISH (Minervini) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
+
+        elif regime_data.regime in [MarketRegime.STRONGLY_BEARISH, MarketRegime.BEARISH]:
+            # BEARISH: Relaxed bearish filters for short positions
+            # - Price below key moving average (50 DMA)
+            # - Negative momentum
+            # - Weak relative strength
+            base_filters = [
+                FilterConfig(
+                    filter_type=FilterTypeEnum.VOLUME,
+                    params={"min_avg_volume": 50000},
+                    weight=1.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOMENTUM,
+                    params={
+                        "momentum_mode": "bearish_short",
+                        "max_roc": 0,  # Relaxed: any negative or flat momentum
+                        "max_rs_rating": 50,  # Relaxed: below average RS
+                    },
+                    weight=2.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                    params={
+                        "trend_ma": 50,  # Relaxed from 200 to 50
+                        "require_below_trend": True,
+                    },
+                    weight=1.5,
+                ),
+            ]
+            logger.info(
+                f"Using BEARISH (Inverse Minervini) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
+
+        else:  # NEUTRAL
+            # NEUTRAL: Very selective - only the strongest setups
+            # Look for stocks showing relative strength despite choppy market
+            base_filters = [
+                FilterConfig(
+                    filter_type=FilterTypeEnum.VOLUME,
+                    params={"min_avg_volume": 100000},  # Higher volume requirement
+                    weight=1.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOMENTUM,
+                    params={
+                        "momentum_mode": "bullish",
+                        "min_roc": 8,  # Very strong momentum required
+                        "near_52w_high_pct": 10,  # Very close to highs
+                        "min_rs_rating": 85,  # Top 15% relative strength
+                    },
+                    weight=3.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.CONSOLIDATION,
+                    params={
+                        "max_range_pct": 8,  # Tight consolidation
+                        "min_consolidation_days": 10,
+                    },
+                    weight=2.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                    params={
+                        "trend_ma": 20,
+                        "require_above_trend": True,
+                    },
+                    weight=1.5,
+                ),
+            ]
+            logger.info(
+                f"Using NEUTRAL (relative strength) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
+
+        # Apply strictness adjustments
+        filters = apply_strictness_to_filters(base_filters, strictness)
+
+        return filters, regime_data
+
     async def get_screeners_by_frequency(self, frequency: str) -> list[CustomScreener]:
         """Get all custom screeners with the specified run frequency.
 
@@ -887,24 +1072,53 @@ class ScreenerService:
             # Convert stored filters to FilterConfig objects
             from app.modules.screener.schemas import FilterConfig, StrictnessLevel
 
+            # Track detected signal direction for adaptive screeners
+            detected_signal_direction = None
+
             # Check if using a preset (filters empty but preset defined)
             if screener.preset and (not screener.filters or len(screener.filters) == 0):
                 # Load from preset definition
                 try:
                     preset_type = ScreenerPresetType(screener.preset)
-                    preset_def = PRESET_DEFINITIONS.get(preset_type)
-                    if preset_def:
-                        strictness = StrictnessLevel(screener.strictness or "moderate")
-                        filters = apply_strictness_to_filters(preset_def.filters, strictness)
+                    strictness = StrictnessLevel(screener.strictness or "moderate")
+
+                    # Special handling for ADAPTIVE preset
+                    if preset_type == ScreenerPresetType.ADAPTIVE:
+                        from app.modules.screener.market_regime import MarketRegime
+
+                        filters, regime_data = await self.get_adaptive_filters(strictness)
                         logger.info(
-                            f"Loaded {len(filters)} filters from preset '{screener.preset}' "
-                            f"with {strictness.value} strictness"
+                            f"Adaptive screener using {regime_data.regime.value} regime "
+                            f"(score: {regime_data.composite_score:.1f})"
                         )
+                        # Set signal direction based on regime
+                        if regime_data.regime in [
+                            MarketRegime.STRONGLY_BEARISH,
+                            MarketRegime.BEARISH,
+                        ]:
+                            detected_signal_direction = SignalDirectionEnum.SHORT
+                        elif regime_data.regime in [
+                            MarketRegime.STRONGLY_BULLISH,
+                            MarketRegime.BULLISH,
+                        ]:
+                            detected_signal_direction = SignalDirectionEnum.LONG
+                        else:
+                            detected_signal_direction = (
+                                SignalDirectionEnum.LONG
+                            )  # Default to long in neutral
                     else:
-                        logger.warning(
-                            f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS"
-                        )
-                        filters = []
+                        preset_def = PRESET_DEFINITIONS.get(preset_type)
+                        if preset_def:
+                            filters = apply_strictness_to_filters(preset_def.filters, strictness)
+                            logger.info(
+                                f"Loaded {len(filters)} filters from preset '{screener.preset}' "
+                                f"with {strictness.value} strictness"
+                            )
+                        else:
+                            logger.warning(
+                                f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS"
+                            )
+                            filters = []
                 except ValueError as e:
                     logger.warning(f"Invalid preset value '{screener.preset}': {e}")
                     filters = []
@@ -993,6 +1207,15 @@ class ScreenerService:
                         scorer = MultiFactorScorer(self.db)
                         scored_results = []
 
+                        # Use detected signal direction from adaptive screener, or detect from filters
+                        if detected_signal_direction:
+                            screener_direction = detected_signal_direction
+                            logger.info(
+                                f"Using adaptive regime-detected direction: {screener_direction.value}"
+                            )
+                        else:
+                            screener_direction = _detect_signal_direction(filters)
+
                         for r in results:
                             fund_data = fundamentals_by_symbol.get(r.symbol)
                             scores = await scorer.score_symbol(
@@ -1000,6 +1223,7 @@ class ScreenerService:
                                 category="custom",
                                 technical_data={"score": r.score},  # Pass technical score as data
                                 fundamental_data=fund_data,  # Pass fundamental data
+                                screener_signal_direction=screener_direction.value,  # Pass screener direction
                             )
                             if scores.confidence.value != "skip":
                                 scored_results.append(
