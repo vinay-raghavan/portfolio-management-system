@@ -163,7 +163,7 @@ class MarketRegimeDetector:
             provider = await self._get_data_provider()
 
             # Fetch NIFTY historical data (250 days for 200 DMA + buffer)
-            history = await provider.get_historical_data(
+            history = await provider.get_historical(
                 symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
                 interval="1d",
                 days=300,
@@ -258,7 +258,7 @@ class MarketRegimeDetector:
             provider = await self._get_data_provider()
 
             # Fetch NIFTY historical data for momentum calculation
-            history = await provider.get_historical_data(
+            history = await provider.get_historical(
                 symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
                 interval="1d",
                 days=30,
@@ -343,7 +343,7 @@ class MarketRegimeDetector:
 
             # Try to fetch India VIX
             try:
-                history = await provider.get_historical_data(
+                history = await provider.get_historical(
                     symbol="^INDIAVIX",  # Yahoo Finance symbol
                     interval="1d",
                     days=5,
