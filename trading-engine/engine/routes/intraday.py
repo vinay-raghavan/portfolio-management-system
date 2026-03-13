@@ -13,7 +13,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from shared.providers.funds.database_provider import DatabaseFundsProvider
-from shared.providers.schemas import ProductType
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -146,22 +145,12 @@ async def square_off_intraday_positions(
                     errors.append(f"No open position found for {position.symbol}")
                     continue
 
-                # Update funds - release margin and add P&L to cash balance
-                # Note: update_funds_for_trade now also updates realized_pnl internally
+                # Recalculate funds from positions (single source of truth)
                 funds_provider = DatabaseFundsProvider(
                     db=db,
                     user_funds_model=UserFunds,
                 )
-                await funds_provider.update_funds_for_trade(
-                    user_id=user_id,
-                    side="SELL",
-                    quantity=Decimal(str(position.remaining_quantity)),
-                    price=current_price,
-                    fees=Decimal("0"),
-                    product_type=ProductType.INTRADAY,
-                    existing_position_qty=Decimal(str(position.remaining_quantity)),
-                    entry_price=position.entry_price,
-                )
+                await funds_provider.recalculate_funds(user_id)
 
                 closed_positions.append(
                     {

@@ -126,6 +126,7 @@ class MultiFactorScorer:
         category: str,
         technical_data: dict | None = None,
         fundamental_data: dict | None = None,
+        screener_signal_direction: str | None = None,
     ) -> MultiFactorScore:
         """Calculate multi-factor score for a single symbol.
 
@@ -134,6 +135,7 @@ class MultiFactorScorer:
             category: Recommendation category (momentum, breakout, value, sector)
             technical_data: Pre-computed technical data from screener
             fundamental_data: Pre-computed fundamental data
+            screener_signal_direction: Direction from screener filters ('long', 'short')
 
         Returns:
             MultiFactorScore with combined analysis
@@ -160,16 +162,22 @@ class MultiFactorScorer:
             + normalized_sentiment * self.weights["sentiment"]
         )
 
-        # 5. Infer direction
-        direction = self._infer_direction(tech_score, fund_score, sent_score, category)
+        # 5. Infer direction - respect screener's detected direction if provided
+        if screener_signal_direction and screener_signal_direction.lower() == "short":
+            direction = SignalDirection.SHORT
+        else:
+            direction = self._infer_direction(tech_score, fund_score, sent_score, category)
 
         # 6. Calculate confidence
         confidence, skip_reason = self._calculate_confidence(
             tech_score, fund_score, sent_score, combined, direction
         )
 
-        # 7. Get recommended strategy
-        recommended_strategy = self._recommend_strategy(category, confidence)
+        # 7. Get recommended strategy - use bearish_momentum for short direction
+        if direction == SignalDirection.SHORT:
+            recommended_strategy = self._recommend_strategy("bearish_momentum", confidence)
+        else:
+            recommended_strategy = self._recommend_strategy(category, confidence)
 
         # 8. Calculate position size multiplier
         size_multiplier = self._calculate_position_size(confidence, combined)

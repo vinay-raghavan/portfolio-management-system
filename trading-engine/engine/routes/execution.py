@@ -151,18 +151,16 @@ async def _update_funds_for_closed_positions(
     closed_positions: list[PositionResult],
     default_product_type: ProductType = ProductType.DELIVERY,
 ) -> None:
-    """Update user funds when positions are closed via SL/TP/trailing stop.
+    """Update user funds after positions are closed.
 
-    This handles:
-    1. Crediting sale proceeds (for LONG) or debiting buy cost (for SHORT)
-    2. Releasing margin (for INTRADAY/MARGIN products)
-    3. Updating cumulative realized P&L
+    Uses recalculate_funds() to derive all values from positions,
+    ensuring funds are always in sync with actual position state.
 
     Args:
         db: Database session
         user_id: User ID
-        closed_positions: List of PositionResult objects from closed positions
-        default_product_type: Fallback product type if position doesn't have one stored
+        closed_positions: List of PositionResult objects (for logging only)
+        default_product_type: Unused, kept for API compatibility
     """
     from shared.providers.funds import DatabaseFundsProvider
 
@@ -172,53 +170,31 @@ async def _update_funds_for_closed_positions(
         funds_provider = DatabaseFundsProvider(
             db=db,
             user_funds_model=UserFunds,
-            initial_balance=Decimal("0"),  # Not used for updates
+            initial_balance=Decimal("0"),
             algo_position_model=AlgoPosition,
         )
 
+        # Log the positions being closed
         total_realized_pnl = Decimal("0")
-
         for pos in closed_positions:
-            # For LONG positions, closing means SELL (credit proceeds)
-            # For SHORT positions, closing means BUY (debit cost)
-            side = "SELL" if pos.side == "LONG" else "BUY"
-            exit_price = pos.exit_price if pos.exit_price else Decimal("0")
-
-            # Use position's product_type if available, otherwise use default
-            # This ensures correct margin handling even if strategy's product_type changed
-            pos_product_type = pos.product_type or default_product_type
-
-            # entry_price is required for INTRADAY/MARGIN to calculate P&L correctly
-            await funds_provider.update_funds_for_trade(
-                user_id=user_id,
-                side=side,
-                quantity=Decimal(str(pos.quantity)),
-                price=exit_price,
-                fees=Decimal("0"),  # Fees handled separately
-                product_type=pos_product_type,
-                existing_position_qty=Decimal(str(pos.quantity)),  # Closing position
-                entry_price=pos.entry_price,  # Required for P&L calculation
-            )
-            logger.debug(
-                f"Updated funds for closed position {pos.symbol}: "
-                f"side={side}, qty={pos.quantity}, price={exit_price}, "
-                f"pnl={pos.realized_pnl}, product_type={pos_product_type}"
-            )
-
-            # Accumulate for logging
             if pos.realized_pnl:
                 total_realized_pnl += Decimal(str(pos.realized_pnl))
+            logger.debug(
+                f"Closed position {pos.symbol}: side={pos.side}, "
+                f"qty={pos.quantity}, pnl={pos.realized_pnl}"
+            )
 
-        # Note: realized_pnl is now updated inside update_funds_for_trade
-        # Just log the total
+        # Recalculate funds from positions (single source of truth)
+        await funds_provider.recalculate_funds(user_id)
+
         if total_realized_pnl != Decimal("0"):
             logger.info(
-                f"Total realized P&L for user {user_id[:8]}...: "
-                f"{'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
+                f"Positions closed for user {user_id[:8]}...: "
+                f"total_pnl={'+' if total_realized_pnl > 0 else ''}₹{total_realized_pnl:.2f}"
             )
 
     except Exception as e:
-        logger.warning(f"Failed to update funds for closed positions: {e}")
+        logger.warning(f"Failed to recalculate funds: {e}")
 
 
 def _configure_broker_price_fetcher(broker, data_provider: DataProvider) -> None:
@@ -1126,4 +1102,141 @@ async def check_stop_monitors(
         "positions_closed": positions_closed,
         "circuit_breakers_triggered": circuit_breakers_triggered,
         "errors": errors if errors else None,
+    }
+
+
+@router.post("/reconcile-funds")
+async def reconcile_all_funds(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    x_internal_key: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Reconcile funds for all users with open positions.
+
+    Calculates expected margin_used from open positions and fixes any discrepancies.
+    This catches issues caused by failed transactions or bugs in funds updates.
+
+    Returns:
+        dict: Summary with users_checked, users_fixed, total_discrepancy
+    """
+    # Verify internal key
+    expected_key = getattr(settings, "INTERNAL_API_KEY", "internal-worker-key")
+    if x_internal_key != expected_key:
+        raise HTTPException(status_code=403, detail="Invalid internal key")
+
+    from sqlalchemy import text
+
+    logger.info("Starting funds reconciliation for all users")
+
+    # Get all users with open positions
+    result = await db.execute(
+        text("""
+            SELECT DISTINCT user_id FROM algo_positions WHERE status = 'OPEN'
+        """)
+    )
+    user_ids = [row[0] for row in result.fetchall()]
+
+    users_checked = 0
+    users_fixed = 0
+    total_discrepancy = Decimal("0")
+
+    for user_id in user_ids:
+        try:
+            # Calculate expected margin from OPEN and PARTIAL positions
+            # PARTIAL positions still have remaining_quantity that needs margin
+            margin_result = await db.execute(
+                text("""
+                    SELECT COALESCE(SUM(
+                        entry_price * remaining_quantity *
+                        CASE COALESCE(product_type::text, 'INTRADAY')
+                            WHEN 'DELIVERY' THEN 1.0
+                            WHEN 'INTRADAY' THEN 0.25
+                            WHEN 'MARGIN' THEN 0.50
+                            WHEN 'SLB' THEN 0.50
+                            ELSE 0.25
+                        END
+                    ), 0) as expected_margin
+                    FROM algo_positions
+                    WHERE user_id = :user_id AND status IN ('OPEN', 'PARTIAL')
+                """),
+                {"user_id": str(user_id)},
+            )
+            expected_margin = Decimal(str(margin_result.scalar() or 0))
+
+            # Calculate expected realized_pnl from closed AND partial positions
+            # PARTIAL positions have realized_pnl from the sold portion
+            pnl_result = await db.execute(
+                text("""
+                    SELECT COALESCE(SUM(realized_pnl), 0) as total_pnl
+                    FROM algo_positions
+                    WHERE user_id = :user_id AND status IN ('CLOSED', 'PARTIAL')
+                """),
+                {"user_id": str(user_id)},
+            )
+            expected_pnl = Decimal(str(pnl_result.scalar() or 0))
+
+            # Get current funds
+            funds_result = await db.execute(
+                text("""
+                    SELECT margin_used, realized_pnl, starting_balance
+                    FROM user_funds WHERE user_id = :user_id
+                """),
+                {"user_id": str(user_id)},
+            )
+            row = funds_result.fetchone()
+            if not row:
+                continue
+
+            current_margin = Decimal(str(row[0]))
+            current_pnl = Decimal(str(row[1] or 0))
+            starting_balance = Decimal(str(row[2] or 100000))
+
+            margin_discrepancy = current_margin - expected_margin
+            pnl_discrepancy = current_pnl - expected_pnl
+            users_checked += 1
+
+            # Fix if any discrepancy > ₹1
+            needs_fix = abs(margin_discrepancy) > Decimal("1.0") or abs(pnl_discrepancy) > Decimal(
+                "1.0"
+            )
+            if needs_fix:
+                expected_cash = starting_balance + expected_pnl
+                await db.execute(
+                    text("""
+                        UPDATE user_funds
+                        SET margin_used = :expected_margin,
+                            realized_pnl = :expected_pnl,
+                            cash_balance = :expected_cash,
+                            updated_at = NOW()
+                        WHERE user_id = :user_id
+                    """),
+                    {
+                        "expected_margin": expected_margin,
+                        "expected_pnl": expected_pnl,
+                        "expected_cash": expected_cash,
+                        "user_id": str(user_id),
+                    },
+                )
+                users_fixed += 1
+                total_discrepancy += abs(margin_discrepancy) + abs(pnl_discrepancy)
+                logger.info(
+                    f"Fixed funds for user {str(user_id)[:8]}: "
+                    f"margin {current_margin:.2f} -> {expected_margin:.2f}, "
+                    f"pnl {current_pnl:.2f} -> {expected_pnl:.2f}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error reconciling user {str(user_id)[:8]}: {e}")
+
+    await db.commit()
+
+    logger.info(
+        f"Funds reconciliation complete: checked={users_checked}, "
+        f"fixed={users_fixed}, total_discrepancy={total_discrepancy:.2f}"
+    )
+
+    return {
+        "status": "success",
+        "users_checked": users_checked,
+        "users_fixed": users_fixed,
+        "total_discrepancy": float(total_discrepancy),
     }
