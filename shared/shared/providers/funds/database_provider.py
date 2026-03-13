@@ -666,12 +666,12 @@ class DatabaseFundsProvider(FundsProvider):
                     CASE COALESCE(product_type::text, 'INTRADAY')
                         WHEN 'DELIVERY' THEN 1.0
                         WHEN 'CNC' THEN 1.0
-                        WHEN 'INTRADAY' THEN 0.20
-                        WHEN 'MIS' THEN 0.20
+                        WHEN 'INTRADAY' THEN 0.25
+                        WHEN 'MIS' THEN 0.25
                         WHEN 'MARGIN' THEN 0.50
                         WHEN 'MTF' THEN 0.50
                         WHEN 'SLB' THEN 0.30
-                        ELSE 0.20
+                        ELSE 0.25
                     END
                 ), 0) as margin_used
                 FROM algo_positions

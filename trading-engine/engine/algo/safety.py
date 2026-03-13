@@ -615,8 +615,8 @@ class SafetyService:
         margins = {
             "DELIVERY": Decimal("1.0"),
             "CNC": Decimal("1.0"),
-            "INTRADAY": Decimal("0.20"),
-            "MIS": Decimal("0.20"),
+            "INTRADAY": Decimal("0.25"),
+            "MIS": Decimal("0.25"),
             "MARGIN": Decimal("0.50"),
             "MTF": Decimal("0.50"),
             "SLB": Decimal("0.30"),

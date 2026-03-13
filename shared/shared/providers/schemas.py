@@ -68,7 +68,7 @@ class ProductType(str, Enum):
 
         margins = {
             cls.DELIVERY: 1.0,  # 100% - full payment
-            cls.INTRADAY: 0.20,  # 20% margin for MIS (varies by stock, 20-40%)
+            cls.INTRADAY: 0.25,  # 25% margin for MIS
             cls.MARGIN: 0.50,  # 50% margin for MTF
             cls.SLB: 0.30,  # 30% margin for SLB (short selling)
         }
