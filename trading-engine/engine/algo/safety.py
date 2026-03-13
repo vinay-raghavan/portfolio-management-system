@@ -604,14 +604,22 @@ class SafetyService:
             return SafetyCheck(passed=True)
 
     def _get_margin_percent(self, product_type: str) -> Decimal:
-        """Get margin percentage for product type."""
+        """Get margin percentage for product type.
+
+        Margin percentages:
+        - DELIVERY (CNC): 100% - full payment required
+        - INTRADAY (MIS): 20% - day trading margin (varies 20-40% by stock)
+        - MARGIN (MTF): 50% - leveraged buying
+        - SLB: 30% - short selling with stock borrowing
+        """
         margins = {
             "DELIVERY": Decimal("1.0"),
             "CNC": Decimal("1.0"),
-            "INTRADAY": Decimal("0.25"),
-            "MIS": Decimal("0.25"),
+            "INTRADAY": Decimal("0.20"),
+            "MIS": Decimal("0.20"),
             "MARGIN": Decimal("0.50"),
             "MTF": Decimal("0.50"),
+            "SLB": Decimal("0.30"),
         }
         return margins.get(product_type.upper(), Decimal("1.0"))
 

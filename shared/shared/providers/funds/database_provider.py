@@ -654,16 +654,24 @@ class DatabaseFundsProvider(FundsProvider):
 
         # Calculate margin_used from OPEN and PARTIAL positions
         # margin = entry_price * remaining_quantity * margin_percent
+        # Margin percentages:
+        # - DELIVERY (CNC): 100% - full payment required
+        # - INTRADAY (MIS): 20% - day trading margin
+        # - MARGIN (MTF): 50% - leveraged buying
+        # - SLB: 30% - short selling with stock borrowing
         margin_result = await self.db.execute(
             text("""
                 SELECT COALESCE(SUM(
                     entry_price * remaining_quantity *
                     CASE COALESCE(product_type::text, 'INTRADAY')
                         WHEN 'DELIVERY' THEN 1.0
-                        WHEN 'INTRADAY' THEN 0.25
+                        WHEN 'CNC' THEN 1.0
+                        WHEN 'INTRADAY' THEN 0.20
+                        WHEN 'MIS' THEN 0.20
                         WHEN 'MARGIN' THEN 0.50
-                        WHEN 'SLB' THEN 0.50
-                        ELSE 0.25
+                        WHEN 'MTF' THEN 0.50
+                        WHEN 'SLB' THEN 0.30
+                        ELSE 0.20
                     END
                 ), 0) as margin_used
                 FROM algo_positions
