@@ -499,25 +499,25 @@ PRESET_DEFINITIONS: dict[ScreenerPresetType, ScreenerPresetInfo] = {
         filters=[
             FilterConfig(
                 filter_type=FilterTypeEnum.VOLUME,
-                params={"min_avg_volume": 100000},  # Need liquidity for shorting
+                params={"min_avg_volume": 50000},  # Relaxed volume requirement
                 weight=1.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOMENTUM,
                 params={
                     "momentum_mode": "bearish_short",
-                    "rsi_overbought": 70,
-                    "min_roc": -5,  # Looking for negative momentum
+                    "rsi_overbought": 60,  # Relaxed from 70
+                    "min_roc": -2,  # Relaxed from -5 (negative momentum)
                 },
-                weight=2.5,
+                weight=2.0,
             ),
             FilterConfig(
                 filter_type=FilterTypeEnum.MOVING_AVERAGE,
                 params={
-                    "require_below_trend": True,  # Below 200MA
-                    "trend_ma": 200,
+                    "require_below_trend": True,  # Below 50MA (relaxed from 200MA)
+                    "trend_ma": 50,
                 },
-                weight=2.0,
+                weight=1.5,
             ),
         ],
     ),
@@ -936,12 +936,10 @@ class ScreenerService:
             )
 
         elif regime_data.regime in [MarketRegime.STRONGLY_BEARISH, MarketRegime.BEARISH]:
-            # BEARISH: Inverse Minervini for short positions
-            # - Price below 150 & 200 DMA
-            # - 150 DMA below 200 DMA (death cross setup)
-            # - Price close to 52-week low
+            # BEARISH: Relaxed bearish filters for short positions
+            # - Price below key moving average (50 DMA)
+            # - Negative momentum
             # - Weak relative strength
-            # - Breaking down from consolidation
             base_filters = [
                 FilterConfig(
                     filter_type=FilterTypeEnum.VOLUME,
@@ -952,27 +950,16 @@ class ScreenerService:
                     filter_type=FilterTypeEnum.MOMENTUM,
                     params={
                         "momentum_mode": "bearish_short",
-                        "max_roc": -3,  # Negative momentum
-                        "near_52w_low_pct": 25,  # Within 25% of 52w low
-                        "max_rs_rating": 30,  # Weak relative strength < 30
-                    },
-                    weight=2.5,
-                ),
-                FilterConfig(
-                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                    params={
-                        "trend_ma": 200,
-                        "require_below_trend": True,
-                        "require_bearish_ma_alignment": True,  # 50 < 150 < 200
+                        "max_roc": 0,  # Relaxed: any negative or flat momentum
+                        "max_rs_rating": 50,  # Relaxed: below average RS
                     },
                     weight=2.0,
                 ),
                 FilterConfig(
-                    filter_type=FilterTypeEnum.BREAKOUT,
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
                     params={
-                        "breakdown": True,  # Look for breakdowns, not breakouts
-                        "consolidation_days": 20,
-                        "volume_surge": 1.3,
+                        "trend_ma": 50,  # Relaxed from 200 to 50
+                        "require_below_trend": True,
                     },
                     weight=1.5,
                 ),
