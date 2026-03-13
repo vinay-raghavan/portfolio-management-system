@@ -888,8 +888,14 @@ class ScreenerService:
             logger.debug(f"  - {reason}")
 
         # Select filters based on regime
+        # Combines Minervini Trend Template + Momentum criteria based on direction
         if regime_data.regime in [MarketRegime.STRONGLY_BULLISH, MarketRegime.BULLISH]:
-            # Use MOMENTUM preset (bullish)
+            # BULLISH: Minervini Trend Template for long positions
+            # - Price above 150 & 200 DMA
+            # - 150 DMA above 200 DMA
+            # - Price at least 25% above 52-week low
+            # - Price within 25% of 52-week high
+            # - Strong relative strength
             base_filters = [
                 FilterConfig(
                     filter_type=FilterTypeEnum.VOLUME,
@@ -900,21 +906,42 @@ class ScreenerService:
                     filter_type=FilterTypeEnum.MOMENTUM,
                     params={
                         "momentum_mode": "bullish",
-                        "min_roc": 2,
-                        "near_52w_high_pct": 30,
+                        "min_roc": 5,  # Strong momentum
+                        "near_52w_high_pct": 25,  # Within 25% of 52w high
+                        "min_rs_rating": 70,  # Relative strength > 70
+                    },
+                    weight=2.5,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                    params={
+                        "trend_ma": 50,
+                        "require_above_trend": True,
+                        "require_ma_alignment": True,  # 50 > 150 > 200
                     },
                     weight=2.0,
                 ),
                 FilterConfig(
-                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                    params={"trend_ma": 50, "require_above_trend": True},
+                    filter_type=FilterTypeEnum.BREAKOUT,
+                    params={
+                        "consolidation_days": 20,
+                        "volume_surge": 1.5,  # 50% above average
+                    },
                     weight=1.5,
                 ),
             ]
-            logger.info("Using BULLISH filters for adaptive screener")
+            logger.info(
+                f"Using BULLISH (Minervini) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
 
         elif regime_data.regime in [MarketRegime.STRONGLY_BEARISH, MarketRegime.BEARISH]:
-            # Use BEARISH_SHORT preset
+            # BEARISH: Inverse Minervini for short positions
+            # - Price below 150 & 200 DMA
+            # - 150 DMA below 200 DMA (death cross setup)
+            # - Price close to 52-week low
+            # - Weak relative strength
+            # - Breaking down from consolidation
             base_filters = [
                 FilterConfig(
                     filter_type=FilterTypeEnum.VOLUME,
@@ -925,21 +952,39 @@ class ScreenerService:
                     filter_type=FilterTypeEnum.MOMENTUM,
                     params={
                         "momentum_mode": "bearish_short",
-                        "rsi_overbought": 70,
-                        "min_roc": -5,  # Negative momentum
+                        "max_roc": -3,  # Negative momentum
+                        "near_52w_low_pct": 25,  # Within 25% of 52w low
+                        "max_rs_rating": 30,  # Weak relative strength < 30
                     },
                     weight=2.5,
                 ),
                 FilterConfig(
                     filter_type=FilterTypeEnum.MOVING_AVERAGE,
-                    params={"trend_ma": 200, "require_below_trend": True},
+                    params={
+                        "trend_ma": 200,
+                        "require_below_trend": True,
+                        "require_bearish_ma_alignment": True,  # 50 < 150 < 200
+                    },
                     weight=2.0,
                 ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.BREAKOUT,
+                    params={
+                        "breakdown": True,  # Look for breakdowns, not breakouts
+                        "consolidation_days": 20,
+                        "volume_surge": 1.3,
+                    },
+                    weight=1.5,
+                ),
             ]
-            logger.info("Using BEARISH filters for adaptive screener")
+            logger.info(
+                f"Using BEARISH (Inverse Minervini) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
 
         else:  # NEUTRAL
-            # Use tighter criteria - look for relative strength
+            # NEUTRAL: Very selective - only the strongest setups
+            # Look for stocks showing relative strength despite choppy market
             base_filters = [
                 FilterConfig(
                     filter_type=FilterTypeEnum.VOLUME,
@@ -950,20 +995,33 @@ class ScreenerService:
                     filter_type=FilterTypeEnum.MOMENTUM,
                     params={
                         "momentum_mode": "bullish",
-                        "min_roc": 5,  # Stronger momentum required
-                        "near_52w_high_pct": 15,  # Closer to highs
+                        "min_roc": 8,  # Very strong momentum required
+                        "near_52w_high_pct": 10,  # Very close to highs
+                        "min_rs_rating": 85,  # Top 15% relative strength
                     },
-                    weight=2.5,
+                    weight=3.0,
                 ),
                 FilterConfig(
                     filter_type=FilterTypeEnum.CONSOLIDATION,
                     params={
-                        "max_range_pct": 10,  # Tight range
+                        "max_range_pct": 8,  # Tight consolidation
+                        "min_consolidation_days": 10,
+                    },
+                    weight=2.0,
+                ),
+                FilterConfig(
+                    filter_type=FilterTypeEnum.MOVING_AVERAGE,
+                    params={
+                        "trend_ma": 20,
+                        "require_above_trend": True,
                     },
                     weight=1.5,
                 ),
             ]
-            logger.info("Using NEUTRAL (tight criteria) filters for adaptive screener")
+            logger.info(
+                f"Using NEUTRAL (relative strength) filters for adaptive screener "
+                f"(regime: {regime_data.regime.value}, score: {regime_data.composite_score:.1f})"
+            )
 
         # Apply strictness adjustments
         filters = apply_strictness_to_filters(base_filters, strictness)
