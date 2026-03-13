@@ -162,11 +162,11 @@ class MarketRegimeDetector:
         try:
             provider = await self._get_data_provider()
 
-            # Fetch NIFTY historical data (250 days for 200 DMA + buffer)
+            # Fetch NIFTY historical data (1 year for 200 DMA + buffer)
             history = await provider.get_historical(
                 symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
                 interval="1d",
-                days=300,
+                period="1y",  # 1 year of data
             )
 
             if not history or len(history) < 50:
@@ -261,7 +261,7 @@ class MarketRegimeDetector:
             history = await provider.get_historical(
                 symbol=self.NIFTY_SYMBOL_ALT,  # ^NSEI for Yahoo
                 interval="1d",
-                days=30,
+                period="1mo",  # 1 month of data
             )
 
             if not history or len(history) < 20:
@@ -346,7 +346,7 @@ class MarketRegimeDetector:
                 history = await provider.get_historical(
                     symbol="^INDIAVIX",  # Yahoo Finance symbol
                     interval="1d",
-                    days=5,
+                    period="5d",  # 5 days of data
                 )
 
                 if history and len(history) > 0:
