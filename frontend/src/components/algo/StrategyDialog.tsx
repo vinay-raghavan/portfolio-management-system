@@ -102,7 +102,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [positionSizingMethod, setPositionSizingMethod] = useState<PositionSizingMethod>('FIXED_QUANTITY');
   const [positionSizeValue, setPositionSizeValue] = useState('10');
   const [maxPositionValue, setMaxPositionValue] = useState('100000');
+  const [maxDailyTrades, setMaxDailyTrades] = useState('10');
   const [maxDailyLoss, setMaxDailyLoss] = useState('10000');
+  const [maxOpenPositions, setMaxOpenPositions] = useState('5');
   const [maxConsecutiveLosses, setMaxConsecutiveLosses] = useState('3');
   // Profit cutoff state
   const [maxDailyProfit, setMaxDailyProfit] = useState('');
@@ -171,7 +173,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setPositionSizingMethod(strategy.position_sizing_method);
       setPositionSizeValue(String(strategy.position_size_value));
       setMaxPositionValue(String(strategy.max_position_value || 100000));
+      setMaxDailyTrades(String(strategy.max_daily_trades));
       setMaxDailyLoss(String(strategy.max_daily_loss));
+      setMaxOpenPositions(String(strategy.max_open_positions));
       setMaxConsecutiveLosses(String(strategy.max_consecutive_losses));
       // Profit cutoff fields
       setMaxDailyProfit(strategy.max_daily_profit ? String(strategy.max_daily_profit) : '');
@@ -257,7 +261,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setPositionSizingMethod('FIXED_QUANTITY');
       setPositionSizeValue('10');
       setMaxPositionValue('100000');
+      setMaxDailyTrades('10');
       setMaxDailyLoss('10000');
+      setMaxOpenPositions('5');
       setMaxConsecutiveLosses('3');
       // Profit cutoff defaults
       setMaxDailyProfit('');
@@ -377,7 +383,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       position_sizing_method: positionSizingMethod,
       position_size_value: parseFloat(positionSizeValue),
       max_position_value: parseFloat(maxPositionValue),
+      max_daily_trades: parseInt(maxDailyTrades),
       max_daily_loss: parseFloat(maxDailyLoss),
+      max_open_positions: parseInt(maxOpenPositions),
       max_consecutive_losses: parseInt(maxConsecutiveLosses),
       max_daily_profit: maxDailyProfit ? parseFloat(maxDailyProfit) : undefined,
       overall_profit_target: overallProfitTarget ? parseFloat(overallProfitTarget) : undefined,
@@ -1040,6 +1048,32 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label htmlFor="maxDailyTrades">Max Daily Trades</Label>
+                  <Input
+                    id="maxDailyTrades"
+                    type="number"
+                    value={maxDailyTrades}
+                    onChange={(e) => setMaxDailyTrades(e.target.value)}
+                    min="1"
+                    max="100"
+                  />
+                  <p className="text-xs text-muted-foreground">Hard cap on filled orders per day</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxOpenPositions">Max Open Positions</Label>
+                  <Input
+                    id="maxOpenPositions"
+                    type="number"
+                    value={maxOpenPositions}
+                    onChange={(e) => setMaxOpenPositions(e.target.value)}
+                    min="1"
+                    max="50"
+                  />
+                  <p className="text-xs text-muted-foreground">Maximum simultaneous open/partial positions</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="maxDailyLoss">Max Daily Loss (₹)</Label>
                   <Input
                     id="maxDailyLoss"
@@ -1252,4 +1286,3 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
     </Dialog>
   );
 }
-

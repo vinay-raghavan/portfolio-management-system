@@ -10,6 +10,7 @@ This service handles:
 import logging
 from datetime import UTC, datetime, timedelta
 
+from shared.strategies import StrategyRegistry
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -498,6 +499,39 @@ class PendingAutoTradeService:
         )
         return set(result.scalars().all())
 
+    @staticmethod
+    def _timeframe_to_interval_seconds(timeframe: str) -> int | None:
+        """Convert a timeframe like 5m/15m/1h to seconds."""
+        normalized = (timeframe or "").strip().lower()
+        if not normalized:
+            return None
+
+        if normalized.endswith("m") and normalized[:-1].isdigit():
+            return int(normalized[:-1]) * 60
+        if normalized.endswith("h") and normalized[:-1].isdigit():
+            return int(normalized[:-1]) * 3600
+        return None
+
+    @classmethod
+    def _resolve_auto_trade_schedule(
+        cls, strategy_name: str | None
+    ) -> tuple[ScheduleType, int | None, str]:
+        """Resolve schedule settings from strategy default timeframe."""
+        default_timeframe = "1d"
+
+        if strategy_name and StrategyRegistry.has_strategy(strategy_name):
+            strategy_class = StrategyRegistry.get_class(strategy_name)
+            if strategy_class and getattr(strategy_class, "default_timeframe", None):
+                default_timeframe = str(strategy_class.default_timeframe)
+
+        interval_seconds = cls._timeframe_to_interval_seconds(default_timeframe)
+        if interval_seconds:
+            # Intraday strategies should run on interval instead of continuous polling.
+            return ScheduleType.INTERVAL, max(60, interval_seconds), default_timeframe
+
+        # Daily/weekly/monthly strategies run once at market open by default.
+        return ScheduleType.MARKET_OPEN, None, default_timeframe
+
     async def approve_pending_trade(
         self, user_id: str, trade_id: str
     ) -> tuple[PendingAutoTrade | None, str | None]:
@@ -550,6 +584,11 @@ class PendingAutoTradeService:
             )
         )
         auto_trade_config = config_result.scalar_one_or_none()
+
+        strategy_type = pending.recommended_strategy_type or "ma_crossover"
+        resolved_schedule_type, resolved_interval_seconds, resolved_timeframe = (
+            self._resolve_auto_trade_schedule(strategy_type)
+        )
 
         # Check for existing strategy linked to this screener
         existing_strategy = await self._find_existing_strategy_for_screener(user_id, screener_id)
@@ -657,6 +696,20 @@ class PendingAutoTradeService:
                 # Update next_run_at for immediate execution
                 existing_strategy.next_run_at = datetime.now(UTC)
 
+                # Fix old auto-generated schedule/timeframe skew (CONTINUOUS + 1d).
+                # Keep user-customized schedules intact.
+                if (
+                    existing_strategy.schedule_type == ScheduleType.CONTINUOUS
+                    and existing_strategy.timeframe == "1d"
+                ):
+                    existing_strategy.schedule_type = resolved_schedule_type
+                    existing_strategy.interval_seconds = (
+                        resolved_interval_seconds
+                        if resolved_schedule_type == ScheduleType.INTERVAL
+                        else None
+                    )
+                    existing_strategy.timeframe = resolved_timeframe
+
                 await self.db.flush()
                 created_strategy_id = existing_strategy.id
                 pending.created_strategy_id = created_strategy_id
@@ -701,14 +754,19 @@ class PendingAutoTradeService:
                     name=strategy_name_display,
                     description=f"Auto-generated from screener on {pending.recommendation_date.strftime('%Y-%m-%d')}. "
                     f"Symbols: {len(pending.symbols)}, Avg Score: {avg_combined:.1f}",
-                    strategy_name=pending.recommended_strategy_type or "ma_crossover",
+                    strategy_name=strategy_type,
                     status=StrategyStatus.DISABLED,  # Start disabled, user can enable
                     is_paper_trading=True,  # Start with paper trading for safety
                     strategy_params=strategy_params,
                     custom_symbols=pending.symbols,
                     exit_only_symbols=[],  # No exit-only symbols for new strategy
-                    # Schedule: CONTINUOUS for real-time monitoring, next_run_at = now for immediate execution
-                    schedule_type=ScheduleType.CONTINUOUS,
+                    schedule_type=resolved_schedule_type,
+                    interval_seconds=(
+                        resolved_interval_seconds
+                        if resolved_schedule_type == ScheduleType.INTERVAL
+                        else None
+                    ),
+                    timeframe=resolved_timeframe,
                     next_run_at=datetime.now(UTC),  # Execute immediately when enabled
                     # Position sizing
                     position_sizing_method=PositionSizingMethod.PERCENT_OF_PORTFOLIO,

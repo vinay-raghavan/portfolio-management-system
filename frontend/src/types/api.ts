@@ -654,7 +654,9 @@ export interface AlgoStrategy {
   position_sizing_method: PositionSizingMethod;
   position_size_value: number;
   max_position_value: number | null;
+  max_daily_trades: number;
   max_daily_loss: number;
+  max_open_positions: number;
   max_consecutive_losses: number;
   // Profit cutoff settings
   max_daily_profit: number | null;
@@ -698,7 +700,9 @@ export interface AlgoStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -734,7 +738,9 @@ export interface AlgoStrategyUpdate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -1037,7 +1043,9 @@ export interface CompositeStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -1136,7 +1144,9 @@ export interface DSLStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   max_daily_profit?: number;
   overall_profit_target?: number;

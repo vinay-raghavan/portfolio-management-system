@@ -273,6 +273,7 @@ class ExecuteStrategyRequest(BaseModel):
     fixed_amount: float = 10000.0
     portfolio_percent: float = 5.0
     risk_per_trade_percent: float = 2.0
+    max_open_positions: int = 5
     is_paper_trading: bool = True
     product_type: str = "DELIVERY"
     signal_direction: str = "LONG"  # LONG, SHORT, or BOTH
@@ -336,6 +337,7 @@ async def execute_strategy_full(
             fixed_amount=Decimal(str(request.fixed_amount)),
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
+            max_open_positions=request.max_open_positions,
             product_type=ProductType.normalize(request.product_type),
             signal_direction=SignalDirection(request.signal_direction),
             # Trading time window configuration
@@ -540,6 +542,7 @@ async def run_scheduled_strategies(
                         fixed_amount=strategy.fixed_amount or Decimal("10000"),
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
+                        max_open_positions=strategy.max_open_positions,
                         product_type=ProductType.normalize(strategy.product_type.value),
                         signal_direction=strategy.signal_direction or SignalDirection.LONG,
                         # Trading time window configuration
@@ -581,11 +584,12 @@ async def run_scheduled_strategies(
                         losing_trades_delta=result.pnl_stats.losing_trades,
                     )
 
-                    # Record trade for cooldown and daily trade tracking
-                    if result.orders_placed > 0:
+                    # Record actual filled trades for cooldown and daily trade tracking
+                    if result.orders_filled > 0:
                         await pre_checker.record_trade(
                             strategy_id=strategy.id,
                             cooldown_seconds=strategy.cooldown_seconds or 0,
+                            trades_count=result.orders_filled,
                         )
 
                     # Always update circuit breaker with execution results
@@ -783,6 +787,7 @@ async def execute_strategy_by_id(
             fixed_amount=strategy.fixed_amount or Decimal("10000"),
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
+            max_open_positions=strategy.max_open_positions,
             product_type=ProductType.normalize(strategy.product_type.value),
             signal_direction=strategy.signal_direction or SignalDirection.LONG,
             # Trading time window configuration
@@ -824,11 +829,12 @@ async def execute_strategy_by_id(
             losing_trades_delta=result.pnl_stats.losing_trades,
         )
 
-        # Record trade for cooldown and daily trade tracking
-        if result.orders_placed > 0:
+        # Record actual filled trades for cooldown and daily trade tracking
+        if result.orders_filled > 0:
             await pre_checker.record_trade(
                 strategy_id=strategy.id,
                 cooldown_seconds=strategy.cooldown_seconds or 0,
+                trades_count=result.orders_filled,
             )
 
         await db.commit()

@@ -344,7 +344,9 @@ class StrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     max_daily_profit: Decimal | None = None
     overall_profit_target: Decimal | None = None
@@ -390,7 +392,9 @@ class StrategyUpdate(BaseModel):
     position_sizing_method: PositionSizingMethod | None = None
     position_size_value: Decimal | None = None
     max_position_value: Decimal | None = None
+    max_daily_trades: int | None = Field(default=None, ge=1, le=100)
     max_daily_loss: Decimal | None = None
+    max_open_positions: int | None = Field(default=None, ge=1, le=50)
     max_consecutive_losses: int | None = None
     max_daily_profit: Decimal | None = None
     overall_profit_target: Decimal | None = None
@@ -451,7 +455,9 @@ class StrategyResponse(BaseModel):
     position_sizing_method: PositionSizingMethod
     position_size_value: Decimal  # Maps from portfolio_percent (default sizing)
     max_position_value: Decimal | None
+    max_daily_trades: int
     max_daily_loss: Decimal
+    max_open_positions: int
     max_consecutive_losses: int
     max_daily_profit: Decimal | None
     overall_profit_target: Decimal | None
@@ -575,7 +581,9 @@ class StrategyResponse(BaseModel):
             "position_sizing_method": obj.position_sizing_method,
             "position_size_value": obj.portfolio_percent,
             "max_position_value": obj.max_position_value,
+            "max_daily_trades": obj.max_daily_trades,
             "max_daily_loss": obj.max_daily_loss,
+            "max_open_positions": obj.max_open_positions,
             "max_consecutive_losses": obj.max_consecutive_losses,
             "max_daily_profit": obj.max_daily_profit,
             "overall_profit_target": obj.overall_profit_target,
@@ -982,7 +990,9 @@ class CompositeStrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     # Profit cutoff settings
     max_daily_profit: Decimal | None = None
@@ -1027,7 +1037,9 @@ class DSLStrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     # Profit cutoff settings
     max_daily_profit: Decimal | None = None

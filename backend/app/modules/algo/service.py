@@ -82,7 +82,9 @@ class AlgoService:
             position_sizing_method=data.position_sizing_method,
             portfolio_percent=data.position_size_value,
             max_position_value=data.max_position_value,
+            max_daily_trades=data.max_daily_trades,
             max_daily_loss=data.max_daily_loss,
+            max_open_positions=data.max_open_positions,
             max_consecutive_losses=data.max_consecutive_losses,
             max_daily_profit=data.max_daily_profit,
             overall_profit_target=data.overall_profit_target,
@@ -1308,7 +1310,9 @@ class AlgoService:
                 if strategy_config.get("max_position_value")
                 else None
             ),
+            max_daily_trades=strategy_config.get("max_daily_trades", 10),
             max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_open_positions=strategy_config.get("max_open_positions", 5),
             max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
             is_paper_trading=strategy_config.get("is_paper_trading", True),
             product_type=strategy_config.get("product_type", "delivery"),
@@ -1401,7 +1405,9 @@ class AlgoService:
                 if strategy_config.get("max_position_value")
                 else None
             ),
+            max_daily_trades=strategy_config.get("max_daily_trades", 10),
             max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_open_positions=strategy_config.get("max_open_positions", 5),
             max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
             is_paper_trading=strategy_config.get("is_paper_trading", True),
             product_type=strategy_config.get("product_type", "delivery"),
