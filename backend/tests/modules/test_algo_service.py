@@ -112,6 +112,28 @@ class TestAlgoService:
         assert StrategyStatus.DISABLED.value == "DISABLED"
         assert StrategyStatus.ERROR.value == "ERROR"
 
+    @pytest.mark.asyncio
+    async def test_enable_strategy_blocks_killed_status(self, mock_db):
+        """Killed strategies cannot be re-enabled."""
+        killed_strategy = MagicMock(spec=UserStrategy)
+        killed_strategy.id = "killed-strategy-id"
+        killed_strategy.user_id = "test-user-id"
+        killed_strategy.status = StrategyStatus.KILLED
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = killed_strategy
+        mock_db.execute.return_value = mock_result
+
+        service = AlgoService(mock_db)
+
+        with (
+            patch.object(service.scheduler, "enable_strategy", new_callable=AsyncMock) as mock_enable,
+            pytest.raises(ValueError, match="cannot be re-activated"),
+        ):
+            await service.enable_strategy("test-user-id", "killed-strategy-id")
+
+        mock_enable.assert_not_called()
+
 
 class TestClosePosition:
     """Tests for close_position functionality."""

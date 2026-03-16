@@ -425,6 +425,8 @@ import type {
   KillSwitchState,
   EmergencyStopMode,
   EmergencyStopResponse,
+  PortfolioSafetyConfig,
+  PortfolioSafetyConfigUpdate,
   StrategyStatus,
   AlgoPnLSummary,
   PnLByStrategyResponse,
@@ -477,6 +479,10 @@ export const algoApi = {
     api.post<KillSwitchState>('/algo/kill-switch', { activate, reason, square_off: squareOff }),
   emergencyStop: (mode: EmergencyStopMode = 'PAUSE_ONLY', reason?: string) =>
     api.post<EmergencyStopResponse>('/algo/emergency-stop', { mode, reason }),
+  getPortfolioSafetyConfig: () =>
+    api.get<PortfolioSafetyConfig>('/algo/portfolio-safety'),
+  updatePortfolioSafetyConfig: (data: PortfolioSafetyConfigUpdate) =>
+    api.put<PortfolioSafetyConfig>('/algo/portfolio-safety', data),
 
   // Circuit Breaker
   getCircuitBreakerStatus: (strategyId: string) =>

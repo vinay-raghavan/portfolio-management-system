@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bot,
@@ -26,6 +26,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -58,7 +67,13 @@ import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, DSLStrategyBuilder } from '@/components/algo';
 import { FundsSummary, PendingAutoTradesPanel } from '@/components/dashboard';
 import { BrandedSpinner } from '@/components/shared';
-import type { AlgoStrategy, EmergencyStopMode, StrategyStatus } from '@/types';
+import type {
+  AlgoStrategy,
+  EmergencyStopMode,
+  PortfolioSafetyActionMode,
+  PortfolioSafetyThresholdType,
+  StrategyStatus,
+} from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
   ACTIVE: 'bg-green-500',
@@ -89,6 +104,12 @@ export default function AlgoTradingPage() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [strategyToDelete, setStrategyToDelete] = useState<AlgoStrategy | null>(null);
+  const [portfolioSafetyEnabled, setPortfolioSafetyEnabled] = useState(false);
+  const [portfolioSafetyThresholdType, setPortfolioSafetyThresholdType] =
+    useState<PortfolioSafetyThresholdType>('PERCENT');
+  const [portfolioSafetyThresholdValue, setPortfolioSafetyThresholdValue] = useState('5');
+  const [portfolioSafetyActionMode, setPortfolioSafetyActionMode] =
+    useState<PortfolioSafetyActionMode>('PAUSE_ONLY');
 
   // Fetch strategies
   const { data: strategies, isLoading } = useQuery({
@@ -102,6 +123,11 @@ export default function AlgoTradingPage() {
     queryKey: ['kill-switch'],
     queryFn: () => algoApi.getKillSwitchStatus().then((res) => res.data),
     refetchInterval: 5000,
+  });
+
+  const { data: portfolioSafetyConfig } = useQuery({
+    queryKey: ['portfolio-safety-config'],
+    queryFn: () => algoApi.getPortfolioSafetyConfig().then((res) => res.data),
   });
 
   // Fetch P&L summary for enhanced cards
@@ -118,10 +144,30 @@ export default function AlgoTradingPage() {
     refetchInterval: 30000,
   });
 
+  useEffect(() => {
+    if (!portfolioSafetyConfig) {
+      return;
+    }
+    setPortfolioSafetyEnabled(portfolioSafetyConfig.enabled);
+    setPortfolioSafetyThresholdType(portfolioSafetyConfig.threshold_type);
+    setPortfolioSafetyThresholdValue(String(portfolioSafetyConfig.threshold_value));
+    setPortfolioSafetyActionMode(portfolioSafetyConfig.action_mode);
+  }, [portfolioSafetyConfig]);
+
   // Enable/disable mutations
   const enableMutation = useMutation({
     mutationFn: (id: string) => algoApi.enableStrategy(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['algo-strategies'] }),
+    onError: (error: unknown) => {
+      const message =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (error instanceof Error ? error.message : 'Could not enable strategy');
+      toast({
+        variant: 'destructive',
+        title: 'Enable Failed',
+        description: message,
+      });
+    },
   });
 
   const disableMutation = useMutation({
@@ -162,6 +208,33 @@ export default function AlgoTradingPage() {
   const toggleKillSwitchMutation = useMutation({
     mutationFn: (activate: boolean) => algoApi.toggleKillSwitch(activate),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kill-switch'] }),
+  });
+
+  const updatePortfolioSafetyMutation = useMutation({
+    mutationFn: () =>
+      algoApi.updatePortfolioSafetyConfig({
+        enabled: portfolioSafetyEnabled,
+        threshold_type: portfolioSafetyThresholdType,
+        threshold_value: parseFloat(portfolioSafetyThresholdValue),
+        action_mode: portfolioSafetyActionMode,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['portfolio-safety-config'] });
+      toast({
+        title: 'Portfolio Safety Saved',
+        description: 'Global portfolio guardrail has been updated.',
+      });
+    },
+    onError: (error: unknown) => {
+      const message =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (error instanceof Error ? error.message : 'Could not update portfolio safety');
+      toast({
+        variant: 'destructive',
+        title: 'Save Failed',
+        description: message,
+      });
+    },
   });
 
   const seedUniversesMutation = useMutation({
@@ -227,8 +300,19 @@ export default function AlgoTradingPage() {
   const winRate = strategies?.length
     ? (strategies.reduce((sum, s) => sum + s.winning_trades, 0) / Math.max(totalTrades, 1)) * 100
     : 0;
+  const parsedPortfolioSafetyThreshold = Number(portfolioSafetyThresholdValue);
+  const portfolioSafetyThresholdValid =
+    Number.isFinite(parsedPortfolioSafetyThreshold) && parsedPortfolioSafetyThreshold > 0;
 
   const handleToggleStrategy = (strategy: AlgoStrategy) => {
+    if (strategy.status === 'KILLED') {
+      toast({
+        variant: 'destructive',
+        title: 'Strategy Locked',
+        description: 'Killed strategies cannot be re-activated. Create a new strategy instead.',
+      });
+      return;
+    }
     if (strategy.status === 'ACTIVE') {
       disableMutation.mutate(strategy.id);
     } else {
@@ -384,6 +468,93 @@ export default function AlgoTradingPage() {
           </div>
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="h-4 w-4" />
+            Portfolio Safety Guardrail
+          </CardTitle>
+          <CardDescription>
+            Auto-stop all algo strategies when total portfolio loss breaches your configured threshold.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="portfolio-safety-enabled">Enable Portfolio Safety</Label>
+              <p className="text-xs text-muted-foreground">
+                Uses total P&amp;L (realized + unrealized) to trigger a global safety action.
+              </p>
+            </div>
+            <Switch
+              id="portfolio-safety-enabled"
+              checked={portfolioSafetyEnabled}
+              onCheckedChange={setPortfolioSafetyEnabled}
+            />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Threshold Type</Label>
+              <Select
+                value={portfolioSafetyThresholdType}
+                onValueChange={(value) =>
+                  setPortfolioSafetyThresholdType(value as PortfolioSafetyThresholdType)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PERCENT">Loss %</SelectItem>
+                  <SelectItem value="AMOUNT">Loss Amount (₹)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Threshold Value</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step={portfolioSafetyThresholdType === 'PERCENT' ? '0.1' : '100'}
+                value={portfolioSafetyThresholdValue}
+                onChange={(e) => setPortfolioSafetyThresholdValue(e.target.value)}
+                placeholder={portfolioSafetyThresholdType === 'PERCENT' ? '5' : '10000'}
+              />
+              <p className="text-xs text-muted-foreground">
+                {portfolioSafetyThresholdType === 'PERCENT' ? 'Example: 5 means 5% drawdown' : 'Example: 10000 means ₹10,000 loss'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Action On Breach</Label>
+              <Select
+                value={portfolioSafetyActionMode}
+                onValueChange={(value) =>
+                  setPortfolioSafetyActionMode(value as PortfolioSafetyActionMode)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PAUSE_ONLY">Pause Only</SelectItem>
+                  <SelectItem value="PAUSE_AND_SQUARE_OFF">Pause + Square Off</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={() => updatePortfolioSafetyMutation.mutate()}
+              disabled={!portfolioSafetyThresholdValid || updatePortfolioSafetyMutation.isPending}
+            >
+              {updatePortfolioSafetyMutation.isPending ? 'Saving...' : 'Save Portfolio Safety'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -620,7 +791,12 @@ export default function AlgoTradingPage() {
                       <Switch
                         checked={strategy.status === 'ACTIVE'}
                         onCheckedChange={() => handleToggleStrategy(strategy)}
-                        disabled={killSwitchStatus?.is_active || enableMutation.isPending || disableMutation.isPending}
+                        disabled={
+                          strategy.status === 'KILLED' ||
+                          killSwitchStatus?.is_active ||
+                          enableMutation.isPending ||
+                          disableMutation.isPending
+                        }
                       />
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>

@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.modules.algo.models import (
     ExecutionStatus,
+    PortfolioSafetyActionMode,
+    PortfolioSafetyThresholdType,
     PositionSizingMethod,
     ProfitCutoffAction,
     ScheduleType,
@@ -760,6 +762,35 @@ class EmergencyStopResponse(BaseModel):
     kill_switch_active: bool
     square_off_initiated: bool
     square_off_summary: EmergencySquareOffSummary | None = None
+
+
+class PortfolioSafetyConfigBase(BaseModel):
+    """Portfolio-level safety configuration."""
+
+    enabled: bool = False
+    threshold_type: PortfolioSafetyThresholdType = PortfolioSafetyThresholdType.PERCENT
+    threshold_value: Decimal = Field(default=Decimal("5.00"), gt=Decimal("0"))
+    action_mode: PortfolioSafetyActionMode = PortfolioSafetyActionMode.PAUSE_ONLY
+
+
+class PortfolioSafetyConfigUpdate(BaseModel):
+    """Update request for portfolio-level safety configuration."""
+
+    enabled: bool | None = None
+    threshold_type: PortfolioSafetyThresholdType | None = None
+    threshold_value: Decimal | None = Field(default=None, gt=Decimal("0"))
+    action_mode: PortfolioSafetyActionMode | None = None
+
+
+class PortfolioSafetyConfigResponse(PortfolioSafetyConfigBase):
+    """Portfolio-level safety configuration response."""
+
+    id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # NOTE: CircuitBreakerStatus is defined earlier in this file (line 248)

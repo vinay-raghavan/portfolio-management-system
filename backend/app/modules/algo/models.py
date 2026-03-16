@@ -106,6 +106,65 @@ class SignalDirection(str, Enum):
     BOTH = "BOTH"  # Both directions (requires INTRADAY or SLB)
 
 
+class PortfolioSafetyThresholdType(str, Enum):
+    """Threshold type for portfolio-level safety trigger."""
+
+    PERCENT = "PERCENT"
+    AMOUNT = "AMOUNT"
+
+
+class PortfolioSafetyActionMode(str, Enum):
+    """Action mode when portfolio safety threshold is breached."""
+
+    PAUSE_ONLY = "PAUSE_ONLY"
+    PAUSE_AND_SQUARE_OFF = "PAUSE_AND_SQUARE_OFF"
+
+
+class PortfolioSafetyConfig(Base):
+    """User-level portfolio safety guardrail configuration."""
+
+    __tablename__ = "portfolio_safety_configs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    # Guardrail configuration
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    threshold_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=PortfolioSafetyThresholdType.PERCENT.value,
+    )
+    threshold_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+        default=Decimal("5.00"),
+    )
+    action_mode: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default=PortfolioSafetyActionMode.PAUSE_ONLY.value,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PortfolioSafetyConfig user={self.user_id} enabled={self.enabled} "
+            f"type={self.threshold_type} value={self.threshold_value}>"
+        )
+
+
 class UserStrategy(Base):
     """User's configured strategy for algo trading.
 

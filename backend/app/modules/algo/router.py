@@ -34,6 +34,8 @@ from app.modules.algo.schemas import (
     PnLByStrategyResponse,
     PnLHistoryResponse,
     PnLSummary,
+    PortfolioSafetyConfigResponse,
+    PortfolioSafetyConfigUpdate,
     PositionResponse,
     SquareOffStrategyRequest,
     SquareOffStrategyResponse,
@@ -469,7 +471,10 @@ async def enable_strategy(
 ) -> StrategyResponse:
     """Enable a strategy for execution."""
     service = AlgoService(db)
-    strategy = await service.enable_strategy(current_user.id, strategy_id)
+    try:
+        strategy = await service.enable_strategy(current_user.id, strategy_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.commit()
@@ -929,6 +934,34 @@ async def emergency_stop(
         square_off_initiated=pause_and_square_off,
         square_off_summary=square_off_summary,
     )
+
+
+@router.get("/portfolio-safety", response_model=PortfolioSafetyConfigResponse)
+async def get_portfolio_safety_config(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> PortfolioSafetyConfigResponse:
+    """Get portfolio-level safety guardrail configuration."""
+    service = AlgoService(db)
+    config = await service.get_portfolio_safety_config(current_user.id)
+    await db.commit()
+    return PortfolioSafetyConfigResponse.model_validate(config)
+
+
+@router.put("/portfolio-safety", response_model=PortfolioSafetyConfigResponse)
+async def update_portfolio_safety_config(
+    db: DbSession,
+    current_user: CurrentUser,
+    data: PortfolioSafetyConfigUpdate,
+) -> PortfolioSafetyConfigResponse:
+    """Update portfolio-level safety guardrail configuration."""
+    service = AlgoService(db)
+    config = await service.update_portfolio_safety_config(
+        current_user.id,
+        data.model_dump(exclude_unset=True),
+    )
+    await db.commit()
+    return PortfolioSafetyConfigResponse.model_validate(config)
 
 
 # ============== Universe Endpoints ==============

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
     AlgoPosition,
+    PortfolioSafetyConfig,
     PositionSide,
     PositionStatus,
     StrategyExecution,
@@ -341,6 +342,10 @@ class AlgoService:
         strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
+        if strategy.status == StrategyStatus.KILLED:
+            raise ValueError(
+                "Killed strategies cannot be re-activated. Create a new strategy instead."
+            )
 
         await self.scheduler.enable_strategy(strategy)
         await self.db.refresh(strategy)
@@ -372,6 +377,34 @@ class AlgoService:
             await self.scheduler.disable_strategy(strategy, StrategyStatus.KILLED)
 
         return len(strategies)
+
+    async def get_portfolio_safety_config(self, user_id: str) -> PortfolioSafetyConfig:
+        """Get portfolio safety config for a user, creating defaults if needed."""
+        result = await self.db.execute(
+            select(PortfolioSafetyConfig).where(PortfolioSafetyConfig.user_id == user_id)
+        )
+        config = result.scalar_one_or_none()
+        if config is None:
+            config = PortfolioSafetyConfig(user_id=user_id)
+            self.db.add(config)
+            await self.db.flush()
+            await self.db.refresh(config)
+        return config
+
+    async def update_portfolio_safety_config(
+        self,
+        user_id: str,
+        updates: dict,
+    ) -> PortfolioSafetyConfig:
+        """Update portfolio safety config for a user."""
+        config = await self.get_portfolio_safety_config(user_id)
+        for field, value in updates.items():
+            if hasattr(value, "value"):
+                value = value.value
+            setattr(config, field, value)
+        await self.db.flush()
+        await self.db.refresh(config)
+        return config
 
     async def get_execution_history(
         self, user_id: str, strategy_id: str, limit: int = 50

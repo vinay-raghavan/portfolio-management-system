@@ -876,6 +876,27 @@ export interface EmergencyStopResponse {
   square_off_summary: EmergencySquareOffSummary | null;
 }
 
+export type PortfolioSafetyThresholdType = 'PERCENT' | 'AMOUNT';
+export type PortfolioSafetyActionMode = 'PAUSE_ONLY' | 'PAUSE_AND_SQUARE_OFF';
+
+export interface PortfolioSafetyConfig {
+  id: string;
+  user_id: string;
+  enabled: boolean;
+  threshold_type: PortfolioSafetyThresholdType;
+  threshold_value: number;
+  action_mode: PortfolioSafetyActionMode;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioSafetyConfigUpdate {
+  enabled?: boolean;
+  threshold_type?: PortfolioSafetyThresholdType;
+  threshold_value?: number;
+  action_mode?: PortfolioSafetyActionMode;
+}
+
 export interface CircuitBreakerStatus {
   strategy_id: string;
   is_triggered: boolean;
