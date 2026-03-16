@@ -1058,6 +1058,15 @@ class AlgoService:
 
         await self.db.flush()
 
+        # Prefer the position's stored product_type for accurate margin handling on close.
+        # This prevents strategy product_type changes from affecting existing positions.
+        close_product_type = product_type
+        if position.product_type is not None:
+            try:
+                close_product_type = ProductType(position.product_type.value)
+            except (AttributeError, ValueError):
+                close_product_type = product_type
+
         # Update user_funds: credit sale proceeds and update realized P&L
         await self._update_funds_for_closed_position(
             user_id=user_id,
@@ -1066,7 +1075,7 @@ class AlgoService:
             entry_price=position.entry_price,
             exit_price=exit_price,
             pnl=pnl,
-            product_type=product_type,
+            product_type=close_product_type,
         )
 
         logger.info(f"Closed position {symbol}: qty={close_qty}, pnl={pnl}, is_winner={is_winner}")
@@ -1118,6 +1127,11 @@ class AlgoService:
             # For LONG positions, closing means SELL (credit proceeds)
             # For SHORT positions, closing means BUY (debit cost to cover)
             trade_side = "SELL" if side == PositionSide.LONG else "BUY"
+            # Funds provider expects signed position quantity:
+            # positive for long closes, negative for short closes.
+            existing_position_qty = Decimal(str(close_qty))
+            if side == PositionSide.SHORT:
+                existing_position_qty = -existing_position_qty
 
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
@@ -1126,7 +1140,7 @@ class AlgoService:
                 price=exit_price,
                 fees=Decimal("0"),  # Fees handled separately if needed
                 product_type=product_type,
-                existing_position_qty=Decimal(str(close_qty)),  # Closing position
+                existing_position_qty=existing_position_qty,
                 entry_price=entry_price,  # For proper margin release
             )
 
