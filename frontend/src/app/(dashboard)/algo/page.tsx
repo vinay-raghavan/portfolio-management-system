@@ -58,7 +58,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { StrategyDialog, StrategyDetails, ExecutionHistory, SafetyStatus, PnLDashboard, DSLStrategyBuilder } from '@/components/algo';
 import { FundsSummary, PendingAutoTradesPanel } from '@/components/dashboard';
 import { BrandedSpinner } from '@/components/shared';
-import type { AlgoStrategy, StrategyStatus } from '@/types';
+import type { AlgoStrategy, EmergencyStopMode, StrategyStatus } from '@/types';
 
 const statusColors: Record<StrategyStatus, string> = {
   ACTIVE: 'bg-green-500',
@@ -135,10 +135,27 @@ export default function AlgoTradingPage() {
   });
 
   const emergencyStopMutation = useMutation({
-    mutationFn: () => algoApi.emergencyStop(),
-    onSuccess: () => {
+    mutationFn: (mode: EmergencyStopMode) => algoApi.emergencyStop(mode),
+    onSuccess: (response, mode) => {
       queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
       queryClient.invalidateQueries({ queryKey: ['kill-switch'] });
+
+      const summary = response.data.square_off_summary;
+      const message = mode === 'PAUSE_AND_SQUARE_OFF'
+        ? `Paused and squared off ${summary?.positions_closed ?? 0} position(s).`
+        : 'All strategy execution paused.';
+
+      toast({
+        title: mode === 'PAUSE_AND_SQUARE_OFF' ? 'Paused + Square Off Executed' : 'Trading Paused',
+        description: message,
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Emergency Action Failed',
+        description: error instanceof Error ? error.message : 'Could not apply emergency action',
+      });
     },
   });
 
@@ -316,23 +333,38 @@ export default function AlgoTradingPage() {
                   <AlertDialogDescription>
                     {killSwitchStatus?.is_active
                       ? 'This will allow algo strategies to resume trading.'
-                      : 'This will immediately stop all algo trading and disable all active strategies.'}
+                      : 'Choose how to stop trading: pause only, or pause and immediately square off all open algo positions.'}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => {
-                      if (killSwitchStatus?.is_active) {
-                        toggleKillSwitchMutation.mutate(false);
-                      } else {
-                        emergencyStopMutation.mutate();
-                      }
-                    }}
-                    className={killSwitchStatus?.is_active ? '' : 'bg-destructive'}
-                  >
-                    {killSwitchStatus?.is_active ? 'Deactivate' : 'Activate Emergency Stop'}
-                  </AlertDialogAction>
+                  <AlertDialogCancel disabled={toggleKillSwitchMutation.isPending || emergencyStopMutation.isPending}>
+                    Cancel
+                  </AlertDialogCancel>
+                  {killSwitchStatus?.is_active ? (
+                    <AlertDialogAction
+                      onClick={() => toggleKillSwitchMutation.mutate(false)}
+                      disabled={toggleKillSwitchMutation.isPending}
+                    >
+                      {toggleKillSwitchMutation.isPending ? 'Deactivating...' : 'Deactivate'}
+                    </AlertDialogAction>
+                  ) : (
+                    <>
+                      <AlertDialogAction
+                        onClick={() => emergencyStopMutation.mutate('PAUSE_ONLY')}
+                        disabled={emergencyStopMutation.isPending}
+                        className="bg-amber-600 hover:bg-amber-700"
+                      >
+                        {emergencyStopMutation.isPending ? 'Applying...' : 'Pause Only'}
+                      </AlertDialogAction>
+                      <AlertDialogAction
+                        onClick={() => emergencyStopMutation.mutate('PAUSE_AND_SQUARE_OFF')}
+                        disabled={emergencyStopMutation.isPending}
+                        className="bg-destructive"
+                      >
+                        {emergencyStopMutation.isPending ? 'Applying...' : 'Pause + Square Off'}
+                      </AlertDialogAction>
+                    </>
+                  )}
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>

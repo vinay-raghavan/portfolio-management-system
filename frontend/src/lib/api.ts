@@ -423,6 +423,8 @@ import type {
   Universe,
   UniverseCreate,
   KillSwitchState,
+  EmergencyStopMode,
+  EmergencyStopResponse,
   StrategyStatus,
   AlgoPnLSummary,
   PnLByStrategyResponse,
@@ -473,8 +475,8 @@ export const algoApi = {
     api.get<KillSwitchState>('/algo/kill-switch'),
   toggleKillSwitch: (activate: boolean, reason?: string, squareOff = false) =>
     api.post<KillSwitchState>('/algo/kill-switch', { activate, reason, square_off: squareOff }),
-  emergencyStop: () =>
-    api.post<{ status: string; strategies_disabled: number }>('/algo/emergency-stop'),
+  emergencyStop: (mode: EmergencyStopMode = 'PAUSE_ONLY', reason?: string) =>
+    api.post<EmergencyStopResponse>('/algo/emergency-stop', { mode, reason }),
 
   // Circuit Breaker
   getCircuitBreakerStatus: (strategyId: string) =>

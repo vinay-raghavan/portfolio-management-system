@@ -2,6 +2,7 @@
 
 from datetime import datetime, time
 from decimal import Decimal
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -724,6 +725,41 @@ class KillSwitchToggle(BaseModel):
     activate: bool
     reason: str | None = None
     square_off: bool = False
+
+
+class EmergencyStopMode(str, Enum):
+    """Emergency stop behavior mode."""
+
+    PAUSE_ONLY = "PAUSE_ONLY"
+    PAUSE_AND_SQUARE_OFF = "PAUSE_AND_SQUARE_OFF"
+
+
+class EmergencyStopRequest(BaseModel):
+    """Emergency stop request."""
+
+    mode: EmergencyStopMode = EmergencyStopMode.PAUSE_ONLY
+    reason: str | None = None
+
+
+class EmergencySquareOffSummary(BaseModel):
+    """Square-off result summary for emergency stop."""
+
+    strategies_targeted: int = 0
+    strategies_squared_off: int = 0
+    positions_closed: int = 0
+    total_realized_pnl: Decimal = Field(default=Decimal("0"))
+    errors: list[str] = Field(default_factory=list)
+
+
+class EmergencyStopResponse(BaseModel):
+    """Emergency stop response."""
+
+    status: str
+    mode: EmergencyStopMode
+    strategies_disabled: int
+    kill_switch_active: bool
+    square_off_initiated: bool
+    square_off_summary: EmergencySquareOffSummary | None = None
 
 
 # NOTE: CircuitBreakerStatus is defined earlier in this file (line 248)

@@ -857,6 +857,25 @@ export interface KillSwitchState {
   square_off_initiated: boolean;
 }
 
+export type EmergencyStopMode = 'PAUSE_ONLY' | 'PAUSE_AND_SQUARE_OFF';
+
+export interface EmergencySquareOffSummary {
+  strategies_targeted: number;
+  strategies_squared_off: number;
+  positions_closed: number;
+  total_realized_pnl: number;
+  errors: string[];
+}
+
+export interface EmergencyStopResponse {
+  status: string;
+  mode: EmergencyStopMode;
+  strategies_disabled: number;
+  kill_switch_active: boolean;
+  square_off_initiated: boolean;
+  square_off_summary: EmergencySquareOffSummary | null;
+}
+
 export interface CircuitBreakerStatus {
   strategy_id: string;
   is_triggered: boolean;

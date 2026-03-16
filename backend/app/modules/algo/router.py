@@ -5,7 +5,7 @@ from datetime import UTC
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from redis.asyncio import Redis
 from shared.strategies.registry import StrategyRegistry
 
@@ -24,6 +24,10 @@ from app.modules.algo.schemas import (
     CompositeStrategyResponse,
     DSLStrategyCreate,
     DSLStrategyResponse,
+    EmergencySquareOffSummary,
+    EmergencyStopMode,
+    EmergencyStopRequest,
+    EmergencyStopResponse,
     ExecutionHistoryResponse,
     KillSwitchResponse,
     KillSwitchToggle,
@@ -820,43 +824,111 @@ async def toggle_kill_switch(
     )
 
 
-@router.post("/emergency-stop")
+@router.post("/emergency-stop", response_model=EmergencyStopResponse)
 async def emergency_stop(
     db: DbSession,
     current_user: CurrentUser,
     redis: Annotated[Redis, Depends(get_redis)],
-) -> dict:
-    """Emergency stop: activate kill switch and disable all strategies."""
-    # Activate kill switch with square-off
+    data: EmergencyStopRequest = Body(default_factory=EmergencyStopRequest),
+) -> EmergencyStopResponse:
+    """Emergency stop with selectable mode: pause only, or pause + square off."""
+    from app.providers.data import YahooDataProvider
+
+    pause_and_square_off = data.mode == EmergencyStopMode.PAUSE_AND_SQUARE_OFF
+    reason = data.reason or (
+        "Emergency stop triggered (pause + square off)"
+        if pause_and_square_off
+        else "Emergency stop triggered (pause only)"
+    )
+
+    # Activate kill switch with requested mode
     kill_switch = AlgoKillSwitch(redis)
     await kill_switch.activate(
         current_user.id,
-        reason="Emergency stop triggered",
-        square_off=True,
+        reason=reason,
+        square_off=pause_and_square_off,
     )
 
-    # Disable all active strategies
+    # Disable all active strategies to halt further executions.
     service = AlgoService(db)
     disabled_count = await service.disable_all_strategies(current_user.id)
+
+    square_off_summary: EmergencySquareOffSummary | None = None
+    if pause_and_square_off:
+        all_positions = await service.get_positions(current_user.id)
+        open_positions = [p for p in all_positions if p.status in ("OPEN", "PARTIAL")]
+
+        # Prepare one symbol->price map and reuse across strategy square-off calls.
+        exit_prices: dict[str, Decimal] = {}
+        if open_positions:
+            data_provider = YahooDataProvider()
+            symbols = sorted({p.symbol for p in open_positions})
+            for symbol in symbols:
+                try:
+                    quote = await data_provider.get_quote(symbol)
+                    if quote and quote.price is not None:
+                        exit_prices[symbol] = Decimal(str(quote.price))
+                        continue
+                except Exception as e:
+                    logger.warning(f"Could not fetch market price for {symbol}: {e}")
+
+                fallback_position = next((p for p in open_positions if p.symbol == symbol), None)
+                if fallback_position:
+                    exit_prices[symbol] = fallback_position.entry_price
+
+            strategy_ids = sorted({p.strategy_id for p in open_positions})
+            strategies_squared_off = 0
+            positions_closed = 0
+            total_realized_pnl = Decimal("0")
+            errors: list[str] = []
+
+            for strategy_id in strategy_ids:
+                try:
+                    result = await service.square_off_strategy(
+                        user_id=current_user.id,
+                        strategy_id=strategy_id,
+                        exit_prices=exit_prices,
+                    )
+                    if result:
+                        strategies_squared_off += 1
+                        positions_closed += result.positions_closed
+                        total_realized_pnl += result.total_realized_pnl
+                except Exception as e:
+                    logger.exception(f"Emergency square-off failed for strategy {strategy_id}: {e}")
+                    errors.append(f"{strategy_id}: {e}")
+
+            square_off_summary = EmergencySquareOffSummary(
+                strategies_targeted=len(strategy_ids),
+                strategies_squared_off=strategies_squared_off,
+                positions_closed=positions_closed,
+                total_realized_pnl=total_realized_pnl,
+                errors=errors,
+            )
+        else:
+            square_off_summary = EmergencySquareOffSummary()
+
     await db.commit()
 
     logger.critical(
-        f"EMERGENCY STOP by user {current_user.id}: {disabled_count} strategies disabled"
+        f"EMERGENCY STOP by user {current_user.id}: mode={data.mode.value}, "
+        f"{disabled_count} strategies disabled"
     )
 
     # Send notification
     await _notification_service.notify_kill_switch_activated(
         user_id=current_user.id,
-        reason="Emergency stop triggered",
+        reason=reason,
         strategies_disabled=disabled_count,
     )
 
-    return {
-        "status": "emergency_stop_activated",
-        "strategies_disabled": disabled_count,
-        "kill_switch_active": True,
-        "square_off_initiated": True,
-    }
+    return EmergencyStopResponse(
+        status="emergency_stop_activated",
+        mode=data.mode,
+        strategies_disabled=disabled_count,
+        kill_switch_active=True,
+        square_off_initiated=pause_and_square_off,
+        square_off_summary=square_off_summary,
+    )
 
 
 # ============== Universe Endpoints ==============
