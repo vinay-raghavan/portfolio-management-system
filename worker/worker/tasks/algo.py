@@ -271,7 +271,7 @@ def _process_auto_trades_sync(category: str, symbols: list[str], date_str: str) 
     try:
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
-                f"{backend_url}/auto-trade/internal/process",
+                f"{backend_url}/api/v1/auto-trade/internal/process",
                 headers=_get_internal_headers(),
                 json={
                     "category": category,
@@ -342,7 +342,7 @@ def _expire_pending_auto_trades_sync() -> dict:
     try:
         with httpx.Client(timeout=60.0) as client:
             response = client.post(
-                f"{backend_url}/auto-trade/internal/expire-pending",
+                f"{backend_url}/api/v1/auto-trade/internal/expire-pending",
                 headers=_get_internal_headers(),
             )
 

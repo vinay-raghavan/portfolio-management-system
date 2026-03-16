@@ -1290,7 +1290,7 @@ class ScreenerService:
                             else:
                                 # Notify mode: create pending trades
                                 pending_service = PendingAutoTradeService(self.db)
-                                symbols = [
+                                selected_symbols = [
                                     r["symbol"]
                                     for r in filtered_results[: config.max_positions_per_day]
                                 ]
@@ -1299,7 +1299,7 @@ class ScreenerService:
                                 pending = await pending_service.create_pending_trade(
                                     user_id=user_id,
                                     config=config,
-                                    symbols=symbols,
+                                    symbols=selected_symbols,
                                     scores=scores_dict,
                                     recommended_strategy_type=strategy_type,
                                     suggested_params={
@@ -1311,6 +1311,9 @@ class ScreenerService:
                                     pending_trades_created += 1
 
                 except Exception as e:
+                    # Auto-trade processing is best-effort here, but rollback is required
+                    # to clear failed transaction state before dependency-level commit.
+                    await self.db.rollback()
                     logger.warning(f"Auto-trade processing failed for screener {screener_id}: {e}")
                     # Don't fail the whole operation, just log the warning
 
@@ -1331,5 +1334,6 @@ class ScreenerService:
             }
 
         except Exception as e:
+            await self.db.rollback()
             logger.exception(f"Error running screener {screener_id} for auto-trade: {e}")
             return {"status": "error", "message": str(e)}
