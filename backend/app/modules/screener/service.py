@@ -867,6 +867,7 @@ class ScreenerService:
         """Get filters based on current market regime.
 
         Detects whether market is bullish/bearish and returns appropriate filters.
+        Uses Yahoo Finance for market data - NO DB ACCESS required.
 
         Args:
             strictness: How strict the filter criteria should be
@@ -876,8 +877,9 @@ class ScreenerService:
         """
         from app.modules.screener.market_regime import MarketRegime, MarketRegimeDetector
 
-        # Detect market regime
-        detector = MarketRegimeDetector(self.db)
+        # Detect market regime using Yahoo (no DB needed)
+        # Pass None for db since MarketRegimeDetector uses Yahoo provider
+        detector = MarketRegimeDetector(db=None)  # type: ignore
         regime_data = await detector.detect_regime()
 
         logger.info(
