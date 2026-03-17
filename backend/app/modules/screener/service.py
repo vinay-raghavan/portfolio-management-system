@@ -1366,6 +1366,9 @@ class ScreenerService:
                                     if pending:
                                         pending_trades_created += 1
 
+                        # IMPORTANT: Commit the fresh session
+                        await auto_trade_db.commit()
+
                 except Exception as e:
                     logger.warning(f"Auto-trade processing failed for screener {screener_id}: {e}")
                     # Don't fail the whole operation, just log the warning
