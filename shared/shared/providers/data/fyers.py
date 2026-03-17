@@ -4,6 +4,7 @@ Provides market data from Fyers API including quotes, historical data,
 and instrument information for Indian markets (NSE, BSE).
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
@@ -14,6 +15,11 @@ from ..symbols import Exchange, SymbolMapper
 from .base import DataProvider
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting configuration for Fyers API
+# Fyers allows ~10 requests/second for historical data
+FYERS_RATE_LIMIT_PER_SECOND = 8  # Stay below limit
+FYERS_REQUEST_DELAY = 1.0 / FYERS_RATE_LIMIT_PER_SECOND  # ~0.125 seconds between requests
 
 # Timezone definitions
 IST = ZoneInfo("Asia/Kolkata")
@@ -36,6 +42,10 @@ class FyersDataProvider(DataProvider):
 
     name = "fyers"
 
+    # Class-level rate limiter (shared across all instances)
+    _rate_limit_lock: asyncio.Lock | None = None
+    _last_request_time: float = 0.0
+
     def __init__(
         self,
         access_token: str | None = None,
@@ -54,6 +64,21 @@ class FyersDataProvider(DataProvider):
         self.log_path = log_path
         self._fyers = None
         self.default_exchange = Exchange.NSE
+
+    @classmethod
+    async def _rate_limit(cls) -> None:
+        """Apply rate limiting to avoid 429 errors from Fyers API."""
+        if cls._rate_limit_lock is None:
+            cls._rate_limit_lock = asyncio.Lock()
+
+        async with cls._rate_limit_lock:
+            import time
+
+            now = time.monotonic()
+            elapsed = now - cls._last_request_time
+            if elapsed < FYERS_REQUEST_DELAY:
+                await asyncio.sleep(FYERS_REQUEST_DELAY - elapsed)
+            cls._last_request_time = time.monotonic()
 
     def _get_fyers_client(self):
         """Lazily create Fyers API client."""
@@ -172,6 +197,9 @@ class FyersDataProvider(DataProvider):
     async def get_quote(self, symbol: str) -> Quote | None:
         """Get real-time quote for a symbol."""
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 
@@ -227,6 +255,9 @@ class FyersDataProvider(DataProvider):
             List of OHLCV data points
         """
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 
@@ -313,6 +344,9 @@ class FyersDataProvider(DataProvider):
     async def get_instrument_info(self, symbol: str) -> InstrumentInfo | None:
         """Get instrument information for a symbol."""
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 
