@@ -127,7 +127,9 @@ class TestAlgoService:
         service = AlgoService(mock_db)
 
         with (
-            patch.object(service.scheduler, "enable_strategy", new_callable=AsyncMock) as mock_enable,
+            patch.object(
+                service.scheduler, "enable_strategy", new_callable=AsyncMock
+            ) as mock_enable,
             pytest.raises(ValueError, match="cannot be re-activated"),
         ):
             await service.enable_strategy("test-user-id", "killed-strategy-id")

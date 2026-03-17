@@ -61,6 +61,7 @@
     "typescript": "^5.7.0"
   },
   "overrides": {
-    "minimatch": "^10.2.1"
+    "minimatch": "^10.2.1",
+    "dompurify": "^3.3.2"
   }
 }
