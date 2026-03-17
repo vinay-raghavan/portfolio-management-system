@@ -1133,63 +1133,58 @@ class ScreenerService:
             provider = get_data_provider("yahoo")
 
             # Build the screener with filters and data provider, then run it
+            # Note: This is a long-running operation (3+ mins for NIFTY 500)
+            # We do NOT use the DB session during this time to avoid corruption
             stock_screener = self._build_screener(filters, data_provider=provider)
+            min_score = screener.min_score
+            top_n = screener.top_n
+            screener_is_auto_trade_enabled = screener.is_auto_trade_enabled
+            screener_run_frequency = screener.run_frequency
+            screener_inferred_strategy_type = screener.inferred_strategy_type
+
+            # Release the session before long-running operation
+            # This prevents session corruption during 3+ minute screener runs
+            await self.db.rollback()
+
             results = await stock_screener.screen_universe(
                 symbols=symbols,
-                min_score=screener.min_score,
-                top_n=screener.top_n,
+                min_score=min_score,
+                top_n=top_n,
             )
 
-            # Update last_run_at and next_run_at
-            # Note: After long-running screener operations (3+ mins for NIFTY 500),
-            # the DB session may have become stale. Use a fresh session for the update.
+            # Update last_run_at and next_run_at using a FRESH session
+            # The original session was released before the long-running screener
             from app.core.database import async_session_maker
 
             now = datetime.utcnow()
 
-            try:
-                # Try to use existing session first
-                screener.last_run_at = now
-                if screener.run_frequency == "daily":
-                    screener.next_run_at = now + timedelta(days=1)
-                elif screener.run_frequency == "hourly":
-                    screener.next_run_at = now + timedelta(hours=1)
-                else:
-                    screener.next_run_at = None
-                await self.db.commit()
-            except Exception as e:
-                logger.warning(f"Session stale after long screener run, using fresh session: {e}")
-                # Use a fresh session for the update
-                async with async_session_maker() as fresh_db:
-                    from sqlalchemy import update
+            async with async_session_maker() as fresh_db:
+                from sqlalchemy import update
 
-                    stmt = (
-                        update(CustomScreener)
-                        .where(CustomScreener.id == screener.id)
-                        .values(
-                            last_run_at=now,
-                            next_run_at=(
-                                now + timedelta(days=1)
-                                if screener.run_frequency == "daily"
-                                else (
-                                    now + timedelta(hours=1)
-                                    if screener.run_frequency == "hourly"
-                                    else None
-                                )
-                            ),
-                        )
+                stmt = (
+                    update(CustomScreener)
+                    .where(CustomScreener.id == screener_id)
+                    .values(
+                        last_run_at=now,
+                        next_run_at=(
+                            now + timedelta(days=1)
+                            if screener_run_frequency == "daily"
+                            else (
+                                now + timedelta(hours=1)
+                                if screener_run_frequency == "hourly"
+                                else None
+                            )
+                        ),
                     )
-                    await fresh_db.execute(stmt)
-                    await fresh_db.commit()
-                # Also refresh the main session's screener object
-                await self.db.rollback()
+                )
+                await fresh_db.execute(stmt)
+                await fresh_db.commit()
 
             # Process results through auto-trade pipeline
-            # Use a fresh session to avoid stale connection issues after long screener runs
             trades_created = 0
             pending_trades_created = 0
 
-            if results and screener.is_auto_trade_enabled:
+            if results and screener_is_auto_trade_enabled:
                 try:
                     from app.modules.algo.auto_trade_service import (
                         AutoTradeConfigService,
@@ -1303,7 +1298,7 @@ class ScreenerService:
 
                             if filtered_results:
                                 # Get strategy type from template or infer
-                                strategy_type = screener.inferred_strategy_type or "momentum"
+                                strategy_type = screener_inferred_strategy_type or "momentum"
 
                                 if config.confirmation_mode == ConfirmationMode.AUTO:
                                     # Auto-execute: create strategies immediately
