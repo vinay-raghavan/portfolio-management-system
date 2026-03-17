@@ -1126,14 +1126,11 @@ class ScreenerService:
                 # Use stored custom filters
                 filters = [FilterConfig(**f) for f in screener.filters]
 
-            # Get user's preferred data provider (required for screening)
+            # Always use Yahoo for screeners to avoid Fyers rate limits
+            # Yahoo has no rate limiting issues for bulk historical data
             from shared.providers.data import get_data_provider
 
-            from app.modules.data.service import get_user_data_provider
-
-            provider = await get_user_data_provider(self.db, user_id)
-            if provider is None:
-                provider = get_data_provider("yahoo")
+            provider = get_data_provider("yahoo")
 
             # Build the screener with filters and data provider, then run it
             stock_screener = self._build_screener(filters, data_provider=provider)
