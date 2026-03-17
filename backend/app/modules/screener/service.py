@@ -1036,23 +1036,28 @@ class ScreenerService:
     async def run_custom_screener_for_auto_trade(self, user_id: str, screener_id: str) -> dict:
         """Run a custom screener and process results for auto-trade.
 
-        This method:
-        1. Runs the screener against its configured universe
-        2. Updates last_run_at and calculates next_run_at
-        3. Returns results formatted for auto-trade processing
+        Architecture (optimized for long-running NIFTY 500 screeners):
+        1. PHASE 1: Quick DB read - load screener config into memory
+        2. PHASE 2: Long operation - run screener with Yahoo (NO DB access)
+        3. PHASE 3: Cache results in Redis temporarily
+        4. PHASE 4: Single fresh DB session for all writes
 
-        Note: Actual auto-trade creation (pending or immediate) is handled
-        by the AutoTradeService, which is not yet implemented.
+        This prevents DB session corruption during 3+ minute screener runs.
 
         Args:
             user_id: The user who owns the screener
             screener_id: UUID of the custom screener
 
         Returns:
-            Dict with status, passed_count, results, etc.
+            Dict with status, passed_count, results, pending_trades_created, etc.
         """
+        import json
         from datetime import datetime, timedelta
 
+        from app.core.database import async_session_maker
+        from app.core.redis import get_redis
+
+        # ===== PHASE 1: Quick DB read =====
         screener = await self.get_custom_screener(user_id, screener_id)
         if not screener:
             return {"status": "error", "message": "Screener not found"}
@@ -1060,32 +1065,61 @@ class ScreenerService:
         if not screener.is_auto_trade_enabled:
             return {"status": "error", "message": "Auto-trade not enabled"}
 
+        # Cache all screener attributes into plain dict (detached from session)
+        screener_data = {
+            "id": screener_id,
+            "name": screener.name,
+            "preset": screener.preset,
+            "strictness": screener.strictness,
+            "universe": screener.universe,
+            "filters": screener.filters,
+            "min_score": screener.min_score,
+            "top_n": screener.top_n,
+            "is_auto_trade_enabled": screener.is_auto_trade_enabled,
+            "run_frequency": screener.run_frequency,
+            "inferred_strategy_type": screener.inferred_strategy_type,
+        }
+
+        # Release the original session completely - we won't use self.db again
+        await self.db.rollback()
+
         try:
-            # Get universe symbols using the router's resolve function
+            # ===== PHASE 2: Run screener (NO DB ACCESS) =====
+            # Get universe symbols - this is a quick operation
             from app.modules.screener.router import _resolve_universe
 
-            symbols = await _resolve_universe(screener.universe, self.db)
+            # Use a quick fresh session just for resolving universe
+            async with async_session_maker() as quick_db:
+                symbols = await _resolve_universe(screener_data["universe"], quick_db)
 
             if not symbols:
-                return {"status": "error", "message": f"No symbols in universe {screener.universe}"}
+                return {
+                    "status": "error",
+                    "message": f"No symbols in universe {screener_data['universe']}",
+                }
+
+            logger.info(f"Running screener '{screener_data['name']}' on {len(symbols)} symbols")
 
             # Convert stored filters to FilterConfig objects
             from app.modules.screener.schemas import FilterConfig, StrictnessLevel
 
             # Track detected signal direction for adaptive screeners
             detected_signal_direction = None
+            filters = []
 
             # Check if using a preset (filters empty but preset defined)
-            if screener.preset and (not screener.filters or len(screener.filters) == 0):
+            stored_filters = screener_data.get("filters") or []
+            if screener_data["preset"] and len(stored_filters) == 0:
                 # Load from preset definition
                 try:
-                    preset_type = ScreenerPresetType(screener.preset)
-                    strictness = StrictnessLevel(screener.strictness or "moderate")
+                    preset_type = ScreenerPresetType(screener_data["preset"])
+                    strictness = StrictnessLevel(screener_data["strictness"] or "moderate")
 
                     # Special handling for ADAPTIVE preset
                     if preset_type == ScreenerPresetType.ADAPTIVE:
                         from app.modules.screener.market_regime import MarketRegime
 
+                        # get_adaptive_filters uses Yahoo (no DB needed)
                         filters, regime_data = await self.get_adaptive_filters(strictness)
                         logger.info(
                             f"Adaptive screener using {regime_data.regime.value} regime "
@@ -1103,64 +1137,57 @@ class ScreenerService:
                         ]:
                             detected_signal_direction = SignalDirectionEnum.LONG
                         else:
-                            detected_signal_direction = (
-                                SignalDirectionEnum.LONG
-                            )  # Default to long in neutral
+                            detected_signal_direction = SignalDirectionEnum.LONG
                     else:
                         preset_def = PRESET_DEFINITIONS.get(preset_type)
                         if preset_def:
                             filters = apply_strictness_to_filters(preset_def.filters, strictness)
                             logger.info(
-                                f"Loaded {len(filters)} filters from preset '{screener.preset}' "
+                                f"Loaded {len(filters)} filters from preset '{screener_data['preset']}' "
                                 f"with {strictness.value} strictness"
                             )
                         else:
                             logger.warning(
-                                f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS"
+                                f"Preset '{screener_data['preset']}' not found in PRESET_DEFINITIONS"
                             )
-                            filters = []
                 except ValueError as e:
-                    logger.warning(f"Invalid preset value '{screener.preset}': {e}")
-                    filters = []
+                    logger.warning(f"Invalid preset value '{screener_data['preset']}': {e}")
             else:
                 # Use stored custom filters
-                filters = [FilterConfig(**f) for f in screener.filters]
+                filters = [FilterConfig(**f) for f in stored_filters]
 
             # Always use Yahoo for screeners to avoid Fyers rate limits
-            # Yahoo has no rate limiting issues for bulk historical data
             from shared.providers.data import get_data_provider
 
             provider = get_data_provider("yahoo")
 
-            # Build the screener with filters and data provider, then run it
-            # Note: This is a long-running operation (3+ mins for NIFTY 500)
-            # We do NOT use the DB session during this time to avoid corruption
+            # Build the screener and run it (LONG OPERATION - 3+ mins for NIFTY 500)
+            # NO DB access during this phase
             stock_screener = self._build_screener(filters, data_provider=provider)
-            min_score = screener.min_score
-            top_n = screener.top_n
-            screener_is_auto_trade_enabled = screener.is_auto_trade_enabled
-            screener_run_frequency = screener.run_frequency
-            screener_inferred_strategy_type = screener.inferred_strategy_type
-
-            # Release the session before long-running operation
-            # This prevents session corruption during 3+ minute screener runs
-            await self.db.rollback()
 
             results = await stock_screener.screen_universe(
                 symbols=symbols,
-                min_score=min_score,
-                top_n=top_n,
+                min_score=screener_data["min_score"],
+                top_n=screener_data["top_n"],
             )
 
-            # Update last_run_at and next_run_at using a FRESH session
-            # The original session was released before the long-running screener
-            from app.core.database import async_session_maker
+            # ===== PHASE 3: Cache results in Redis =====
+            redis = await get_redis()
+            cache_key = f"screener_results:{screener_id}:{user_id}"
+            results_data = [
+                {"symbol": r.symbol, "score": r.score, "reasons": r.reasons} for r in results
+            ]
+            await redis.setex(cache_key, 300, json.dumps(results_data))  # 5 min TTL
+            logger.info(f"Cached {len(results)} results in Redis: {cache_key}")
 
+            # ===== PHASE 4: Single DB write with fresh session =====
             now = datetime.utcnow()
+            run_frequency = screener_data["run_frequency"]
 
-            async with async_session_maker() as fresh_db:
+            async with async_session_maker() as db:
                 from sqlalchemy import update
 
+                # Update screener timestamps
                 stmt = (
                     update(CustomScreener)
                     .where(CustomScreener.id == screener_id)
@@ -1168,23 +1195,19 @@ class ScreenerService:
                         last_run_at=now,
                         next_run_at=(
                             now + timedelta(days=1)
-                            if screener_run_frequency == "daily"
-                            else (
-                                now + timedelta(hours=1)
-                                if screener_run_frequency == "hourly"
-                                else None
-                            )
+                            if run_frequency == "daily"
+                            else (now + timedelta(hours=1) if run_frequency == "hourly" else None)
                         ),
                     )
                 )
-                await fresh_db.execute(stmt)
-                await fresh_db.commit()
+                await db.execute(stmt)
+                await db.commit()
 
             # Process results through auto-trade pipeline
             trades_created = 0
             pending_trades_created = 0
 
-            if results and screener_is_auto_trade_enabled:
+            if results and screener_data["is_auto_trade_enabled"]:
                 try:
                     from app.modules.algo.auto_trade_service import (
                         AutoTradeConfigService,
@@ -1298,7 +1321,9 @@ class ScreenerService:
 
                             if filtered_results:
                                 # Get strategy type from template or infer
-                                strategy_type = screener_inferred_strategy_type or "momentum"
+                                strategy_type = (
+                                    screener_data["inferred_strategy_type"] or "momentum"
+                                )
 
                                 if config.confirmation_mode == ConfirmationMode.AUTO:
                                     # Auto-execute: create strategies immediately
