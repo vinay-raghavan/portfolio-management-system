@@ -338,18 +338,19 @@ class AlgoService:
         return True
 
     async def enable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
-        """Enable a strategy for execution."""
+        """Enable a strategy for execution.
+
+        Note: KILLED strategies can be re-enabled. The kill switch is meant to be
+        a temporary safety measure, not a permanent ban.
+        """
         strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
-        if strategy.status == StrategyStatus.KILLED:
-            raise ValueError(
-                "Killed strategies cannot be re-activated. Create a new strategy instead."
-            )
 
+        previous_status = strategy.status
         await self.scheduler.enable_strategy(strategy)
         await self.db.refresh(strategy)
-        logger.info(f"Enabled strategy {strategy_id}")
+        logger.info(f"Enabled strategy {strategy_id} (was {previous_status.value})")
         return strategy
 
     async def disable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
