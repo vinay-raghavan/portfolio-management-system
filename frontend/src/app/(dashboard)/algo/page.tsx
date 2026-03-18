@@ -305,17 +305,10 @@ export default function AlgoTradingPage() {
     Number.isFinite(parsedPortfolioSafetyThreshold) && parsedPortfolioSafetyThreshold > 0;
 
   const handleToggleStrategy = (strategy: AlgoStrategy) => {
-    if (strategy.status === 'KILLED') {
-      toast({
-        variant: 'destructive',
-        title: 'Strategy Locked',
-        description: 'Killed strategies cannot be re-activated. Create a new strategy instead.',
-      });
-      return;
-    }
     if (strategy.status === 'ACTIVE') {
       disableMutation.mutate(strategy.id);
     } else {
+      // Can enable from any status including KILLED, DISABLED, PAUSED, ERROR
       enableMutation.mutate(strategy.id);
     }
   };
@@ -792,7 +785,6 @@ export default function AlgoTradingPage() {
                         checked={strategy.status === 'ACTIVE'}
                         onCheckedChange={() => handleToggleStrategy(strategy)}
                         disabled={
-                          strategy.status === 'KILLED' ||
                           killSwitchStatus?.is_active ||
                           enableMutation.isPending ||
                           disableMutation.isPending
