@@ -93,10 +93,10 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.trading.check_pending_trigger_orders",
         "schedule": 30.0,  # Every 30 seconds
     },
-    # Auto square-off intraday positions at 3:15 PM IST (9:45 UTC)
+    # Auto square-off intraday positions at 3:10 PM IST (9:40 UTC)
     "auto-square-off-intraday": {
         "task": "worker.tasks.intraday.square_off_intraday_positions",
-        "schedule": crontab(hour=9, minute=45),  # 3:15 PM IST = 9:45 UTC
+        "schedule": crontab(hour=9, minute=40),  # 3:10 PM IST = 9:40 UTC
     },
     # Safety check: verify no intraday positions remain after market close
     "check-intraday-positions-after-close": {
@@ -153,10 +153,10 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.screener.process_screener_alerts",
         "schedule": 900.0,  # Every 15 minutes
     },
-    # Run scheduled custom screeners - daily at 9:20 AM IST (3:50 UTC)
+    # Run scheduled custom screeners - daily at 9:40 AM IST (4:10 UTC)
     "run-scheduled-screeners-daily": {
         "task": "worker.tasks.screener.run_scheduled_screeners_daily",
-        "schedule": crontab(hour=3, minute=50),  # 9:20 AM IST = 3:50 UTC
+        "schedule": crontab(hour=4, minute=10),  # 9:40 AM IST = 4:10 UTC
     },
     # Run scheduled custom screeners - hourly during market hours
     "run-scheduled-screeners-hourly": {
