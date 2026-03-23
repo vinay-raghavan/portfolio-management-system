@@ -1099,7 +1099,9 @@ export const researchApi = {
     api.get<DailyDigestResponse>(`/research/digest/${date}`),
 
   generateDigest: (date?: string) =>
-    api.post<DailyDigestResponse>('/research/digest/generate', null, { params: date ? { date } : {} }),
+    api.post<DailyDigestResponse>('/research/digest/generate', null, {
+      params: { ...(date ? { date } : {}), force: true },
+    }),
 
   // Sectors
   getSectors: () =>
