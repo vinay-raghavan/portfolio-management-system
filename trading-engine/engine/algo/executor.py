@@ -386,6 +386,29 @@ class StrategyExecutor:
                     ),
                 }
 
+        # Block new INTRADAY entries after square-off time (3:10 PM IST)
+        # This prevents positions from being opened that won't get squared off
+        if config.product_type == StrategyProductType.INTRADAY:
+            if open_position_side is None:  # Only for new entries, not exits
+                from datetime import time as dt_time
+
+                import pytz
+
+                ist = pytz.timezone("Asia/Kolkata")
+                now_ist = datetime.now(ist)
+                intraday_entry_cutoff = dt_time(15, 10)  # 3:10 PM IST (same as square-off)
+
+                if now_ist.time() >= intraday_entry_cutoff:
+                    logger.warning(
+                        f"Blocking INTRADAY entry for {signal.symbol}: "
+                        f"past entry cutoff time {intraday_entry_cutoff} IST"
+                    )
+                    return {
+                        "symbol": signal.symbol,
+                        "status": "BLOCKED",
+                        "reason": "INTRADAY entries blocked after 3:10 PM IST",
+                    }
+
         # Enforce strategy-level max open positions before opening a new symbol position.
         if open_position_side is None:
             open_positions_count = await self._get_open_positions_count(
