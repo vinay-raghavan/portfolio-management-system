@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from shared.providers.schemas import ProductType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
@@ -111,6 +112,28 @@ class TestAlgoService:
         assert StrategyStatus.DISABLED.value == "DISABLED"
         assert StrategyStatus.ERROR.value == "ERROR"
 
+    @pytest.mark.asyncio
+    async def test_enable_strategy_allows_killed_status(self, mock_db):
+        """Killed strategies can be re-enabled (feature added in v1.6.0)."""
+        killed_strategy = MagicMock(spec=UserStrategy)
+        killed_strategy.id = "killed-strategy-id"
+        killed_strategy.user_id = "test-user-id"
+        killed_strategy.status = StrategyStatus.KILLED
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = killed_strategy
+        mock_db.execute.return_value = mock_result
+
+        service = AlgoService(mock_db)
+
+        with patch.object(
+            service.scheduler, "enable_strategy", new_callable=AsyncMock
+        ) as mock_enable:
+            await service.enable_strategy("test-user-id", "killed-strategy-id")
+
+        # Killed strategies can now be re-enabled
+        mock_enable.assert_called_once()
+
 
 class TestClosePosition:
     """Tests for close_position functionality."""
@@ -125,6 +148,7 @@ class TestClosePosition:
         position.symbol = "AAPL"
         position.side = PositionSide.LONG  # Use LONG not BUY
         position.status = PositionStatus.OPEN
+        position.product_type = StrategyProductType.INTRADAY
         position.entry_quantity = Decimal("100")
         position.remaining_quantity = Decimal("100")
         position.entry_price = Decimal("150.00")
@@ -229,6 +253,60 @@ class TestClosePosition:
             assert result is not None
             assert result.realized_pnl == Decimal("1000.00")  # (160 - 150) * 100
             assert result.is_winner is True
+
+    @pytest.mark.asyncio
+    async def test_close_short_uses_negative_existing_qty_for_funds(self, mock_db):
+        """Short closes must pass negative qty so margin is released, not blocked."""
+        service = AlgoService(mock_db)
+
+        with patch("app.modules.algo.service.DatabaseFundsProvider") as mock_provider_cls:
+            provider = MagicMock()
+            provider.update_funds_for_trade = AsyncMock()
+            provider.update_realized_pnl = AsyncMock()
+            mock_provider_cls.return_value = provider
+
+            await service._update_funds_for_closed_position(
+                user_id="test-user-id",
+                side=PositionSide.SHORT,
+                close_qty=5,
+                entry_price=Decimal("100.00"),
+                exit_price=Decimal("95.00"),
+                pnl=Decimal("25.00"),
+                product_type=ProductType.SLB,
+            )
+
+            kwargs = provider.update_funds_for_trade.await_args.kwargs
+            assert kwargs["side"] == "BUY"
+            assert kwargs["existing_position_qty"] == Decimal("-5")
+
+    @pytest.mark.asyncio
+    async def test_close_position_uses_position_product_type_for_funds(
+        self, mock_db, mock_position
+    ):
+        """Close flow should use position.product_type instead of strategy fallback."""
+        mock_position.product_type = StrategyProductType.SLB
+
+        service = AlgoService(mock_db)
+
+        with (
+            patch.object(service, "get_open_position", new_callable=AsyncMock) as mock_get,
+            patch.object(
+                service, "_update_funds_for_closed_position", new_callable=AsyncMock
+            ) as mock_update_funds,
+        ):
+            mock_get.return_value = mock_position
+
+            await service.close_position(
+                user_id="test-user-id",
+                strategy_id="test-strategy-id",
+                symbol="AAPL",
+                exit_price=Decimal("160.00"),
+                product_type=ProductType.INTRADAY,  # Fallback passed from strategy
+            )
+
+            assert mock_update_funds.await_count == 1
+            kwargs = mock_update_funds.await_args.kwargs
+            assert kwargs["product_type"] == ProductType.SLB
 
 
 class TestSquareOffStrategy:

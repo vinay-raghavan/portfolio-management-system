@@ -601,6 +601,9 @@ async def run_screener_auto_trade(
             detail="Auto-trade is not enabled for this screener",
         )
 
+    # Cache the name before calling the service (session may be released inside)
+    screener_name = screener.name
+
     # Run the screener for auto-trade
     result = await service.run_custom_screener_for_auto_trade(
         user_id=str(current_user.id),
@@ -610,7 +613,7 @@ async def run_screener_auto_trade(
     return RunAutoTradeScreenerResponse(
         status=result.get("status", "success"),
         screener_id=screener_id,
-        screener_name=screener.name,
+        screener_name=screener_name,
         passed_count=result.get("passed_count", 0),
         total_screened=result.get("total_screened", 0),
         trades_created=result.get("trades_created", 0),
@@ -804,7 +807,7 @@ async def store_recommendations(
                 if quote and quote.price:
                     price_map[symbol] = float(quote.price)
             except Exception:
-                pass  # Price will default to 0.0 if fetch fails
+                pass  # nosec B110 - Price will default to 0.0 if fetch fails
 
     # Prepare technical and fundamental data for multi-factor scoring
     technical_data: dict[str, dict] = {}

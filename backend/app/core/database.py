@@ -9,13 +9,15 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 # Create async engine
+# Note: pool_pre_ping=False to avoid MissingGreenlet errors after long operations
+# The pool_recycle handles stale connections instead
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=300,  # Recycle connections after 5 minutes
+    pool_pre_ping=False,  # Disabled - causes greenlet errors after long operations
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=180,  # Recycle connections every 3 minutes
     pool_timeout=30,  # Wait max 30s for a connection from pool
 )
 

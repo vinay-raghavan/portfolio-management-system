@@ -654,7 +654,9 @@ export interface AlgoStrategy {
   position_sizing_method: PositionSizingMethod;
   position_size_value: number;
   max_position_value: number | null;
+  max_daily_trades: number;
   max_daily_loss: number;
+  max_open_positions: number;
   max_consecutive_losses: number;
   // Profit cutoff settings
   max_daily_profit: number | null;
@@ -683,6 +685,10 @@ export interface AlgoStrategy {
   total_pnl: number;
   created_at: string;
   updated_at: string;
+  // Screener linking fields
+  linked_screener_id: string | null;
+  sync_from_screener: boolean;
+  linked_screener_name: string | null;
 }
 
 export interface AlgoStrategyCreate {
@@ -698,7 +704,9 @@ export interface AlgoStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -734,7 +742,9 @@ export interface AlgoStrategyUpdate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -849,6 +859,46 @@ export interface KillSwitchState {
   activated_at: string | null;
   reason: string | null;
   square_off_initiated: boolean;
+}
+
+export type EmergencyStopMode = 'PAUSE_ONLY' | 'PAUSE_AND_SQUARE_OFF';
+
+export interface EmergencySquareOffSummary {
+  strategies_targeted: number;
+  strategies_squared_off: number;
+  positions_closed: number;
+  total_realized_pnl: number;
+  errors: string[];
+}
+
+export interface EmergencyStopResponse {
+  status: string;
+  mode: EmergencyStopMode;
+  strategies_disabled: number;
+  kill_switch_active: boolean;
+  square_off_initiated: boolean;
+  square_off_summary: EmergencySquareOffSummary | null;
+}
+
+export type PortfolioSafetyThresholdType = 'PERCENT' | 'AMOUNT';
+export type PortfolioSafetyActionMode = 'PAUSE_ONLY' | 'PAUSE_AND_SQUARE_OFF';
+
+export interface PortfolioSafetyConfig {
+  id: string;
+  user_id: string;
+  enabled: boolean;
+  threshold_type: PortfolioSafetyThresholdType;
+  threshold_value: number;
+  action_mode: PortfolioSafetyActionMode;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioSafetyConfigUpdate {
+  enabled?: boolean;
+  threshold_type?: PortfolioSafetyThresholdType;
+  threshold_value?: number;
+  action_mode?: PortfolioSafetyActionMode;
 }
 
 export interface CircuitBreakerStatus {
@@ -1037,7 +1087,9 @@ export interface CompositeStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   // Profit cutoff settings
   max_daily_profit?: number;
@@ -1136,7 +1188,9 @@ export interface DSLStrategyCreate {
   position_sizing_method?: PositionSizingMethod;
   position_size_value?: number;
   max_position_value?: number;
+  max_daily_trades?: number;
   max_daily_loss?: number;
+  max_open_positions?: number;
   max_consecutive_losses?: number;
   max_daily_profit?: number;
   overall_profit_target?: number;

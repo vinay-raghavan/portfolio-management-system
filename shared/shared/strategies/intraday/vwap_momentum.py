@@ -26,11 +26,11 @@ class VWAPMomentumStrategy(BaseStrategy):
     4. Volume confirmation: Bullish if current volume > average volume
 
     Signal generation:
-    - Score >= 4/5: Strong BUY signal
-    - Score >= 3/5: BUY signal
-    - Score <= 1/5: Strong SELL signal
-    - Score <= 2/5: SELL signal
-    - Otherwise: HOLD
+    - Score >= 5/5: Strong BUY signal
+    - Score >= 4/5: BUY signal
+    - Score <= 0/5: Strong SELL signal
+    - Score <= 1/5: SELL signal
+    - Score 2-3: HOLD (neutral zone to reduce churn)
     """
 
     name = "vwap_momentum"
@@ -45,10 +45,10 @@ class VWAPMomentumStrategy(BaseStrategy):
         rsi_period: int = 14,
         rsi_threshold: int = 50,
         volume_lookback: int = 10,
-        buy_threshold: int = 3,
-        strong_buy_threshold: int = 4,
-        sell_threshold: int = 2,
-        strong_sell_threshold: int = 1,
+        buy_threshold: int = 4,
+        strong_buy_threshold: int = 5,
+        sell_threshold: int = 1,
+        strong_sell_threshold: int = 0,
         atr_period: int = 14,
         atr_multiplier: float = 2.0,
         risk_reward_ratio: float = 2.0,

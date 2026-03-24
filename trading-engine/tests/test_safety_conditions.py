@@ -334,12 +334,12 @@ class TestDailyTradeCounter:
 
     async def test_increment_trade_count(self, counter, mock_redis):
         """Test incrementing trade count."""
-        mock_redis.incr.return_value = 1
+        mock_redis.incrby.return_value = 1
 
         new_count = await counter.increment("strat-1")
 
         assert new_count == 1
-        mock_redis.incr.assert_called_once()
+        mock_redis.incrby.assert_called_once()
 
 
 class TestPreExecutionChecker:

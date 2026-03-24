@@ -79,6 +79,7 @@ class StrategyConfig:
     fixed_amount: Decimal = Decimal("10000")
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
+    max_open_positions: int = 5
     product_type: ProductType = ProductType.DELIVERY
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection = SignalDirection.LONG
@@ -321,6 +322,12 @@ class StrategyExecutor:
         signal: SignalData,
     ) -> dict | None:
         """Process a signal: size, validate, and place order."""
+        open_position_side = await self._get_open_position_side(
+            strategy_id=config.id,
+            user_id=config.user_id,
+            symbol=signal.symbol,
+        )
+
         # Check if signal direction is allowed by strategy configuration
         if config.signal_direction == SignalDirection.LONG:
             # LONG only: block SHORT signals
@@ -329,6 +336,16 @@ class StrategyExecutor:
                     f"Blocking {signal.intent} signal for {signal.symbol}: strategy is LONG only"
                 )
                 return None
+
+            # Fallback guard for strategies that don't set intent:
+            # allow SELL only when it closes an existing LONG position.
+            if signal.intent is None and signal.signal_type == SignalType.SELL:
+                if open_position_side != "LONG":
+                    logger.debug(
+                        f"Blocking SELL signal for {signal.symbol}: LONG strategy has no LONG "
+                        "position to close (would open short)"
+                    )
+                    return None
         elif config.signal_direction == SignalDirection.SHORT:
             # SHORT only: block LONG signals
             if signal.intent in (SignalIntent.OPEN_LONG, SignalIntent.CLOSE_LONG):
@@ -336,6 +353,16 @@ class StrategyExecutor:
                     f"Blocking {signal.intent} signal for {signal.symbol}: strategy is SHORT only"
                 )
                 return None
+
+            # Fallback guard for strategies that don't set intent:
+            # allow BUY only when it closes an existing SHORT position.
+            if signal.intent is None and signal.signal_type == SignalType.BUY:
+                if open_position_side != "SHORT":
+                    logger.debug(
+                        f"Blocking BUY signal for {signal.symbol}: SHORT strategy has no SHORT "
+                        "position to close (would open long)"
+                    )
+                    return None
         # BOTH: allow all signals
 
         # Check if signal intent is compatible with product type
@@ -356,6 +383,48 @@ class StrategyExecutor:
                     "reason": (
                         f"Short selling not allowed with {config.product_type.value}. "
                         f"Switch to INTRADAY or SLB product type."
+                    ),
+                }
+
+        # Block new INTRADAY entries after square-off time (3:10 PM IST)
+        # This prevents positions from being opened that won't get squared off
+        if config.product_type == StrategyProductType.INTRADAY:
+            if open_position_side is None:  # Only for new entries, not exits
+                from datetime import time as dt_time
+
+                import pytz
+
+                ist = pytz.timezone("Asia/Kolkata")
+                now_ist = datetime.now(ist)
+                intraday_entry_cutoff = dt_time(15, 10)  # 3:10 PM IST (same as square-off)
+
+                if now_ist.time() >= intraday_entry_cutoff:
+                    logger.warning(
+                        f"Blocking INTRADAY entry for {signal.symbol}: "
+                        f"past entry cutoff time {intraday_entry_cutoff} IST"
+                    )
+                    return {
+                        "symbol": signal.symbol,
+                        "status": "BLOCKED",
+                        "reason": "INTRADAY entries blocked after 3:10 PM IST",
+                    }
+
+        # Enforce strategy-level max open positions before opening a new symbol position.
+        if open_position_side is None:
+            open_positions_count = await self._get_open_positions_count(
+                strategy_id=config.id, user_id=config.user_id
+            )
+            if open_positions_count >= config.max_open_positions:
+                logger.warning(
+                    f"Max open positions reached for strategy {config.id}: "
+                    f"{open_positions_count}/{config.max_open_positions}"
+                )
+                return {
+                    "symbol": signal.symbol,
+                    "status": "RISK_BLOCKED",
+                    "reason": (
+                        f"Max open positions reached: "
+                        f"{open_positions_count}/{config.max_open_positions}"
                     ),
                 }
 
@@ -432,6 +501,47 @@ class StrategyExecutor:
                 "status": "ERROR",
                 "reason": str(e),
             }
+
+    async def _get_open_position_side(
+        self,
+        strategy_id: str,
+        user_id: str,
+        symbol: str,
+    ) -> str | None:
+        """Get open position side for a strategy/symbol from internal position tracker."""
+        try:
+            async with get_db_context() as db:
+                tracker = PositionTracker(db)
+                position = await tracker.get_open_position(strategy_id, user_id, symbol)
+                return position.side.value if position else None
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch open position side for {symbol} in strategy {strategy_id}: {e}"
+            )
+            return None
+
+    async def _get_open_positions_count(
+        self,
+        strategy_id: str,
+        user_id: str,
+    ) -> int:
+        """Count open+partial positions for strategy-level position cap enforcement."""
+        try:
+            async with get_db_context() as db:
+                tracker = PositionTracker(db)
+                open_positions = await tracker.get_all_open_positions(
+                    strategy_id=strategy_id,
+                    user_id=user_id,
+                    include_partial=True,
+                )
+                return len(open_positions)
+        except Exception as e:
+            logger.warning(
+                f"Failed to count open positions for strategy {strategy_id}, "
+                f"defaulting to safe block: {e}"
+            )
+            # Fail-safe: return a high number to avoid unintentionally opening new risk.
+            return 10_000
 
     async def _calculate_position_size(
         self,

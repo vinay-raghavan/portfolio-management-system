@@ -2,11 +2,14 @@
 
 from datetime import datetime, time
 from decimal import Decimal
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
 from app.modules.algo.models import (
     ExecutionStatus,
+    PortfolioSafetyActionMode,
+    PortfolioSafetyThresholdType,
     PositionSizingMethod,
     ProfitCutoffAction,
     ScheduleType,
@@ -183,6 +186,11 @@ class UserStrategyResponse(UserStrategyBase):
     created_at: datetime
     updated_at: datetime
 
+    # Screener linking fields
+    linked_screener_id: str | None = None
+    sync_from_screener: bool = True
+    linked_screener_name: str | None = None  # For UI display
+
     class Config:
         from_attributes = True
 
@@ -344,7 +352,9 @@ class StrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     max_daily_profit: Decimal | None = None
     overall_profit_target: Decimal | None = None
@@ -390,7 +400,9 @@ class StrategyUpdate(BaseModel):
     position_sizing_method: PositionSizingMethod | None = None
     position_size_value: Decimal | None = None
     max_position_value: Decimal | None = None
+    max_daily_trades: int | None = Field(default=None, ge=1, le=100)
     max_daily_loss: Decimal | None = None
+    max_open_positions: int | None = Field(default=None, ge=1, le=50)
     max_consecutive_losses: int | None = None
     max_daily_profit: Decimal | None = None
     overall_profit_target: Decimal | None = None
@@ -451,7 +463,9 @@ class StrategyResponse(BaseModel):
     position_sizing_method: PositionSizingMethod
     position_size_value: Decimal  # Maps from portfolio_percent (default sizing)
     max_position_value: Decimal | None
+    max_daily_trades: int
     max_daily_loss: Decimal
+    max_open_positions: int
     max_consecutive_losses: int
     max_daily_profit: Decimal | None
     overall_profit_target: Decimal | None
@@ -481,6 +495,10 @@ class StrategyResponse(BaseModel):
     updated_at: datetime
     # Recent execution runs with order details
     recent_executions: list[RecentExecutionSummary] = []
+    # Screener linking fields
+    linked_screener_id: str | None = None
+    sync_from_screener: bool = True
+    linked_screener_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -575,7 +593,9 @@ class StrategyResponse(BaseModel):
             "position_sizing_method": obj.position_sizing_method,
             "position_size_value": obj.portfolio_percent,
             "max_position_value": obj.max_position_value,
+            "max_daily_trades": obj.max_daily_trades,
             "max_daily_loss": obj.max_daily_loss,
+            "max_open_positions": obj.max_open_positions,
             "max_consecutive_losses": obj.max_consecutive_losses,
             "max_daily_profit": obj.max_daily_profit,
             "overall_profit_target": obj.overall_profit_target,
@@ -604,6 +624,14 @@ class StrategyResponse(BaseModel):
             "created_at": obj.created_at,
             "updated_at": obj.updated_at,
             "recent_executions": recent_executions,
+            # Screener linking fields
+            "linked_screener_id": getattr(obj, "linked_screener_id", None),
+            "sync_from_screener": getattr(obj, "sync_from_screener", True),
+            "linked_screener_name": (
+                obj.linked_screener.name
+                if hasattr(obj, "linked_screener") and obj.linked_screener
+                else None
+            ),
         }
         return cls(**data)
 
@@ -716,6 +744,70 @@ class KillSwitchToggle(BaseModel):
     activate: bool
     reason: str | None = None
     square_off: bool = False
+
+
+class EmergencyStopMode(str, Enum):
+    """Emergency stop behavior mode."""
+
+    PAUSE_ONLY = "PAUSE_ONLY"
+    PAUSE_AND_SQUARE_OFF = "PAUSE_AND_SQUARE_OFF"
+
+
+class EmergencyStopRequest(BaseModel):
+    """Emergency stop request."""
+
+    mode: EmergencyStopMode = EmergencyStopMode.PAUSE_ONLY
+    reason: str | None = None
+
+
+class EmergencySquareOffSummary(BaseModel):
+    """Square-off result summary for emergency stop."""
+
+    strategies_targeted: int = 0
+    strategies_squared_off: int = 0
+    positions_closed: int = 0
+    total_realized_pnl: Decimal = Field(default=Decimal("0"))
+    errors: list[str] = Field(default_factory=list)
+
+
+class EmergencyStopResponse(BaseModel):
+    """Emergency stop response."""
+
+    status: str
+    mode: EmergencyStopMode
+    strategies_disabled: int
+    kill_switch_active: bool
+    square_off_initiated: bool
+    square_off_summary: EmergencySquareOffSummary | None = None
+
+
+class PortfolioSafetyConfigBase(BaseModel):
+    """Portfolio-level safety configuration."""
+
+    enabled: bool = False
+    threshold_type: PortfolioSafetyThresholdType = PortfolioSafetyThresholdType.PERCENT
+    threshold_value: Decimal = Field(default=Decimal("5.00"), gt=Decimal("0"))
+    action_mode: PortfolioSafetyActionMode = PortfolioSafetyActionMode.PAUSE_ONLY
+
+
+class PortfolioSafetyConfigUpdate(BaseModel):
+    """Update request for portfolio-level safety configuration."""
+
+    enabled: bool | None = None
+    threshold_type: PortfolioSafetyThresholdType | None = None
+    threshold_value: Decimal | None = Field(default=None, gt=Decimal("0"))
+    action_mode: PortfolioSafetyActionMode | None = None
+
+
+class PortfolioSafetyConfigResponse(PortfolioSafetyConfigBase):
+    """Portfolio-level safety configuration response."""
+
+    id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # NOTE: CircuitBreakerStatus is defined earlier in this file (line 248)
@@ -982,7 +1074,9 @@ class CompositeStrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     # Profit cutoff settings
     max_daily_profit: Decimal | None = None
@@ -1027,7 +1121,9 @@ class DSLStrategyCreate(BaseModel):
     position_sizing_method: PositionSizingMethod = PositionSizingMethod.PERCENT_OF_PORTFOLIO
     position_size_value: Decimal = Decimal("5.00")
     max_position_value: Decimal | None = None
+    max_daily_trades: int = Field(default=10, ge=1, le=100)
     max_daily_loss: Decimal = Decimal("5000.00")
+    max_open_positions: int = Field(default=5, ge=1, le=50)
     max_consecutive_losses: int = 3
     # Profit cutoff settings
     max_daily_profit: Decimal | None = None

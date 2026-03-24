@@ -59,7 +59,7 @@ class BrokerService:
             user_id=user_id,
             broker_type=data.broker_type.value,
             client_id=data.client_id,
-            secret_key_encrypted="",  # Will be set via property
+            secret_key_encrypted="",  # nosec B106 - placeholder, actual secret set below via property
             redirect_uri=data.redirect_uri,
             is_active=True,
         )

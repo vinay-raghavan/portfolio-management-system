@@ -3,6 +3,7 @@
 from datetime import datetime, time
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -23,6 +24,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.modules.screener.models import CustomScreener
 
 
 class StrategyStatus(str, Enum):
@@ -104,6 +108,65 @@ class SignalDirection(str, Enum):
     LONG = "LONG"  # Only long positions (default, safest)
     SHORT = "SHORT"  # Only short positions (requires INTRADAY or SLB)
     BOTH = "BOTH"  # Both directions (requires INTRADAY or SLB)
+
+
+class PortfolioSafetyThresholdType(str, Enum):
+    """Threshold type for portfolio-level safety trigger."""
+
+    PERCENT = "PERCENT"
+    AMOUNT = "AMOUNT"
+
+
+class PortfolioSafetyActionMode(str, Enum):
+    """Action mode when portfolio safety threshold is breached."""
+
+    PAUSE_ONLY = "PAUSE_ONLY"
+    PAUSE_AND_SQUARE_OFF = "PAUSE_AND_SQUARE_OFF"
+
+
+class PortfolioSafetyConfig(Base):
+    """User-level portfolio safety guardrail configuration."""
+
+    __tablename__ = "portfolio_safety_configs"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    # Guardrail configuration
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    threshold_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=PortfolioSafetyThresholdType.PERCENT.value,
+    )
+    threshold_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+        default=Decimal("5.00"),
+    )
+    action_mode: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default=PortfolioSafetyActionMode.PAUSE_ONLY.value,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PortfolioSafetyConfig user={self.user_id} enabled={self.enabled} "
+            f"type={self.threshold_type} value={self.threshold_value}>"
+        )
 
 
 class UserStrategy(Base):
@@ -259,6 +322,17 @@ class UserStrategy(Base):
     total_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"))
     consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Screener linking - for strategies created via auto-trade
+    # When linked, screener master settings override on each auto-trade run
+    linked_screener_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("custom_screeners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    sync_from_screener: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )  # If False, strategy settings are independent
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -270,10 +344,16 @@ class UserStrategy(Base):
     executions: Mapped[list["StrategyExecution"]] = relationship(
         "StrategyExecution", back_populates="strategy", cascade="all, delete-orphan"
     )
+    linked_screener: Mapped["CustomScreener | None"] = relationship(
+        "CustomScreener",
+        foreign_keys=[linked_screener_id],
+        back_populates="linked_strategies",
+    )
 
     __table_args__ = (
         Index("ix_user_strategies_user_status", "user_id", "status"),
         Index("ix_user_strategies_next_run", "status", "next_run_at"),
+        Index("ix_user_strategies_linked_screener", "linked_screener_id"),
     )
 
     def __repr__(self) -> str:
