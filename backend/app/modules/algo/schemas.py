@@ -495,6 +495,10 @@ class StrategyResponse(BaseModel):
     updated_at: datetime
     # Recent execution runs with order details
     recent_executions: list[RecentExecutionSummary] = []
+    # Screener linking fields
+    linked_screener_id: str | None = None
+    sync_from_screener: bool = True
+    linked_screener_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -620,6 +624,14 @@ class StrategyResponse(BaseModel):
             "created_at": obj.created_at,
             "updated_at": obj.updated_at,
             "recent_executions": recent_executions,
+            # Screener linking fields
+            "linked_screener_id": getattr(obj, "linked_screener_id", None),
+            "sync_from_screener": getattr(obj, "sync_from_screener", True),
+            "linked_screener_name": (
+                obj.linked_screener.name
+                if hasattr(obj, "linked_screener") and obj.linked_screener
+                else None
+            ),
         }
         return cls(**data)
 

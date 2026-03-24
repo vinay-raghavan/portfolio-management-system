@@ -496,6 +496,85 @@ async def disable_strategy(
     return StrategyResponse.model_validate(strategy)
 
 
+@router.post("/strategies/{strategy_id}/unlink-screener", response_model=StrategyResponse)
+async def unlink_strategy_from_screener(
+    db: DbSession,
+    current_user: CurrentUser,
+    strategy_id: str,
+) -> StrategyResponse:
+    """Unlink a strategy from its screener.
+
+    After unlinking:
+    - Strategy settings (signal_direction, product_type) become editable
+    - Screener auto-trade runs will NOT override this strategy's settings
+    - Strategy remains independent until re-linked
+    """
+    from sqlalchemy import select
+
+    from app.modules.algo.models import UserStrategy
+
+    result = await db.execute(
+        select(UserStrategy).where(
+            UserStrategy.id == strategy_id,
+            UserStrategy.user_id == current_user.id,
+        )
+    )
+    strategy = result.scalar_one_or_none()
+
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if not strategy.linked_screener_id:
+        raise HTTPException(status_code=400, detail="Strategy is not linked to any screener")
+
+    # Unlink by setting sync_from_screener to False
+    # Keep linked_screener_id for reference but stop syncing
+    strategy.sync_from_screener = False
+    await db.commit()
+
+    return StrategyResponse.model_validate(strategy)
+
+
+@router.post("/strategies/{strategy_id}/relink-screener", response_model=StrategyResponse)
+async def relink_strategy_to_screener(
+    db: DbSession,
+    current_user: CurrentUser,
+    strategy_id: str,
+) -> StrategyResponse:
+    """Re-link a strategy to its screener.
+
+    After re-linking:
+    - Next screener auto-trade run will override strategy settings
+    - signal_direction, product_type will be synced from screener config
+    """
+    from sqlalchemy import select
+
+    from app.modules.algo.models import UserStrategy
+
+    result = await db.execute(
+        select(UserStrategy).where(
+            UserStrategy.id == strategy_id,
+            UserStrategy.user_id == current_user.id,
+        )
+    )
+    strategy = result.scalar_one_or_none()
+
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    if not strategy.linked_screener_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Strategy was never linked to a screener. Cannot re-link.",
+        )
+
+    # Re-enable sync
+    strategy.sync_from_screener = True
+    await db.commit()
+
+    return StrategyResponse.model_validate(strategy)
+
+
 @router.post("/strategies/{strategy_id}/trigger")
 async def trigger_strategy(
     db: DbSession,
