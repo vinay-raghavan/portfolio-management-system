@@ -807,7 +807,7 @@ async def store_recommendations(
                 if quote and quote.price:
                     price_map[symbol] = float(quote.price)
             except Exception:
-                pass  # Price will default to 0.0 if fetch fails
+                pass  # nosec B110 - Price will default to 0.0 if fetch fails
 
     # Prepare technical and fundamental data for multi-factor scoring
     technical_data: dict[str, dict] = {}

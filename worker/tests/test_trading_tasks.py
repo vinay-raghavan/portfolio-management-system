@@ -126,8 +126,6 @@ class TestAutoSquareOff:
 
     def test_executes_at_square_off_time(self):
         """Test that task executes at square-off time."""
-        from unittest.mock import PropertyMock
-
         # 3:12 PM IST - within square-off window (3:10 - 3:15 PM)
         mock_now = datetime(2024, 1, 15, 15, 12, 0, tzinfo=IST)
 

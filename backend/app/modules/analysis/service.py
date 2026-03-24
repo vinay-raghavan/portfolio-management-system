@@ -92,7 +92,7 @@ class AnalysisService:
             if not hist.empty and len(hist) >= 50:
                 return hist
         except Exception:
-            pass
+            pass  # nosec B110 - intentional fallback to None
         return None
 
     async def get_technical_indicators(
@@ -359,7 +359,7 @@ class AnalysisService:
             if info and info.get("regularMarketPrice") is not None:
                 return info
         except Exception:
-            pass
+            pass  # nosec B110 - intentional fallback to None
         return None
 
     async def get_stock_info(self, symbol: str) -> StockInfo | None:
