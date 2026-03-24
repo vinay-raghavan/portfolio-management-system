@@ -1222,11 +1222,16 @@ class ScreenerService:
                     # Use fresh session for auto-trade operations
                     # (original session may be stale after 3+ min screener run)
                     async with async_session_maker() as auto_trade_db:
-                        # Get user's auto-trade config for custom screeners
+                        # Get auto-trade config for this specific screener
                         config_service = AutoTradeConfigService(auto_trade_db)
-                        config = await config_service.get_config_by_category(
-                            user_id=user_id, category="custom"
+                        config = await config_service.get_config_for_screener(
+                            user_id=user_id, screener_id=screener_id
                         )
+                        if not config:
+                            # Fallback to "custom" category for backward compatibility
+                            config = await config_service.get_config_by_category(
+                                user_id=user_id, category="custom"
+                            )
 
                         if config and config.enabled:
                             logger.info(
