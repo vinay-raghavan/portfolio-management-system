@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
 # Market timing constants
-INTRADAY_SQUARE_OFF_TIME = time(15, 15)  # 3:15 PM IST
+INTRADAY_SQUARE_OFF_TIME = time(15, 10)  # 3:10 PM IST
 MARKET_CLOSE_TIME = time(15, 30)  # 3:30 PM IST
 MARKET_OPEN_TIME = time(9, 15)  # 9:15 AM IST
 
@@ -274,8 +274,8 @@ def auto_square_off_intraday(self) -> dict:
     """
     now_ist = datetime.now(IST)
 
-    # Only run between 3:15 PM and 3:20 PM IST
-    if not (time(15, 15) <= now_ist.time() <= time(15, 20)):
+    # Only run between 3:10 PM and 3:15 PM IST
+    if not (time(15, 10) <= now_ist.time() <= time(15, 15)):
         logger.debug("Not square-off time, skipping")
         return {"status": "skipped", "reason": "Not square-off time"}
 

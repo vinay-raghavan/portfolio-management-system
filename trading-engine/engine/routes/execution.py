@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from redis.asyncio import Redis
 from shared.utils.time_window import TimeWindowValidator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from engine.algo.executor import StrategyConfig, StrategyExecutor
@@ -24,9 +25,16 @@ from engine.core.locks import (
 )
 from engine.core.redis import get_redis
 from engine.models.algo import (
+    AlgoPosition,
+    PortfolioSafetyActionMode,
+    PortfolioSafetyConfig,
+    PortfolioSafetyThresholdType,
+    PositionSide,
     PositionSizingMethod,
+    PositionStatus,
     SignalDirection,
     StrategyStatus,
+    UserFunds,
     UserStrategy,
 )
 from engine.providers.broker import PaperBroker
@@ -197,6 +205,241 @@ async def _update_funds_for_closed_positions(
         logger.warning(f"Failed to recalculate funds: {e}")
 
 
+async def _calculate_user_unrealized_pnl(
+    db: AsyncSession,
+    user_id: str,
+    data_provider: DataProvider,
+) -> Decimal:
+    """Calculate live unrealized P&L across all open/partial algo positions for a user."""
+    result = await db.execute(
+        select(AlgoPosition).where(
+            AlgoPosition.user_id == user_id,
+            AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+        )
+    )
+    positions = list(result.scalars().all())
+    if not positions:
+        return Decimal("0")
+
+    current_prices: dict[str, Decimal] = {}
+    for symbol in sorted({p.symbol for p in positions}):
+        try:
+            quote = await data_provider.get_quote(symbol)
+            if quote and quote.price is not None:
+                current_prices[symbol] = Decimal(str(quote.price))
+        except Exception as e:
+            logger.warning(f"Failed to fetch quote for portfolio safety {symbol}: {e}")
+
+    total_unrealized = Decimal("0")
+    for position in positions:
+        current_price = current_prices.get(position.symbol, position.entry_price)
+        entry_value = position.entry_price * position.remaining_quantity
+        current_value = current_price * position.remaining_quantity
+
+        if position.side == PositionSide.LONG:
+            total_unrealized += current_value - entry_value
+        else:
+            total_unrealized += entry_value - current_value
+
+    return total_unrealized
+
+
+async def _square_off_all_user_positions(
+    db: AsyncSession,
+    user_id: str,
+    data_provider: DataProvider,
+) -> dict:
+    """Square off all open/partial algo positions for a user."""
+    position_tracker = PositionTracker(db)
+    result = await db.execute(
+        select(AlgoPosition).where(
+            AlgoPosition.user_id == user_id,
+            AlgoPosition.status.in_([PositionStatus.OPEN, PositionStatus.PARTIAL]),
+        )
+    )
+    positions = list(result.scalars().all())
+    if not positions:
+        return {
+            "positions_closed": 0,
+            "total_realized_pnl": Decimal("0"),
+            "errors": [],
+        }
+
+    # Fetch one exit price per symbol, fallback to entry price.
+    exit_prices: dict[str, Decimal] = {}
+    for symbol in sorted({p.symbol for p in positions}):
+        try:
+            quote = await data_provider.get_quote(symbol)
+            if quote and quote.price is not None:
+                exit_prices[symbol] = Decimal(str(quote.price))
+                continue
+        except Exception as e:
+            logger.warning(f"Failed quote during portfolio safety square-off for {symbol}: {e}")
+
+        fallback_position = next((p for p in positions if p.symbol == symbol), None)
+        if fallback_position:
+            exit_prices[symbol] = fallback_position.entry_price
+
+    closed_positions: list[PositionResult] = []
+    total_realized_pnl = Decimal("0")
+    errors: list[str] = []
+
+    for position in positions:
+        try:
+            close_result = await position_tracker.close_position(
+                strategy_id=position.strategy_id,
+                user_id=user_id,
+                symbol=position.symbol,
+                quantity=None,
+                exit_price=exit_prices.get(position.symbol, position.entry_price),
+            )
+            if close_result:
+                closed_positions.append(close_result)
+                total_realized_pnl += close_result.realized_pnl
+        except Exception as e:
+            logger.exception(
+                f"Portfolio safety square-off failed for {position.strategy_id}:{position.symbol}: {e}"
+            )
+            errors.append(f"{position.strategy_id}:{position.symbol}: {e}")
+
+    if closed_positions:
+        await _update_funds_for_closed_positions(
+            db=db,
+            user_id=user_id,
+            closed_positions=closed_positions,
+            default_product_type=ProductType.DELIVERY,
+        )
+
+    return {
+        "positions_closed": len(closed_positions),
+        "total_realized_pnl": total_realized_pnl,
+        "errors": errors,
+    }
+
+
+async def _evaluate_portfolio_safety(
+    db: AsyncSession,
+    redis: Redis,
+    scheduler: StrategyScheduler,
+    user_id: str,
+    data_provider: DataProvider,
+) -> dict:
+    """Evaluate and enforce user-level portfolio safety guardrail."""
+    cfg_result = await db.execute(
+        select(PortfolioSafetyConfig).where(PortfolioSafetyConfig.user_id == user_id)
+    )
+    config = cfg_result.scalar_one_or_none()
+    if not config or not config.enabled:
+        return {"breached": False, "triggered": False}
+
+    funds_result = await db.execute(select(UserFunds).where(UserFunds.user_id == user_id))
+    funds = funds_result.scalar_one_or_none()
+    if not funds:
+        return {"breached": False, "triggered": False}
+
+    realized_pnl = Decimal(str(funds.realized_pnl or 0))
+    unrealized_pnl = await _calculate_user_unrealized_pnl(db, user_id, data_provider)
+    current_total_pnl = realized_pnl + unrealized_pnl
+
+    # Only act on drawdown / losses.
+    if current_total_pnl >= Decimal("0"):
+        return {
+            "breached": False,
+            "triggered": False,
+            "loss_amount": Decimal("0"),
+            "loss_pct": Decimal("0"),
+        }
+
+    loss_amount = abs(current_total_pnl)
+    starting_balance = Decimal(str(funds.starting_balance or 0))
+    loss_pct = (
+        (loss_amount / starting_balance) * Decimal("100")
+        if starting_balance > Decimal("0")
+        else Decimal("0")
+    )
+
+    threshold_type = (config.threshold_type or PortfolioSafetyThresholdType.PERCENT.value).upper()
+    if threshold_type not in {
+        PortfolioSafetyThresholdType.PERCENT.value,
+        PortfolioSafetyThresholdType.AMOUNT.value,
+    }:
+        threshold_type = PortfolioSafetyThresholdType.PERCENT.value
+    threshold_value = Decimal(str(config.threshold_value or 0))
+    breached = (
+        loss_pct >= threshold_value
+        if threshold_type == PortfolioSafetyThresholdType.PERCENT.value
+        else loss_amount >= threshold_value
+    )
+    if not breached:
+        return {
+            "breached": False,
+            "triggered": False,
+            "loss_amount": loss_amount,
+            "loss_pct": loss_pct,
+        }
+
+    action_mode = (config.action_mode or PortfolioSafetyActionMode.PAUSE_ONLY.value).upper()
+    if action_mode not in {
+        PortfolioSafetyActionMode.PAUSE_ONLY.value,
+        PortfolioSafetyActionMode.PAUSE_AND_SQUARE_OFF.value,
+    }:
+        action_mode = PortfolioSafetyActionMode.PAUSE_ONLY.value
+    pause_and_square_off = action_mode == PortfolioSafetyActionMode.PAUSE_AND_SQUARE_OFF.value
+
+    reason = (
+        f"Portfolio safety triggered: loss {loss_pct:.2f}% (₹{loss_amount:.2f}) "
+        f"breached {threshold_type} threshold {threshold_value}"
+    )
+
+    kill_switch = AlgoKillSwitch(redis)
+    if await kill_switch.is_active(user_id):
+        return {
+            "breached": True,
+            "triggered": False,
+            "reason": reason,
+            "action_mode": action_mode,
+            "loss_amount": loss_amount,
+            "loss_pct": loss_pct,
+        }
+
+    await kill_switch.activate(
+        user_id=user_id,
+        reason=reason,
+        square_off=pause_and_square_off,
+    )
+
+    active_result = await db.execute(
+        select(UserStrategy).where(
+            UserStrategy.user_id == user_id,
+            UserStrategy.status == StrategyStatus.ACTIVE,
+        )
+    )
+    active_strategies = list(active_result.scalars().all())
+    for strategy in active_strategies:
+        await scheduler.disable_strategy(strategy, StrategyStatus.KILLED)
+
+    square_off_summary = None
+    if pause_and_square_off:
+        square_off_summary = await _square_off_all_user_positions(db, user_id, data_provider)
+
+    logger.critical(
+        f"PORTFOLIO SAFETY TRIGGERED for user {user_id}: "
+        f"action={action_mode}, loss_pct={loss_pct:.2f}, loss_amount=₹{loss_amount:.2f}, "
+        f"strategies_killed={len(active_strategies)}"
+    )
+
+    return {
+        "breached": True,
+        "triggered": True,
+        "reason": reason,
+        "action_mode": action_mode,
+        "strategies_killed": len(active_strategies),
+        "square_off_summary": square_off_summary,
+        "loss_amount": loss_amount,
+        "loss_pct": loss_pct,
+    }
+
+
 def _configure_broker_price_fetcher(broker, data_provider: DataProvider) -> None:
     """Configure the broker with a price fetcher using the data provider.
 
@@ -273,6 +516,7 @@ class ExecuteStrategyRequest(BaseModel):
     fixed_amount: float = 10000.0
     portfolio_percent: float = 5.0
     risk_per_trade_percent: float = 2.0
+    max_open_positions: int = 5
     is_paper_trading: bool = True
     product_type: str = "DELIVERY"
     signal_direction: str = "LONG"  # LONG, SHORT, or BOTH
@@ -336,6 +580,7 @@ async def execute_strategy_full(
             fixed_amount=Decimal(str(request.fixed_amount)),
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
+            max_open_positions=request.max_open_positions,
             product_type=ProductType.normalize(request.product_type),
             signal_direction=SignalDirection(request.signal_direction),
             # Trading time window configuration
@@ -430,6 +675,8 @@ async def run_scheduled_strategies(
 
         results = []
         executed_count = 0
+        user_safety_cache: dict[str, dict] = {}
+        shared_data_provider = get_data_provider()
 
         for strategy in due_strategies:
             try:
@@ -454,14 +701,37 @@ async def run_scheduled_strategies(
                     continue
 
                 try:
+                    # Enforce portfolio safety once per user per run cycle.
+                    safety_result = user_safety_cache.get(strategy.user_id)
+                    if safety_result is None:
+                        safety_result = await _evaluate_portfolio_safety(
+                            db=db,
+                            redis=redis,
+                            scheduler=scheduler,
+                            user_id=strategy.user_id,
+                            data_provider=shared_data_provider,
+                        )
+                        user_safety_cache[strategy.user_id] = safety_result
+
+                    if safety_result.get("breached"):
+                        results.append(
+                            {
+                                "strategy_id": strategy.id,
+                                "status": "SKIPPED",
+                                "reason": "portfolio_safety",
+                                "message": safety_result.get("reason")
+                                or "Portfolio safety guardrail breached",
+                            }
+                        )
+                        continue
+
                     # Always check exit conditions (SL/TP/profit booking) first,
                     # even if strategy execution is blocked. This ensures profit
                     # booking rules are evaluated regardless of max_trades limits.
-                    data_provider = get_data_provider()
                     closed_positions, exit_pnl = await _check_exit_conditions_for_strategy(
                         db=db,
                         strategy=strategy,
-                        data_provider=data_provider,
+                        data_provider=shared_data_provider,
                     )
 
                     # Update strategy stats if any positions were closed
@@ -540,6 +810,7 @@ async def run_scheduled_strategies(
                         fixed_amount=strategy.fixed_amount or Decimal("10000"),
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
+                        max_open_positions=strategy.max_open_positions,
                         product_type=ProductType.normalize(strategy.product_type.value),
                         signal_direction=strategy.signal_direction or SignalDirection.LONG,
                         # Trading time window configuration
@@ -558,13 +829,12 @@ async def run_scheduled_strategies(
                     )
                     if not await broker.is_connected():
                         await broker.connect()
-                    data_provider = get_data_provider()
-                    _configure_broker_price_fetcher(broker, data_provider)
+                    _configure_broker_price_fetcher(broker, shared_data_provider)
                     safety_service = SafetyService(broker=broker)
 
                     executor = StrategyExecutor(
                         broker=broker,
-                        data_provider=data_provider,
+                        data_provider=shared_data_provider,
                         safety_service=safety_service,
                     )
                     result = await executor.execute(config)
@@ -581,11 +851,12 @@ async def run_scheduled_strategies(
                         losing_trades_delta=result.pnl_stats.losing_trades,
                     )
 
-                    # Record trade for cooldown and daily trade tracking
-                    if result.orders_placed > 0:
+                    # Record actual filled trades for cooldown and daily trade tracking
+                    if result.orders_filled > 0:
                         await pre_checker.record_trade(
                             strategy_id=strategy.id,
                             cooldown_seconds=strategy.cooldown_seconds or 0,
+                            trades_count=result.orders_filled,
                         )
 
                     # Always update circuit breaker with execution results
@@ -602,7 +873,7 @@ async def run_scheduled_strategies(
                         current_prices: dict[str, Decimal] = {}
                         for sym in position_symbols:
                             try:
-                                quote = await data_provider.get_quote(sym)
+                                quote = await shared_data_provider.get_quote(sym)
                                 if quote and quote.price:
                                     current_prices[sym] = quote.price
                             except Exception as price_err:
@@ -741,6 +1012,22 @@ async def execute_strategy_by_id(
             detail=f"Strategy {strategy_id} not found",
         )
 
+    data_provider = get_data_provider()
+    safety_result = await _evaluate_portfolio_safety(
+        db=db,
+        redis=redis,
+        scheduler=scheduler,
+        user_id=strategy.user_id,
+        data_provider=data_provider,
+    )
+    if safety_result.get("breached"):
+        await db.commit()
+        return {
+            "status": "blocked",
+            "reason": "portfolio_safety",
+            "message": safety_result.get("reason") or "Portfolio safety guardrail breached",
+        }
+
     # Run all pre-execution safety checks
     check_result = await pre_checker.check_all(
         user_id=strategy.user_id,
@@ -783,6 +1070,7 @@ async def execute_strategy_by_id(
             fixed_amount=strategy.fixed_amount or Decimal("10000"),
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
+            max_open_positions=strategy.max_open_positions,
             product_type=ProductType.normalize(strategy.product_type.value),
             signal_direction=strategy.signal_direction or SignalDirection.LONG,
             # Trading time window configuration
@@ -801,7 +1089,6 @@ async def execute_strategy_by_id(
         )
         if not await broker.is_connected():
             await broker.connect()
-        data_provider = get_data_provider()
         _configure_broker_price_fetcher(broker, data_provider)
         safety_service = SafetyService(broker=broker)
 
@@ -824,11 +1111,12 @@ async def execute_strategy_by_id(
             losing_trades_delta=result.pnl_stats.losing_trades,
         )
 
-        # Record trade for cooldown and daily trade tracking
-        if result.orders_placed > 0:
+        # Record actual filled trades for cooldown and daily trade tracking
+        if result.orders_filled > 0:
             await pre_checker.record_trade(
                 strategy_id=strategy.id,
                 cooldown_seconds=strategy.cooldown_seconds or 0,
+                trades_count=result.orders_filled,
             )
 
         await db.commit()
@@ -1001,10 +1289,26 @@ async def check_stop_monitors(
     checked = 0
     positions_closed = 0
     circuit_breakers_triggered = 0
+    user_safety_cache: dict[str, dict] = {}
     errors = []
 
     for strategy in active_strategies:
         try:
+            safety_result = user_safety_cache.get(strategy.user_id)
+            if safety_result is None:
+                safety_result = await _evaluate_portfolio_safety(
+                    db=db,
+                    redis=redis,
+                    scheduler=scheduler,
+                    user_id=strategy.user_id,
+                    data_provider=data_provider,
+                )
+                user_safety_cache[strategy.user_id] = safety_result
+
+            if safety_result.get("breached"):
+                checked += 1
+                continue
+
             # Check exit conditions (SL/TP/trailing stop/profit booking)
             closed_positions, pnl_stats = await _check_exit_conditions_for_strategy(
                 db=db,

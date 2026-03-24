@@ -105,6 +105,12 @@ class CustomScreener(Base):
     strategy_template: Mapped["UserStrategy | None"] = relationship(
         "UserStrategy", foreign_keys=[strategy_template_id]
     )
+    # Strategies linked to this screener (for auto-trade sync)
+    linked_strategies: Mapped[list["UserStrategy"]] = relationship(
+        "UserStrategy",
+        foreign_keys="UserStrategy.linked_screener_id",
+        back_populates="linked_screener",
+    )
 
     __table_args__ = (
         Index("ix_custom_screeners_user", "user_id"),

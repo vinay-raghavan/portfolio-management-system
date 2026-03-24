@@ -571,9 +571,14 @@ class PositionTracker:
             return False
 
         # Get profit booking rules (position -> strategy hierarchy)
+        # Only use rules for thresholds, not the executed array
         rules_data = position.profit_booking_rules
         if not rules_data and strategy and strategy.default_profit_booking_rules:
-            rules_data = strategy.default_profit_booking_rules
+            strategy_rules = strategy.default_profit_booking_rules
+            rules_data = {
+                "enabled": strategy_rules.get("enabled", False),
+                "rules": strategy_rules.get("rules", []),
+            }
 
         if not rules_data or not rules_data.get("enabled", False):
             return False
@@ -815,8 +820,17 @@ class PositionTracker:
         rules_data = position.profit_booking_rules
 
         # If position doesn't have profit booking rules, use strategy defaults
+        # IMPORTANT: Only copy rules, NOT the executed array (which tracks per-position state)
         if not rules_data and strategy and strategy.default_profit_booking_rules:
-            rules_data = strategy.default_profit_booking_rules
+            strategy_rules = strategy.default_profit_booking_rules
+            rules_data = {
+                "enabled": strategy_rules.get("enabled", False),
+                "rules": strategy_rules.get("rules", []),
+                "executed": [],  # Always start fresh for new positions
+            }
+            # Persist to position so future checks don't re-inherit from strategy
+            position.profit_booking_rules = rules_data
+            await self.db.flush()
 
         if not rules_data:
             return None
@@ -825,10 +839,8 @@ class PositionTracker:
 
         rules = rules_data.get("rules", [])
 
-        # Get executed targets from position's profit_booking_rules (not strategy's)
-        # This ensures we track execution per-position even when using strategy defaults
-        position_rules = position.profit_booking_rules or {}
-        executed = position_rules.get("executed", [])
+        # Get executed targets from position's profit_booking_rules
+        executed = rules_data.get("executed", [])
 
         if not rules:
             return None

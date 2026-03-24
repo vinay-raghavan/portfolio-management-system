@@ -867,6 +867,7 @@ class ScreenerService:
         """Get filters based on current market regime.
 
         Detects whether market is bullish/bearish and returns appropriate filters.
+        Uses Yahoo Finance for market data - NO DB ACCESS required.
 
         Args:
             strictness: How strict the filter criteria should be
@@ -876,8 +877,9 @@ class ScreenerService:
         """
         from app.modules.screener.market_regime import MarketRegime, MarketRegimeDetector
 
-        # Detect market regime
-        detector = MarketRegimeDetector(self.db)
+        # Detect market regime using Yahoo (no DB needed)
+        # Pass None for db since MarketRegimeDetector uses Yahoo provider
+        detector = MarketRegimeDetector(db=None)  # type: ignore
         regime_data = await detector.detect_regime()
 
         logger.info(
@@ -1036,23 +1038,28 @@ class ScreenerService:
     async def run_custom_screener_for_auto_trade(self, user_id: str, screener_id: str) -> dict:
         """Run a custom screener and process results for auto-trade.
 
-        This method:
-        1. Runs the screener against its configured universe
-        2. Updates last_run_at and calculates next_run_at
-        3. Returns results formatted for auto-trade processing
+        Architecture (optimized for long-running NIFTY 500 screeners):
+        1. PHASE 1: Quick DB read - load screener config into memory
+        2. PHASE 2: Long operation - run screener with Yahoo (NO DB access)
+        3. PHASE 3: Cache results in Redis temporarily
+        4. PHASE 4: Single fresh DB session for all writes
 
-        Note: Actual auto-trade creation (pending or immediate) is handled
-        by the AutoTradeService, which is not yet implemented.
+        This prevents DB session corruption during 3+ minute screener runs.
 
         Args:
             user_id: The user who owns the screener
             screener_id: UUID of the custom screener
 
         Returns:
-            Dict with status, passed_count, results, etc.
+            Dict with status, passed_count, results, pending_trades_created, etc.
         """
+        import json
         from datetime import datetime, timedelta
 
+        from app.core.database import async_session_maker
+        from app.core.redis import get_redis
+
+        # ===== PHASE 1: Quick DB read =====
         screener = await self.get_custom_screener(user_id, screener_id)
         if not screener:
             return {"status": "error", "message": "Screener not found"}
@@ -1060,32 +1067,61 @@ class ScreenerService:
         if not screener.is_auto_trade_enabled:
             return {"status": "error", "message": "Auto-trade not enabled"}
 
+        # Cache all screener attributes into plain dict (detached from session)
+        screener_data = {
+            "id": screener_id,
+            "name": screener.name,
+            "preset": screener.preset,
+            "strictness": screener.strictness,
+            "universe": screener.universe,
+            "filters": screener.filters,
+            "min_score": screener.min_score,
+            "top_n": screener.top_n,
+            "is_auto_trade_enabled": screener.is_auto_trade_enabled,
+            "run_frequency": screener.run_frequency,
+            "inferred_strategy_type": screener.inferred_strategy_type,
+        }
+
+        # Release the original session completely - we won't use self.db again
+        await self.db.rollback()
+
         try:
-            # Get universe symbols using the router's resolve function
+            # ===== PHASE 2: Run screener (NO DB ACCESS) =====
+            # Get universe symbols - this is a quick operation
             from app.modules.screener.router import _resolve_universe
 
-            symbols = await _resolve_universe(screener.universe, self.db)
+            # Use a quick fresh session just for resolving universe
+            async with async_session_maker() as quick_db:
+                symbols = await _resolve_universe(screener_data["universe"], quick_db)
 
             if not symbols:
-                return {"status": "error", "message": f"No symbols in universe {screener.universe}"}
+                return {
+                    "status": "error",
+                    "message": f"No symbols in universe {screener_data['universe']}",
+                }
+
+            logger.info(f"Running screener '{screener_data['name']}' on {len(symbols)} symbols")
 
             # Convert stored filters to FilterConfig objects
             from app.modules.screener.schemas import FilterConfig, StrictnessLevel
 
             # Track detected signal direction for adaptive screeners
             detected_signal_direction = None
+            filters = []
 
             # Check if using a preset (filters empty but preset defined)
-            if screener.preset and (not screener.filters or len(screener.filters) == 0):
+            stored_filters = screener_data.get("filters") or []
+            if screener_data["preset"] and len(stored_filters) == 0:
                 # Load from preset definition
                 try:
-                    preset_type = ScreenerPresetType(screener.preset)
-                    strictness = StrictnessLevel(screener.strictness or "moderate")
+                    preset_type = ScreenerPresetType(screener_data["preset"])
+                    strictness = StrictnessLevel(screener_data["strictness"] or "moderate")
 
                     # Special handling for ADAPTIVE preset
                     if preset_type == ScreenerPresetType.ADAPTIVE:
                         from app.modules.screener.market_regime import MarketRegime
 
+                        # get_adaptive_filters uses Yahoo (no DB needed)
                         filters, regime_data = await self.get_adaptive_filters(strictness)
                         logger.info(
                             f"Adaptive screener using {regime_data.regime.value} regime "
@@ -1103,66 +1139,77 @@ class ScreenerService:
                         ]:
                             detected_signal_direction = SignalDirectionEnum.LONG
                         else:
-                            detected_signal_direction = (
-                                SignalDirectionEnum.LONG
-                            )  # Default to long in neutral
+                            detected_signal_direction = SignalDirectionEnum.LONG
                     else:
                         preset_def = PRESET_DEFINITIONS.get(preset_type)
                         if preset_def:
                             filters = apply_strictness_to_filters(preset_def.filters, strictness)
                             logger.info(
-                                f"Loaded {len(filters)} filters from preset '{screener.preset}' "
+                                f"Loaded {len(filters)} filters from preset '{screener_data['preset']}' "
                                 f"with {strictness.value} strictness"
                             )
                         else:
                             logger.warning(
-                                f"Preset '{screener.preset}' not found in PRESET_DEFINITIONS"
+                                f"Preset '{screener_data['preset']}' not found in PRESET_DEFINITIONS"
                             )
-                            filters = []
                 except ValueError as e:
-                    logger.warning(f"Invalid preset value '{screener.preset}': {e}")
-                    filters = []
+                    logger.warning(f"Invalid preset value '{screener_data['preset']}': {e}")
             else:
                 # Use stored custom filters
-                filters = [FilterConfig(**f) for f in screener.filters]
+                filters = [FilterConfig(**f) for f in stored_filters]
 
-            # Get user's preferred data provider (required for screening)
+            # Always use Yahoo for screeners to avoid Fyers rate limits
             from shared.providers.data import get_data_provider
 
-            from app.modules.data.service import get_user_data_provider
+            provider = get_data_provider("yahoo")
 
-            provider = await get_user_data_provider(self.db, user_id)
-            if provider is None:
-                provider = get_data_provider("yahoo")
-
-            # Build the screener with filters and data provider, then run it
+            # Build the screener and run it (LONG OPERATION - 3+ mins for NIFTY 500)
+            # NO DB access during this phase
             stock_screener = self._build_screener(filters, data_provider=provider)
+
             results = await stock_screener.screen_universe(
                 symbols=symbols,
-                min_score=screener.min_score,
-                top_n=screener.top_n,
+                min_score=screener_data["min_score"],
+                top_n=screener_data["top_n"],
             )
 
-            # Update last_run_at and next_run_at
+            # ===== PHASE 3: Cache results in Redis =====
+            redis = await get_redis()
+            cache_key = f"screener_results:{screener_id}:{user_id}"
+            results_data = [
+                {"symbol": r.symbol, "score": r.score, "reasons": r.reasons} for r in results
+            ]
+            await redis.setex(cache_key, 300, json.dumps(results_data))  # 5 min TTL
+            logger.info(f"Cached {len(results)} results in Redis: {cache_key}")
+
+            # ===== PHASE 4: Single DB write with fresh session =====
             now = datetime.utcnow()
-            screener.last_run_at = now
+            run_frequency = screener_data["run_frequency"]
 
-            if screener.run_frequency == "daily":
-                # Next run tomorrow at the same time
-                screener.next_run_at = now + timedelta(days=1)
-            elif screener.run_frequency == "hourly":
-                # Next run in an hour
-                screener.next_run_at = now + timedelta(hours=1)
-            else:
-                screener.next_run_at = None  # Manual runs don't have scheduled next
+            async with async_session_maker() as db:
+                from sqlalchemy import update
 
-            await self.db.commit()
+                # Update screener timestamps
+                stmt = (
+                    update(CustomScreener)
+                    .where(CustomScreener.id == screener_id)
+                    .values(
+                        last_run_at=now,
+                        next_run_at=(
+                            now + timedelta(days=1)
+                            if run_frequency == "daily"
+                            else (now + timedelta(hours=1) if run_frequency == "hourly" else None)
+                        ),
+                    )
+                )
+                await db.execute(stmt)
+                await db.commit()
 
             # Process results through auto-trade pipeline
             trades_created = 0
             pending_trades_created = 0
 
-            if results and screener.is_auto_trade_enabled:
+            if results and screener_data["is_auto_trade_enabled"]:
                 try:
                     from app.modules.algo.auto_trade_service import (
                         AutoTradeConfigService,
@@ -1172,143 +1219,160 @@ class ScreenerService:
                     from app.modules.algo.models import ConfirmationMode
                     from app.modules.algo.multi_factor_scorer import MultiFactorScorer
 
-                    # Get user's auto-trade config for custom screeners
-                    config_service = AutoTradeConfigService(self.db)
-                    config = await config_service.get_config_by_category(
-                        user_id=user_id, category="custom"
-                    )
-
-                    if config and config.enabled:
-                        logger.info(
-                            f"Auto-trade config found: enabled={config.enabled}, "
-                            f"mode={config.confirmation_mode}, min_conf={config.min_confidence}"
+                    # Use fresh session for auto-trade operations
+                    # (original session may be stale after 3+ min screener run)
+                    async with async_session_maker() as auto_trade_db:
+                        # Get auto-trade config for this specific screener
+                        config_service = AutoTradeConfigService(auto_trade_db)
+                        config = await config_service.get_config_for_screener(
+                            user_id=user_id, screener_id=screener_id
                         )
-                        # Fetch fundamental data for scoring
-                        # Note: Don't pass provider here - fundamentals come from Yahoo,
-                        # not from user's trading provider (e.g., Fyers)
-                        from app.modules.research.recommendation_service import (
-                            RecommendationService,
-                        )
+                        if not config:
+                            # Fallback to "custom" category for backward compatibility
+                            config = await config_service.get_config_by_category(
+                                user_id=user_id, category="custom"
+                            )
 
-                        rec_service = RecommendationService(self.db)
-                        result_symbols = [r.symbol for r in results]
-                        fundamentals_list = await rec_service.get_universe_fundamentals(
-                            result_symbols
-                        )
-                        # Convert to dict keyed by symbol for easy lookup
-                        fundamentals_by_symbol: dict[str, dict] = {
-                            f["symbol"]: f for f in fundamentals_list
-                        }
-                        logger.info(
-                            f"Fetched fundamentals for {len(fundamentals_by_symbol)}/{len(result_symbols)} symbols"
-                        )
-
-                        # Apply multi-factor scoring
-                        scorer = MultiFactorScorer(self.db)
-                        scored_results = []
-
-                        # Use detected signal direction from adaptive screener, or detect from filters
-                        if detected_signal_direction:
-                            screener_direction = detected_signal_direction
+                        if config and config.enabled:
                             logger.info(
-                                f"Using adaptive regime-detected direction: {screener_direction.value}"
+                                f"Auto-trade config found: enabled={config.enabled}, "
+                                f"mode={config.confirmation_mode}, min_conf={config.min_confidence}"
                             )
-                        else:
-                            screener_direction = _detect_signal_direction(filters)
+                            # Fetch fundamental data for scoring
+                            # Note: Don't pass provider here - fundamentals come from Yahoo,
+                            # not from user's trading provider (e.g., Fyers)
+                            from app.modules.research.recommendation_service import (
+                                RecommendationService,
+                            )
 
-                        for r in results:
-                            fund_data = fundamentals_by_symbol.get(r.symbol)
-                            scores = await scorer.score_symbol(
-                                symbol=r.symbol,
-                                category="custom",
-                                technical_data={"score": r.score},  # Pass technical score as data
-                                fundamental_data=fund_data,  # Pass fundamental data
-                                screener_signal_direction=screener_direction.value,  # Pass screener direction
+                            rec_service = RecommendationService(auto_trade_db)
+                            result_symbols = [r.symbol for r in results]
+                            fundamentals_list = await rec_service.get_universe_fundamentals(
+                                result_symbols
                             )
-                            if scores.confidence.value != "skip":
-                                scored_results.append(
-                                    {
-                                        "symbol": r.symbol,
-                                        "technical_score": r.score,
-                                        "fundamental_score": scores.fundamental_score,
-                                        "sentiment_score": scores.sentiment_score,
-                                        "combined_score": scores.combined_score,
-                                        "confidence_level": scores.confidence.value,
-                                        "signal_direction": scores.direction.value,
-                                        "recommended_strategy": scores.recommended_strategy,
-                                        "position_size_multiplier": scores.position_size_multiplier,
-                                        "reasons": r.reasons,
-                                    }
+                            # Convert to dict keyed by symbol for easy lookup
+                            fundamentals_by_symbol: dict[str, dict] = {
+                                f["symbol"]: f for f in fundamentals_list
+                            }
+                            logger.info(
+                                f"Fetched fundamentals for {len(fundamentals_by_symbol)}/{len(result_symbols)} symbols"
+                            )
+
+                            # Apply multi-factor scoring
+                            scorer = MultiFactorScorer(auto_trade_db)
+                            scored_results = []
+
+                            # Use detected signal direction from adaptive screener, or detect from filters
+                            if detected_signal_direction:
+                                screener_direction = detected_signal_direction
+                                logger.info(
+                                    f"Using adaptive regime-detected direction: {screener_direction.value}"
                                 )
-                        # Log first few scores for debugging
-                        if scored_results:
-                            sample = scored_results[:3]
-                            logger.info(
-                                f"Sample scores: {[(s['symbol'], s['combined_score'], s['confidence_level']) for s in sample]}"
-                            )
-
-                        # Filter by confidence threshold
-                        confidence_values = {"high": 80, "medium": 60, "low": 40}
-                        # Handle both string and enum for min_confidence
-                        min_confidence_str = (
-                            config.min_confidence.value
-                            if hasattr(config.min_confidence, "value")
-                            else config.min_confidence
-                        )
-                        min_conf = confidence_values.get(min_confidence_str, 60)
-                        logger.info(
-                            f"Scored {len(scored_results)} symbols (non-skip). "
-                            f"Min confidence threshold: {min_conf} ({min_confidence_str})"
-                        )
-                        filtered_results = [
-                            r
-                            for r in scored_results
-                            if confidence_values.get(r["confidence_level"], 0) >= min_conf
-                        ]
-                        logger.info(
-                            f"After confidence filter: {len(filtered_results)} symbols passed"
-                        )
-
-                        if filtered_results:
-                            # Get strategy type from template or infer
-                            strategy_type = screener.inferred_strategy_type or "momentum"
-
-                            if config.confirmation_mode == ConfirmationMode.AUTO:
-                                # Auto-execute: create strategies immediately
-                                template_service = StrategyTemplateService(self.db)
-                                for r in filtered_results[: config.max_positions_per_day]:
-                                    strategy = await template_service.create_strategy_from_template(
-                                        user_id=user_id,
-                                        template_id=str(config.strategy_template_id)
-                                        if config.strategy_template_id
-                                        else None,
-                                        symbol=r["symbol"],
-                                        strategy_type=strategy_type,
-                                    )
-                                    if strategy:
-                                        trades_created += 1
                             else:
-                                # Notify mode: create pending trades
-                                pending_service = PendingAutoTradeService(self.db)
-                                symbols = [
-                                    r["symbol"]
-                                    for r in filtered_results[: config.max_positions_per_day]
-                                ]
-                                scores_dict = {r["symbol"]: r for r in filtered_results}
+                                screener_direction = _detect_signal_direction(filters)
 
-                                pending = await pending_service.create_pending_trade(
-                                    user_id=user_id,
-                                    config=config,
-                                    symbols=symbols,
-                                    scores=scores_dict,
-                                    recommended_strategy_type=strategy_type,
-                                    suggested_params={
-                                        "source": "custom_screener",
-                                        "screener_id": screener_id,
-                                    },
+                            for r in results:
+                                fund_data = fundamentals_by_symbol.get(r.symbol)
+                                scores = await scorer.score_symbol(
+                                    symbol=r.symbol,
+                                    category="custom",
+                                    technical_data={
+                                        "score": r.score
+                                    },  # Pass technical score as data
+                                    fundamental_data=fund_data,  # Pass fundamental data
+                                    screener_signal_direction=screener_direction.value,  # Pass screener direction
                                 )
-                                if pending:
-                                    pending_trades_created += 1
+                                if scores.confidence.value != "skip":
+                                    scored_results.append(
+                                        {
+                                            "symbol": r.symbol,
+                                            "technical_score": r.score,
+                                            "fundamental_score": scores.fundamental_score,
+                                            "sentiment_score": scores.sentiment_score,
+                                            "combined_score": scores.combined_score,
+                                            "confidence_level": scores.confidence.value,
+                                            "signal_direction": scores.direction.value,
+                                            "recommended_strategy": scores.recommended_strategy,
+                                            "position_size_multiplier": scores.position_size_multiplier,
+                                            "reasons": r.reasons,
+                                        }
+                                    )
+                            # Log first few scores for debugging
+                            if scored_results:
+                                sample = scored_results[:3]
+                                logger.info(
+                                    f"Sample scores: {[(s['symbol'], s['combined_score'], s['confidence_level']) for s in sample]}"
+                                )
+
+                            # Filter by confidence threshold
+                            confidence_values = {"high": 80, "medium": 60, "low": 40}
+                            # Handle both string and enum for min_confidence
+                            min_confidence_str = (
+                                config.min_confidence.value
+                                if hasattr(config.min_confidence, "value")
+                                else config.min_confidence
+                            )
+                            min_conf = confidence_values.get(min_confidence_str, 60)
+                            logger.info(
+                                f"Scored {len(scored_results)} symbols (non-skip). "
+                                f"Min confidence threshold: {min_conf} ({min_confidence_str})"
+                            )
+                            filtered_results = [
+                                r
+                                for r in scored_results
+                                if confidence_values.get(r["confidence_level"], 0) >= min_conf
+                            ]
+                            logger.info(
+                                f"After confidence filter: {len(filtered_results)} symbols passed"
+                            )
+
+                            if filtered_results:
+                                # Get strategy type from template or infer
+                                strategy_type = (
+                                    screener_data["inferred_strategy_type"] or "momentum"
+                                )
+
+                                if config.confirmation_mode == ConfirmationMode.AUTO:
+                                    # Auto-execute: create strategies immediately
+                                    template_service = StrategyTemplateService(auto_trade_db)
+                                    for r in filtered_results[: config.max_positions_per_day]:
+                                        strategy = (
+                                            await template_service.create_strategy_from_template(
+                                                user_id=user_id,
+                                                template_id=str(config.strategy_template_id)
+                                                if config.strategy_template_id
+                                                else None,
+                                                symbol=r["symbol"],
+                                                strategy_type=strategy_type,
+                                            )
+                                        )
+                                        if strategy:
+                                            trades_created += 1
+                                else:
+                                    # Notify mode: create pending trades
+                                    pending_service = PendingAutoTradeService(auto_trade_db)
+                                    selected_symbols = [
+                                        r["symbol"]
+                                        for r in filtered_results[: config.max_positions_per_day]
+                                    ]
+                                    scores_dict = {r["symbol"]: r for r in filtered_results}
+
+                                    pending = await pending_service.create_pending_trade(
+                                        user_id=user_id,
+                                        config=config,
+                                        symbols=selected_symbols,
+                                        scores=scores_dict,
+                                        recommended_strategy_type=strategy_type,
+                                        suggested_params={
+                                            "source": "custom_screener",
+                                            "screener_id": screener_id,
+                                        },
+                                    )
+                                    if pending:
+                                        pending_trades_created += 1
+
+                        # IMPORTANT: Commit the fresh session
+                        await auto_trade_db.commit()
 
                 except Exception as e:
                     logger.warning(f"Auto-trade processing failed for screener {screener_id}: {e}")
@@ -1331,5 +1395,6 @@ class ScreenerService:
             }
 
         except Exception as e:
+            await self.db.rollback()
             logger.exception(f"Error running screener {screener_id} for auto-trade: {e}")
             return {"status": "error", "message": str(e)}

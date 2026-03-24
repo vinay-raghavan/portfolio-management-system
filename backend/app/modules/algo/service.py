@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.algo.models import (
     AlgoPosition,
+    PortfolioSafetyConfig,
     PositionSide,
     PositionStatus,
     StrategyExecution,
@@ -82,7 +83,9 @@ class AlgoService:
             position_sizing_method=data.position_sizing_method,
             portfolio_percent=data.position_size_value,
             max_position_value=data.max_position_value,
+            max_daily_trades=data.max_daily_trades,
             max_daily_loss=data.max_daily_loss,
+            max_open_positions=data.max_open_positions,
             max_consecutive_losses=data.max_consecutive_losses,
             max_daily_profit=data.max_daily_profit,
             overall_profit_target=data.overall_profit_target,
@@ -163,11 +166,15 @@ class AlgoService:
         Returns:
             Tuple of (strategies, executions_map) where executions_map maps strategy_id -> executions
         """
+        from sqlalchemy.orm import selectinload
+
         query = select(UserStrategy).where(UserStrategy.user_id == user_id)
         if status_filter:
             query = query.where(UserStrategy.status == status_filter)
         # Note: We don't eager-load executions here anymore - too slow for large datasets
         # Instead, we load them separately with LIMIT per strategy
+        # Eagerly load linked_screener to avoid MissingGreenlet errors in async context
+        query = query.options(selectinload(UserStrategy.linked_screener))
         result = await self.db.execute(query.order_by(UserStrategy.created_at.desc()))
         strategies = list(result.scalars().all())
 
@@ -335,14 +342,19 @@ class AlgoService:
         return True
 
     async def enable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
-        """Enable a strategy for execution."""
+        """Enable a strategy for execution.
+
+        Note: KILLED strategies can be re-enabled. The kill switch is meant to be
+        a temporary safety measure, not a permanent ban.
+        """
         strategy, _ = await self.get_strategy(user_id, strategy_id)
         if not strategy:
             return None
 
+        previous_status = strategy.status
         await self.scheduler.enable_strategy(strategy)
         await self.db.refresh(strategy)
-        logger.info(f"Enabled strategy {strategy_id}")
+        logger.info(f"Enabled strategy {strategy_id} (was {previous_status.value})")
         return strategy
 
     async def disable_strategy(self, user_id: str, strategy_id: str) -> UserStrategy | None:
@@ -370,6 +382,34 @@ class AlgoService:
             await self.scheduler.disable_strategy(strategy, StrategyStatus.KILLED)
 
         return len(strategies)
+
+    async def get_portfolio_safety_config(self, user_id: str) -> PortfolioSafetyConfig:
+        """Get portfolio safety config for a user, creating defaults if needed."""
+        result = await self.db.execute(
+            select(PortfolioSafetyConfig).where(PortfolioSafetyConfig.user_id == user_id)
+        )
+        config = result.scalar_one_or_none()
+        if config is None:
+            config = PortfolioSafetyConfig(user_id=user_id)
+            self.db.add(config)
+            await self.db.flush()
+            await self.db.refresh(config)
+        return config
+
+    async def update_portfolio_safety_config(
+        self,
+        user_id: str,
+        updates: dict,
+    ) -> PortfolioSafetyConfig:
+        """Update portfolio safety config for a user."""
+        config = await self.get_portfolio_safety_config(user_id)
+        for field, value in updates.items():
+            if hasattr(value, "value"):
+                value = value.value
+            setattr(config, field, value)
+        await self.db.flush()
+        await self.db.refresh(config)
+        return config
 
     async def get_execution_history(
         self, user_id: str, strategy_id: str, limit: int = 50
@@ -1058,6 +1098,15 @@ class AlgoService:
 
         await self.db.flush()
 
+        # Prefer the position's stored product_type for accurate margin handling on close.
+        # This prevents strategy product_type changes from affecting existing positions.
+        close_product_type = product_type
+        if position.product_type is not None:
+            try:
+                close_product_type = ProductType(position.product_type.value)
+            except (AttributeError, ValueError):
+                close_product_type = product_type
+
         # Update user_funds: credit sale proceeds and update realized P&L
         await self._update_funds_for_closed_position(
             user_id=user_id,
@@ -1066,7 +1115,7 @@ class AlgoService:
             entry_price=position.entry_price,
             exit_price=exit_price,
             pnl=pnl,
-            product_type=product_type,
+            product_type=close_product_type,
         )
 
         logger.info(f"Closed position {symbol}: qty={close_qty}, pnl={pnl}, is_winner={is_winner}")
@@ -1118,6 +1167,11 @@ class AlgoService:
             # For LONG positions, closing means SELL (credit proceeds)
             # For SHORT positions, closing means BUY (debit cost to cover)
             trade_side = "SELL" if side == PositionSide.LONG else "BUY"
+            # Funds provider expects signed position quantity:
+            # positive for long closes, negative for short closes.
+            existing_position_qty = Decimal(str(close_qty))
+            if side == PositionSide.SHORT:
+                existing_position_qty = -existing_position_qty
 
             await funds_provider.update_funds_for_trade(
                 user_id=user_id,
@@ -1126,7 +1180,7 @@ class AlgoService:
                 price=exit_price,
                 fees=Decimal("0"),  # Fees handled separately if needed
                 product_type=product_type,
-                existing_position_qty=Decimal(str(close_qty)),  # Closing position
+                existing_position_qty=existing_position_qty,
                 entry_price=entry_price,  # For proper margin release
             )
 
@@ -1294,7 +1348,9 @@ class AlgoService:
                 if strategy_config.get("max_position_value")
                 else None
             ),
+            max_daily_trades=strategy_config.get("max_daily_trades", 10),
             max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_open_positions=strategy_config.get("max_open_positions", 5),
             max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
             is_paper_trading=strategy_config.get("is_paper_trading", True),
             product_type=strategy_config.get("product_type", "delivery"),
@@ -1387,7 +1443,9 @@ class AlgoService:
                 if strategy_config.get("max_position_value")
                 else None
             ),
+            max_daily_trades=strategy_config.get("max_daily_trades", 10),
             max_daily_loss=Decimal(str(strategy_config.get("max_daily_loss", "5000.00"))),
+            max_open_positions=strategy_config.get("max_open_positions", 5),
             max_consecutive_losses=strategy_config.get("max_consecutive_losses", 3),
             is_paper_trading=strategy_config.get("is_paper_trading", True),
             product_type=strategy_config.get("product_type", "delivery"),

@@ -92,6 +92,18 @@ class DigestService:
 
         return digests, total
 
+    async def delete_digest(self, digest_id: str) -> None:
+        """Delete a digest by ID.
+
+        Args:
+            digest_id: ID of the digest to delete
+        """
+        from sqlalchemy import delete
+
+        await self.db.execute(delete(DailyDigest).where(DailyDigest.id == digest_id))
+        await self.db.flush()
+        logger.info(f"Deleted digest {digest_id}")
+
     async def generate_digest(self, target_date: date | None = None) -> DailyDigest:
         """Generate a daily digest for the given date.
 

@@ -4,6 +4,7 @@ Provides market data from Fyers API including quotes, historical data,
 and instrument information for Indian markets (NSE, BSE).
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
@@ -14,6 +15,12 @@ from ..symbols import Exchange, SymbolMapper
 from .base import DataProvider
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting configuration for Fyers API
+# Fyers allows ~10 requests/second for historical data, but is stricter for bulk requests
+# Using 3 req/sec to be safe with 500+ symbol screeners
+FYERS_RATE_LIMIT_PER_SECOND = 3  # Conservative limit for bulk operations
+FYERS_REQUEST_DELAY = 1.0 / FYERS_RATE_LIMIT_PER_SECOND  # ~0.33 seconds between requests
 
 # Timezone definitions
 IST = ZoneInfo("Asia/Kolkata")
@@ -36,6 +43,10 @@ class FyersDataProvider(DataProvider):
 
     name = "fyers"
 
+    # Class-level rate limiter (shared across all instances)
+    _rate_limit_lock: asyncio.Lock | None = None
+    _last_request_time: float = 0.0
+
     def __init__(
         self,
         access_token: str | None = None,
@@ -54,6 +65,21 @@ class FyersDataProvider(DataProvider):
         self.log_path = log_path
         self._fyers = None
         self.default_exchange = Exchange.NSE
+
+    @classmethod
+    async def _rate_limit(cls) -> None:
+        """Apply rate limiting to avoid 429 errors from Fyers API."""
+        if cls._rate_limit_lock is None:
+            cls._rate_limit_lock = asyncio.Lock()
+
+        async with cls._rate_limit_lock:
+            import time
+
+            now = time.monotonic()
+            elapsed = now - cls._last_request_time
+            if elapsed < FYERS_REQUEST_DELAY:
+                await asyncio.sleep(FYERS_REQUEST_DELAY - elapsed)
+            cls._last_request_time = time.monotonic()
 
     def _get_fyers_client(self):
         """Lazily create Fyers API client."""
@@ -172,6 +198,9 @@ class FyersDataProvider(DataProvider):
     async def get_quote(self, symbol: str) -> Quote | None:
         """Get real-time quote for a symbol."""
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 
@@ -227,6 +256,9 @@ class FyersDataProvider(DataProvider):
             List of OHLCV data points
         """
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 
@@ -271,7 +303,22 @@ class FyersDataProvider(DataProvider):
                 "cont_flag": "1",  # Continuous data
             }
 
-            response = fyers.history(data)
+            # Retry logic for rate limit errors
+            max_retries = 3
+            for attempt in range(max_retries):
+                response = fyers.history(data)
+
+                if response.get("code") == 429:
+                    # Rate limited - wait and retry with exponential backoff
+                    wait_time = (2**attempt) * 2  # 2, 4, 8 seconds
+                    logger.warning(
+                        f"Fyers rate limit hit for {symbol}, "
+                        f"retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                break  # Success or non-retryable error
 
             if response.get("code") != 200 or not response.get("candles"):
                 logger.error(f"Fyers historical error for {symbol}: {response}")
@@ -313,6 +360,9 @@ class FyersDataProvider(DataProvider):
     async def get_instrument_info(self, symbol: str) -> InstrumentInfo | None:
         """Get instrument information for a symbol."""
         try:
+            # Apply rate limiting to avoid 429 errors
+            await self._rate_limit()
+
             fyers = self._get_fyers_client()
             fyers_symbol = self.normalize_symbol(symbol)
 

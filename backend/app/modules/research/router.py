@@ -717,6 +717,7 @@ async def generate_digest(
     db: DbSession,
     current_user: CurrentUser,
     date: str | None = Query(None, description="Date in YYYY-MM-DD format. Defaults to today."),
+    force: bool = Query(False, description="Force regenerate even if digest exists"),
 ) -> DailyDigestResponse:
     """Generate a daily digest.
 
@@ -725,12 +726,13 @@ async def generate_digest(
 
     Args:
         date: Optional date to generate digest for. Defaults to today.
+        force: If True, delete existing digest and regenerate.
 
     Returns:
         The generated daily digest
 
     Raises:
-        409: If a digest already exists for the specified date
+        409: If a digest already exists for the specified date (when force=False)
     """
     from datetime import date as date_type
 
@@ -749,10 +751,14 @@ async def generate_digest(
     # Check if digest already exists
     existing = await service.get_digest_by_date(target_date or date_type.today())
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Digest already exists for date: {target_date or date_type.today()}",
-        )
+        if force:
+            # Delete existing digest and regenerate
+            await service.delete_digest(existing.id)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Digest already exists for date: {target_date or date_type.today()}",
+            )
 
     digest = await service.generate_digest(target_date)
     return service.digest_to_response(digest)

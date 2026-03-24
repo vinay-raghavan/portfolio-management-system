@@ -423,6 +423,10 @@ import type {
   Universe,
   UniverseCreate,
   KillSwitchState,
+  EmergencyStopMode,
+  EmergencyStopResponse,
+  PortfolioSafetyConfig,
+  PortfolioSafetyConfigUpdate,
   StrategyStatus,
   AlgoPnLSummary,
   PnLByStrategyResponse,
@@ -457,6 +461,10 @@ export const algoApi = {
     api.post<AlgoStrategy>(`/algo/strategies/${id}/enable`),
   disableStrategy: (id: string) =>
     api.post<AlgoStrategy>(`/algo/strategies/${id}/disable`),
+  unlinkScreener: (id: string) =>
+    api.post<AlgoStrategy>(`/algo/strategies/${id}/unlink-screener`),
+  relinkScreener: (id: string) =>
+    api.post<AlgoStrategy>(`/algo/strategies/${id}/relink-screener`),
   triggerStrategy: (id: string, symbols?: string[]) =>
     api.post<{ task_id: string; status: string }>(`/algo/strategies/${id}/trigger`, { symbols }),
   getExecutionHistory: (strategyId: string, limit = 50) =>
@@ -473,8 +481,12 @@ export const algoApi = {
     api.get<KillSwitchState>('/algo/kill-switch'),
   toggleKillSwitch: (activate: boolean, reason?: string, squareOff = false) =>
     api.post<KillSwitchState>('/algo/kill-switch', { activate, reason, square_off: squareOff }),
-  emergencyStop: () =>
-    api.post<{ status: string; strategies_disabled: number }>('/algo/emergency-stop'),
+  emergencyStop: (mode: EmergencyStopMode = 'PAUSE_ONLY', reason?: string) =>
+    api.post<EmergencyStopResponse>('/algo/emergency-stop', { mode, reason }),
+  getPortfolioSafetyConfig: () =>
+    api.get<PortfolioSafetyConfig>('/algo/portfolio-safety'),
+  updatePortfolioSafetyConfig: (data: PortfolioSafetyConfigUpdate) =>
+    api.put<PortfolioSafetyConfig>('/algo/portfolio-safety', data),
 
   // Circuit Breaker
   getCircuitBreakerStatus: (strategyId: string) =>
@@ -1091,7 +1103,9 @@ export const researchApi = {
     api.get<DailyDigestResponse>(`/research/digest/${date}`),
 
   generateDigest: (date?: string) =>
-    api.post<DailyDigestResponse>('/research/digest/generate', null, { params: date ? { date } : {} }),
+    api.post<DailyDigestResponse>('/research/digest/generate', null, {
+      params: { ...(date ? { date } : {}), force: true },
+    }),
 
   // Sectors
   getSectors: () =>

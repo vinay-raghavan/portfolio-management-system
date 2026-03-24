@@ -432,16 +432,19 @@ class DailyTradeCounter:
             return False, f"Max daily trades reached: {current_count}/{max_daily_trades}"
         return True, None
 
-    async def increment(self, strategy_id: str) -> int:
+    async def increment(self, strategy_id: str, count: int = 1) -> int:
         """Increment trade count for today.
 
         Returns:
             New trade count
         """
+        if count <= 0:
+            return await self.get_trade_count(strategy_id)
+
         key = DAILY_TRADES_KEY.format(strategy_id=strategy_id)
 
         # Increment counter
-        new_count = await self.redis.incr(key)
+        new_count = await self.redis.incrby(key, count)
 
         # Set expiry at midnight if this is the first trade
         if new_count == 1:
@@ -841,6 +844,7 @@ class PreExecutionChecker:
         self,
         strategy_id: str,
         cooldown_seconds: int = 0,
+        trades_count: int = 1,
     ) -> None:
         """Record a trade execution for tracking.
 
@@ -851,13 +855,14 @@ class PreExecutionChecker:
         Args:
             strategy_id: The strategy ID
             cooldown_seconds: Cooldown period to start (0 = no cooldown)
+            trades_count: Number of trades to count for daily trade limit.
         """
         # Start cooldown if configured
         if cooldown_seconds > 0:
             await self.cooldown.start_cooldown(strategy_id, cooldown_seconds)
 
         # Increment daily trade counter
-        await self.daily_trades.increment(strategy_id)
+        await self.daily_trades.increment(strategy_id, trades_count)
 
 
 class CircuitBreakerPersistence:

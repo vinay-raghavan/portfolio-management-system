@@ -261,19 +261,14 @@ export function DigestWidget({ className }: DigestWidgetProps) {
           </Badge>
         </CardTitle>
         <div className="flex items-center gap-1">
-          {stale && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending}
-              title="Generate today's digest"
-            >
-              <Plus className={cn('h-4 w-4', generateMutation.isPending && 'animate-pulse')} />
-            </Button>
-          )}
-          <Button variant="ghost" size="icon" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            title="Regenerate digest"
+          >
+            <RefreshCw className={cn('h-4 w-4', generateMutation.isPending && 'animate-spin')} />
           </Button>
         </div>
       </CardHeader>
