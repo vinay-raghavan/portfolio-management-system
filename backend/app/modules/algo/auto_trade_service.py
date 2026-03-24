@@ -283,7 +283,7 @@ class StrategyTemplateService:
             if existing_strategy.sync_from_screener:
                 existing_strategy.signal_direction = config.signal_direction
                 existing_strategy.product_type = config.product_type
-                existing_strategy.max_open_positions = config.max_positions or 5
+                existing_strategy.max_open_positions = config.max_positions_per_day or 5
                 existing_strategy.custom_symbols = symbols
                 existing_strategy.status = StrategyStatus.ACTIVE
                 await self.db.flush()
@@ -318,7 +318,7 @@ class StrategyTemplateService:
             product_type=config.product_type,
             position_sizing_method=PositionSizingMethod.PORTFOLIO_PERCENT,
             portfolio_percent=Decimal("3.0"),
-            max_open_positions=config.max_positions or 5,
+            max_open_positions=config.max_positions_per_day or 5,
             is_paper_trading=True,
             status=StrategyStatus.ACTIVE,
             # Link to screener
@@ -826,7 +826,9 @@ class PendingAutoTradeService:
                     # Override strategy settings with screener master settings
                     existing_strategy.signal_direction = auto_trade_config.signal_direction
                     existing_strategy.product_type = auto_trade_config.product_type
-                    existing_strategy.max_open_positions = auto_trade_config.max_positions or 5
+                    existing_strategy.max_open_positions = (
+                        auto_trade_config.max_positions_per_day or 5
+                    )
                     logger.info(
                         f"Synced strategy settings from screener: "
                         f"direction={auto_trade_config.signal_direction.value}, "
