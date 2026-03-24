@@ -461,6 +461,10 @@ export const algoApi = {
     api.post<AlgoStrategy>(`/algo/strategies/${id}/enable`),
   disableStrategy: (id: string) =>
     api.post<AlgoStrategy>(`/algo/strategies/${id}/disable`),
+  unlinkScreener: (id: string) =>
+    api.post<AlgoStrategy>(`/algo/strategies/${id}/unlink-screener`),
+  relinkScreener: (id: string) =>
+    api.post<AlgoStrategy>(`/algo/strategies/${id}/relink-screener`),
   triggerStrategy: (id: string, symbols?: string[]) =>
     api.post<{ task_id: string; status: string }>(`/algo/strategies/${id}/trigger`, { symbols }),
   getExecutionHistory: (strategyId: string, limit = 50) =>

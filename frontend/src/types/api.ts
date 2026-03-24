@@ -685,6 +685,10 @@ export interface AlgoStrategy {
   total_pnl: number;
   created_at: string;
   updated_at: string;
+  // Screener linking fields
+  linked_screener_id: string | null;
+  sync_from_screener: boolean;
+  linked_screener_name: string | null;
 }
 
 export interface AlgoStrategyCreate {

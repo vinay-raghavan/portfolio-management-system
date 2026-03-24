@@ -293,6 +293,42 @@ export default function AlgoTradingPage() {
     },
   });
 
+  const unlinkMutation = useMutation({
+    mutationFn: (id: string) => algoApi.unlinkScreener(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      toast({
+        title: 'Strategy Unlinked',
+        description: 'Strategy is now independent. Settings will not sync from screener.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Unlink',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    },
+  });
+
+  const relinkMutation = useMutation({
+    mutationFn: (id: string) => algoApi.relinkScreener(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['algo-strategies'] });
+      toast({
+        title: 'Strategy Re-linked',
+        description: 'Settings will now sync from screener on next auto-trade run.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to Re-link',
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    },
+  });
+
   // Calculate summary stats
   const activeCount = strategies?.filter((s) => s.status === 'ACTIVE').length ?? 0;
   const totalPnL = strategies?.reduce((sum, s) => sum + s.total_pnl, 0) ?? 0;
@@ -709,7 +745,32 @@ export default function AlgoTradingPage() {
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
-                        <p className="font-medium">{strategy.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{strategy.name}</p>
+                          {strategy.linked_screener_id && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                  strategy.sync_from_screener
+                                    ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
+                                    : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                                }`}>
+                                  {strategy.sync_from_screener ? '🔗' : '🔓'}
+                                  {strategy.linked_screener_name?.slice(0, 15) || 'Linked'}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="font-medium">{strategy.sync_from_screener ? 'Synced with Screener' : 'Unlinked (Independent)'}</p>
+                                <p className="text-xs text-muted-foreground">{strategy.linked_screener_name}</p>
+                                <p className="text-xs mt-1">
+                                  {strategy.sync_from_screener
+                                    ? 'Direction & product type sync from screener'
+                                    : 'Settings are managed independently'}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
                             isIntraday
@@ -859,6 +920,35 @@ export default function AlgoTradingPage() {
                           </TooltipTrigger>
                           <TooltipContent>Delete</TooltipContent>
                         </Tooltip>
+                        {/* Unlink/Relink screener button */}
+                        {strategy.linked_screener_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  if (strategy.sync_from_screener) {
+                                    unlinkMutation.mutate(strategy.id);
+                                  } else {
+                                    relinkMutation.mutate(strategy.id);
+                                  }
+                                }}
+                                disabled={unlinkMutation.isPending || relinkMutation.isPending}
+                              >
+                                {strategy.sync_from_screener ? (
+                                  <span className="text-sm">🔓</span>
+                                ) : (
+                                  <span className="text-sm">🔗</span>
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {strategy.sync_from_screener ? 'Unlink from Screener' : 'Re-link to Screener'}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
