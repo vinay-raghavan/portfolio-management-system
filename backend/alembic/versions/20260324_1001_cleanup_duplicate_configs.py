@@ -12,8 +12,8 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = "20260324_1001"
-down_revision = "20260324_1000"
+revision = "strategy_screener_002"
+down_revision = "strategy_screener_001"
 branch_labels = None
 depends_on = None
 
