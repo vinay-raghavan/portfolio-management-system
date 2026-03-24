@@ -166,11 +166,15 @@ class AlgoService:
         Returns:
             Tuple of (strategies, executions_map) where executions_map maps strategy_id -> executions
         """
+        from sqlalchemy.orm import selectinload
+
         query = select(UserStrategy).where(UserStrategy.user_id == user_id)
         if status_filter:
             query = query.where(UserStrategy.status == status_filter)
         # Note: We don't eager-load executions here anymore - too slow for large datasets
         # Instead, we load them separately with LIMIT per strategy
+        # Eagerly load linked_screener to avoid MissingGreenlet errors in async context
+        query = query.options(selectinload(UserStrategy.linked_screener))
         result = await self.db.execute(query.order_by(UserStrategy.created_at.desc()))
         strategies = list(result.scalars().all())
 
