@@ -5226,11 +5226,46 @@ class AutoTradeConfig(Base):
   npm run lint
   npm run build
   ```
-- [ ] Build containers: `podman-compose build` (deployment phase)
-- [ ] Deploy to staging: `podman-compose up -d` (deployment phase)
-- [ ] Verify custom screener to auto-trade flow in staging (deployment phase)
-- [ ] Test Celery Beat schedules for daily/hourly runs (deployment phase)
+- [x] Build containers: `podman-compose build` (deployment phase)
+- [x] Deploy to staging: `podman-compose up -d` (deployment phase)
+- [x] Verify custom screener to auto-trade flow in staging (deployment phase)
+- [x] Test Celery Beat schedules for daily/hourly runs (deployment phase)
 - [x] Commit: `test(screener): add comprehensive tests for custom screener auto-trade`
+
+##### 2.6.12.10 Strategy-Screener Linking ✅
+> **PR:** [#95](https://github.com/vinay-raghavan/portfolio-management-system/pull/95)
+
+**Problem**: Multiple `auto_trade_configs` could exist for the same screener, and strategy settings (signal_direction, product_type) were not syncing from screener master settings.
+
+**Solution**: Unified architecture where screener settings are the source of truth for auto-trade execution.
+
+**Data Model Changes:**
+- Added `linked_screener_id` (FK) to `user_strategies` table
+- Added `sync_from_screener` (boolean) to `user_strategies` table
+- Added unique constraint on `auto_trade_configs(user_id, saved_screener_id)`
+
+**Behavior:**
+- When `sync_from_screener = true`: Screener master settings override strategy settings on each auto-trade run
+- When `sync_from_screener = false`: Strategy settings are independent (user can unlink)
+- New strategies created via auto-trade are automatically linked to their source screener
+
+**Tasks:**
+- [x] Add `linked_screener_id` and `sync_from_screener` to `UserStrategy` model
+- [x] Add `linked_screener` relationship to `CustomScreener` model
+- [x] Create migration for new columns and unique constraint
+- [x] Update `approve_pending_trade` to sync settings from auto_trade_config
+- [x] Update `_find_existing_strategy_for_screener` to use linked_screener_id
+- [x] Add `get_config_for_screener()` method to AutoTradeConfigService
+- [x] Fix screener auto-trade to find config by screener_id (not category)
+- [x] Add `/strategies/{id}/unlink-screener` API endpoint
+- [x] Add `/strategies/{id}/relink-screener` API endpoint
+- [x] Update `StrategyResponse` schema with linked_screener_id, sync_from_screener, linked_screener_name
+- [x] Add `selectinload` for linked_screener in get_user_strategies (avoid MissingGreenlet)
+- [x] Add frontend UI: linked screener badge on strategy cards
+- [x] Add frontend UI: unlink/relink buttons
+- [x] Cleanup migration to delete duplicate auto_trade_configs
+- [x] Fix profit booking inheritance bug (reset executed array for new positions)
+- [x] Commit: `feat: strategy-screener linking for unified auto-trade settings`
 
 ---
 

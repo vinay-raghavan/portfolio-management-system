@@ -23,7 +23,7 @@ class TestMarketHoursHelpers:
         """Test that market time constants are correctly defined."""
         assert time(9, 15) == MARKET_OPEN_TIME
         assert time(15, 30) == MARKET_CLOSE_TIME
-        assert time(15, 15) == INTRADAY_SQUARE_OFF_TIME
+        assert time(15, 10) == INTRADAY_SQUARE_OFF_TIME  # 3:10 PM IST
 
     def test_is_market_hours_during_trading(self):
         """Test is_market_hours returns True during trading hours."""
@@ -126,10 +126,15 @@ class TestAutoSquareOff:
 
     def test_executes_at_square_off_time(self):
         """Test that task executes at square-off time."""
+        from unittest.mock import PropertyMock
+
+        # 3:12 PM IST - within square-off window (3:10 - 3:15 PM)
+        mock_now = datetime(2024, 1, 15, 15, 12, 0, tzinfo=IST)
+
         with patch("worker.tasks.trading.datetime") as mock_datetime:
-            # 3:16 PM IST - square-off time
-            mock_now = datetime(2024, 1, 15, 15, 16, 0, tzinfo=IST)
             mock_datetime.now.return_value = mock_now
+            # Preserve the real time() class for comparisons
+            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
             with patch("worker.tasks.trading.httpx.Client") as mock_client:
                 mock_response = MagicMock()

@@ -1,5 +1,50 @@
 # Release Notes
 
+## v1.6.0 (2026-03-24)
+
+### 🔗 Strategy-Screener Linking & Auto-Trade Improvements
+
+This release introduces a unified architecture for strategy-screener linking, ensuring screener settings are the source of truth for auto-trade execution. Also includes critical bug fixes for profit booking and intraday square-off timing.
+
+**New Features:**
+
+#### Strategy-Screener Linking
+- **Unified Settings Flow**: Screener master settings (signal_direction, product_type) now automatically sync to linked strategies on each auto-trade run
+- **Single Config Per Screener**: Enforced 1:1 relationship between screeners and auto_trade_configs via unique constraint
+- **Sync Control**: Users can unlink strategies to manage settings independently, and re-link to resume syncing
+- **UI Enhancements**:
+  - Linked screener badge on strategy cards showing sync status (🔗 synced / 🔓 unlinked)
+  - Tooltip showing screener name and sync details
+  - Unlink/Relink buttons for quick toggling
+
+#### API Endpoints
+- `POST /strategies/{id}/unlink-screener` - Stop syncing settings from screener
+- `POST /strategies/{id}/relink-screener` - Re-enable settings sync
+
+**Bug Fixes:**
+
+- **Profit Booking Inheritance**: Fixed bug where new positions inherited `executed` array from strategy defaults, causing profit booking targets to be skipped
+- **Auto-Trade Config Lookup**: Fixed screener auto-trade to find config by `screener_id` instead of `category="custom"`
+- **Field Name Correction**: Fixed `max_positions` → `max_positions_per_day` in auto-trade config
+- **Async Relationship Loading**: Added `selectinload` for `linked_screener` to prevent `MissingGreenlet` errors
+- **Migration Revision IDs**: Corrected revision IDs to follow existing naming convention
+- **Intraday Entry Cutoff**: Block INTRADAY entries after 3:10 PM IST (before square-off)
+- **Re-enable KILLED Strategies**: Allow users to re-enable strategies that were killed by safety checks
+
+**Database Changes:**
+
+- Added `linked_screener_id` (FK) and `sync_from_screener` (boolean) to `user_strategies` table
+- Added unique index on `auto_trade_configs(user_id, saved_screener_id)` to prevent duplicate configs
+- Migration to cleanup existing duplicate configs
+
+**Configuration Changes:**
+
+- Screener auto-trade schedule: 9:40 AM IST (was 9:20 AM)
+- Intraday square-off: 3:10 PM IST
+- Intraday entry cutoff: 3:10 PM IST
+
+---
+
 ## v1.5.4 (2026-03-13)
 
 ### 🧠 Market-Adaptive Screener & Capital Safety

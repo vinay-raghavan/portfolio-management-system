@@ -113,8 +113,8 @@ class TestAlgoService:
         assert StrategyStatus.ERROR.value == "ERROR"
 
     @pytest.mark.asyncio
-    async def test_enable_strategy_blocks_killed_status(self, mock_db):
-        """Killed strategies cannot be re-enabled."""
+    async def test_enable_strategy_allows_killed_status(self, mock_db):
+        """Killed strategies can be re-enabled (feature added in v1.6.0)."""
         killed_strategy = MagicMock(spec=UserStrategy)
         killed_strategy.id = "killed-strategy-id"
         killed_strategy.user_id = "test-user-id"
@@ -126,15 +126,13 @@ class TestAlgoService:
 
         service = AlgoService(mock_db)
 
-        with (
-            patch.object(
-                service.scheduler, "enable_strategy", new_callable=AsyncMock
-            ) as mock_enable,
-            pytest.raises(ValueError, match="cannot be re-activated"),
-        ):
+        with patch.object(
+            service.scheduler, "enable_strategy", new_callable=AsyncMock
+        ) as mock_enable:
             await service.enable_strategy("test-user-id", "killed-strategy-id")
 
-        mock_enable.assert_not_called()
+        # Killed strategies can now be re-enabled
+        mock_enable.assert_called_once()
 
 
 class TestClosePosition:
