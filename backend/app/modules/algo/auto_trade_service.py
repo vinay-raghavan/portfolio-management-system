@@ -9,6 +9,7 @@ This service handles:
 
 import logging
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from shared.strategies import StrategyRegistry
 from sqlalchemy import and_, select
@@ -241,6 +242,97 @@ class StrategyTemplateService:
         logger.info(f"Created strategy '{name}' from template '{template.name}' for user {user_id}")
         return strategy
 
+    async def find_or_create_strategy_for_screener(
+        self,
+        user_id: str,
+        screener_id: str,
+        screener_name: str,
+        config: "AutoTradeConfig",
+        symbols: list[str],
+        strategy_type: str = "momentum",
+    ) -> tuple["UserStrategy", bool]:
+        """Find existing strategy linked to screener or create new one.
+
+        If strategy exists and sync_from_screener is True, updates its settings
+        from the auto_trade_config master settings.
+
+        Args:
+            user_id: User ID
+            screener_id: Custom screener ID
+            screener_name: Screener name for strategy naming
+            config: AutoTradeConfig with master settings
+            symbols: List of symbols to trade
+            strategy_type: Type of strategy (momentum, pullback, etc.)
+
+        Returns:
+            Tuple of (strategy, created) where created is True if new strategy
+        """
+        from datetime import date
+
+        # Try to find existing strategy linked to this screener
+        result = await self.db.execute(
+            select(UserStrategy).where(
+                UserStrategy.user_id == user_id,
+                UserStrategy.linked_screener_id == screener_id,
+            )
+        )
+        existing_strategy = result.scalar_one_or_none()
+
+        if existing_strategy:
+            # Strategy exists - update settings if sync is enabled
+            if existing_strategy.sync_from_screener:
+                existing_strategy.signal_direction = config.signal_direction
+                existing_strategy.product_type = config.product_type
+                existing_strategy.max_open_positions = config.max_positions or 5
+                existing_strategy.custom_symbols = symbols
+                existing_strategy.status = StrategyStatus.ACTIVE
+                await self.db.flush()
+                logger.info(
+                    f"Updated linked strategy '{existing_strategy.name}' "
+                    f"with screener settings (direction={config.signal_direction.value})"
+                )
+            else:
+                logger.info(
+                    f"Strategy '{existing_strategy.name}' is unsynced, skipping settings update"
+                )
+                # Just update symbols for unsynced strategies
+                existing_strategy.custom_symbols = symbols
+                await self.db.flush()
+
+            return existing_strategy, False
+
+        # Create new strategy linked to screener
+        name_slug = screener_name.lower().replace(" ", "_")
+        strategy_name = f"{name_slug}_{date.today().strftime('%Y%m%d')}"
+
+        strategy = UserStrategy(
+            user_id=user_id,
+            name=strategy_name,
+            description=f"Auto-created from screener '{screener_name}'",
+            strategy_name=strategy_type,
+            strategy_params={},
+            custom_symbols=symbols,
+            schedule_type=ScheduleType.INTERVAL,
+            interval_seconds=300,  # Check every 5 minutes
+            signal_direction=config.signal_direction,
+            product_type=config.product_type,
+            position_sizing_method=PositionSizingMethod.PORTFOLIO_PERCENT,
+            portfolio_percent=Decimal("3.0"),
+            max_open_positions=config.max_positions or 5,
+            is_paper_trading=True,
+            status=StrategyStatus.ACTIVE,
+            # Link to screener
+            linked_screener_id=screener_id,
+            sync_from_screener=True,
+        )
+        self.db.add(strategy)
+        await self.db.flush()
+        logger.info(
+            f"Created strategy '{strategy_name}' linked to screener '{screener_name}' "
+            f"(direction={config.signal_direction.value})"
+        )
+        return strategy, True
+
 
 class AutoTradeConfigService:
     """Service for managing auto-trade configurations."""
@@ -274,6 +366,21 @@ class AutoTradeConfigService:
             select(AutoTradeConfig).where(
                 AutoTradeConfig.user_id == user_id,
                 AutoTradeConfig.category == category,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_config_for_screener(
+        self, user_id: str, screener_id: str
+    ) -> AutoTradeConfig | None:
+        """Get auto-trade config for a specific saved screener.
+
+        Returns the first matching config (should be unique per user+screener).
+        """
+        result = await self.db.execute(
+            select(AutoTradeConfig).where(
+                AutoTradeConfig.user_id == user_id,
+                AutoTradeConfig.saved_screener_id == screener_id,
             )
         )
         return result.scalar_one_or_none()
@@ -458,14 +565,28 @@ class PendingAutoTradeService:
     async def _find_existing_strategy_for_screener(
         self, user_id: str, screener_id: str | None
     ) -> UserStrategy | None:
-        """Find an existing strategy created from the same screener.
+        """Find an existing strategy linked to a screener.
 
-        Searches for strategies with matching screener_id in strategy_params.
+        First checks the linked_screener_id field (new approach),
+        then falls back to checking strategy_params (legacy).
         """
         if not screener_id:
             return None
 
-        # Query all user strategies with source = auto_trade_screener
+        # First, check for strategy with linked_screener_id (new approach)
+        result = await self.db.execute(
+            select(UserStrategy).where(
+                and_(
+                    UserStrategy.user_id == user_id,
+                    UserStrategy.linked_screener_id == screener_id,
+                )
+            )
+        )
+        strategy = result.scalar_one_or_none()
+        if strategy:
+            return strategy
+
+        # Fallback: Check strategy_params for screener_id (legacy)
         result = await self.db.execute(
             select(UserStrategy).where(
                 and_(
@@ -476,13 +597,17 @@ class PendingAutoTradeService:
         )
         strategies = result.scalars().all()
 
-        # Filter to find one with matching screener_id
         for strategy in strategies:
             params = strategy.strategy_params or {}
             if (
                 params.get("source") == "auto_trade_screener"
                 and params.get("screener_id") == screener_id
             ):
+                # Migrate: set linked_screener_id for future lookups
+                strategy.linked_screener_id = screener_id
+                strategy.sync_from_screener = True
+                await self.db.flush()
+                logger.info(f"Migrated strategy {strategy.id} to use linked_screener_id")
                 return strategy
 
         return None
@@ -696,6 +821,18 @@ class PendingAutoTradeService:
                 # Update next_run_at for immediate execution
                 existing_strategy.next_run_at = datetime.now(UTC)
 
+                # === SYNC SETTINGS FROM SCREENER (if enabled) ===
+                if existing_strategy.sync_from_screener and auto_trade_config:
+                    # Override strategy settings with screener master settings
+                    existing_strategy.signal_direction = auto_trade_config.signal_direction
+                    existing_strategy.product_type = auto_trade_config.product_type
+                    existing_strategy.max_open_positions = auto_trade_config.max_positions or 5
+                    logger.info(
+                        f"Synced strategy settings from screener: "
+                        f"direction={auto_trade_config.signal_direction.value}, "
+                        f"product={auto_trade_config.product_type.value}"
+                    )
+
                 # Fix old auto-generated schedule/timeframe skew (CONTINUOUS + 1d).
                 # Keep user-customized schedules intact.
                 if (
@@ -786,6 +923,9 @@ class PendingAutoTradeService:
                     # Product type and signal direction from auto-trade config
                     product_type=product_type,
                     signal_direction=signal_direction,
+                    # Link to screener for future settings sync
+                    linked_screener_id=screener_id,
+                    sync_from_screener=True,
                 )
 
                 self.db.add(strategy)
