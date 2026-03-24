@@ -3,6 +3,7 @@
 from datetime import datetime, time
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -23,6 +24,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.modules.screener.models import CustomScreener
 
 
 class StrategyStatus(str, Enum):
@@ -318,6 +322,17 @@ class UserStrategy(Base):
     total_pnl: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"))
     consecutive_losses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Screener linking - for strategies created via auto-trade
+    # When linked, screener master settings override on each auto-trade run
+    linked_screener_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("custom_screeners.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    sync_from_screener: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )  # If False, strategy settings are independent
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -329,10 +344,16 @@ class UserStrategy(Base):
     executions: Mapped[list["StrategyExecution"]] = relationship(
         "StrategyExecution", back_populates="strategy", cascade="all, delete-orphan"
     )
+    linked_screener: Mapped["CustomScreener | None"] = relationship(
+        "CustomScreener",
+        foreign_keys=[linked_screener_id],
+        back_populates="linked_strategies",
+    )
 
     __table_args__ = (
         Index("ix_user_strategies_user_status", "user_id", "status"),
         Index("ix_user_strategies_next_run", "status", "next_run_at"),
+        Index("ix_user_strategies_linked_screener", "linked_screener_id"),
     )
 
     def __repr__(self) -> str:

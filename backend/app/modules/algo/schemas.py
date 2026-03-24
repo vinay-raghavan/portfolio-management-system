@@ -186,6 +186,11 @@ class UserStrategyResponse(UserStrategyBase):
     created_at: datetime
     updated_at: datetime
 
+    # Screener linking fields
+    linked_screener_id: str | None = None
+    sync_from_screener: bool = True
+    linked_screener_name: str | None = None  # For UI display
+
     class Config:
         from_attributes = True
 
