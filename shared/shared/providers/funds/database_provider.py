@@ -698,25 +698,49 @@ class DatabaseFundsProvider(FundsProvider):
         # Calculate cash_balance from starting_balance + realized_pnl
         new_cash_balance = starting_balance + new_realized_pnl
 
+        # Calculate DAILY realized PnL (positions closed today)
+        # This is used for intraday portfolio guardrails
+        from datetime import date
+
+        today = date.today()
+        daily_pnl_result = await self.db.execute(
+            text("""
+                SELECT COALESCE(SUM(realized_pnl), 0) as daily_pnl
+                FROM algo_positions
+                WHERE user_id = :user_id
+                  AND status IN ('CLOSED', 'PARTIAL')
+                  AND DATE(exit_at) = :today
+            """),
+            {"user_id": user_id, "today": today},
+        )
+        new_daily_realized_pnl = Decimal(str(daily_pnl_result.scalar() or 0))
+
         # Only update if values changed
         old_margin = db_funds.margin_used or Decimal("0")
         old_pnl = db_funds.realized_pnl or Decimal("0")
         old_cash = db_funds.cash_balance or starting_balance
+        old_daily_pnl = getattr(db_funds, "daily_realized_pnl", None) or Decimal("0")
 
         margin_changed = abs(new_margin_used - old_margin) > Decimal("0.01")
         pnl_changed = abs(new_realized_pnl - old_pnl) > Decimal("0.01")
         cash_changed = abs(new_cash_balance - old_cash) > Decimal("0.01")
+        daily_pnl_changed = abs(new_daily_realized_pnl - old_daily_pnl) > Decimal("0.01")
 
-        if margin_changed or pnl_changed or cash_changed:
+        if margin_changed or pnl_changed or cash_changed or daily_pnl_changed:
             db_funds.margin_used = new_margin_used
             db_funds.realized_pnl = new_realized_pnl
             db_funds.cash_balance = new_cash_balance
+
+            # Update daily P&L if the field exists
+            if hasattr(db_funds, "daily_realized_pnl"):
+                db_funds.daily_realized_pnl = new_daily_realized_pnl
+
             await self.db.flush()
 
             logger.info(
                 f"Recalculated funds for user {user_id[:8]}: "
                 f"margin={new_margin_used:.2f}, pnl={new_realized_pnl:.2f}, "
-                f"cash={new_cash_balance:.2f}"
+                f"daily_pnl={new_daily_realized_pnl:.2f}, cash={new_cash_balance:.2f}"
             )
 
         return Funds(

@@ -1,6 +1,6 @@
 """Database models for algo trading module."""
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -87,6 +88,16 @@ class UserFunds(Base):
     starting_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, default=Decimal("100000")
     )
+
+    # Daily P&L tracking for intraday guardrails
+    # Resets at market open (9:15 AM IST) each trading day
+    daily_realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_start_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

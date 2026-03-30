@@ -476,3 +476,45 @@ def process_amo_orders(self) -> dict:
     except Exception as e:
         logger.error(f"Error processing AMO orders: {e}")
         return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(name="trading.reset_daily_pnl_tracking")
+def reset_daily_pnl_tracking() -> dict:
+    """Reset daily P&L tracking for all users at market open.
+
+    This task should run at 9:15 AM IST (market open) to:
+    1. Set daily_start_value = current portfolio value
+    2. Reset daily_realized_pnl = 0
+    3. Update daily_reset_date = today
+
+    This enables the portfolio guardrail to trigger based on
+    intraday loss from day start, not cumulative P&L.
+    """
+    import httpx
+
+    from worker.config import settings
+
+    logger.info("Starting daily P&L tracking reset for all users...")
+
+    try:
+        trading_engine_url = settings.TRADING_ENGINE_URL.rstrip("/")
+
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(f"{trading_engine_url}/internal/reset-daily-pnl")
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    f"Daily P&L reset complete. Users reset: {result.get('users_reset', 0)}"
+                )
+                return {
+                    "status": "success",
+                    "users_reset": result.get("users_reset", 0),
+                }
+            else:
+                logger.error(f"Failed to reset daily P&L: {response.status_code}")
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+    except Exception as e:
+        logger.error(f"Error resetting daily P&L tracking: {e}")
+        return {"status": "error", "message": str(e)}

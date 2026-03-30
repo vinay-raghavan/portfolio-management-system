@@ -324,7 +324,15 @@ async def _evaluate_portfolio_safety(
     user_id: str,
     data_provider: DataProvider,
 ) -> dict:
-    """Evaluate and enforce user-level portfolio safety guardrail."""
+    """Evaluate and enforce user-level portfolio safety guardrail.
+
+    Uses DAILY P&L from day start, not cumulative P&L:
+    - daily_realized_pnl: P&L from positions closed today
+    - unrealized_pnl: Current MTM of open positions
+    - daily_start_value: Portfolio value at market open (for % calculation)
+    """
+    from datetime import date
+
     cfg_result = await db.execute(
         select(PortfolioSafetyConfig).where(PortfolioSafetyConfig.user_id == user_id)
     )
@@ -337,24 +345,37 @@ async def _evaluate_portfolio_safety(
     if not funds:
         return {"breached": False, "triggered": False}
 
-    realized_pnl = Decimal(str(funds.realized_pnl or 0))
+    # Use DAILY P&L, not cumulative
+    daily_realized_pnl = Decimal(str(funds.daily_realized_pnl or 0))
     unrealized_pnl = await _calculate_user_unrealized_pnl(db, user_id, data_provider)
-    current_total_pnl = realized_pnl + unrealized_pnl
+    daily_total_pnl = daily_realized_pnl + unrealized_pnl
 
-    # Only act on drawdown / losses.
-    if current_total_pnl >= Decimal("0"):
+    # Check if daily tracking is initialized for today
+    today = date.today()
+    daily_start_value = Decimal(str(funds.daily_start_value or 0))
+    if not funds.daily_reset_date or funds.daily_reset_date != today:
+        # Daily tracking not yet reset for today - use current portfolio value
+        # This handles edge case where reset task hasn't run yet
+        daily_start_value = funds.cash_balance + funds.margin_used
+        logger.debug(
+            f"Daily tracking not reset for {user_id}, using current value: {daily_start_value}"
+        )
+
+    # Only act on drawdown / losses
+    if daily_total_pnl >= Decimal("0"):
         return {
             "breached": False,
             "triggered": False,
             "loss_amount": Decimal("0"),
             "loss_pct": Decimal("0"),
+            "daily_pnl": daily_total_pnl,
         }
 
-    loss_amount = abs(current_total_pnl)
-    starting_balance = Decimal(str(funds.starting_balance or 0))
+    loss_amount = abs(daily_total_pnl)
+    # Calculate loss % based on daily starting value, not initial deposit
     loss_pct = (
-        (loss_amount / starting_balance) * Decimal("100")
-        if starting_balance > Decimal("0")
+        (loss_amount / daily_start_value) * Decimal("100")
+        if daily_start_value > Decimal("0")
         else Decimal("0")
     )
 
@@ -370,12 +391,20 @@ async def _evaluate_portfolio_safety(
         if threshold_type == PortfolioSafetyThresholdType.PERCENT.value
         else loss_amount >= threshold_value
     )
+
+    logger.info(
+        f"Portfolio safety check for {user_id}: "
+        f"daily_pnl=₹{daily_total_pnl:.2f}, loss_pct={loss_pct:.2f}%, "
+        f"threshold={threshold_value}{threshold_type}, breached={breached}"
+    )
+
     if not breached:
         return {
             "breached": False,
             "triggered": False,
             "loss_amount": loss_amount,
             "loss_pct": loss_pct,
+            "daily_pnl": daily_total_pnl,
         }
 
     action_mode = (config.action_mode or PortfolioSafetyActionMode.PAUSE_ONLY.value).upper()
@@ -387,8 +416,8 @@ async def _evaluate_portfolio_safety(
     pause_and_square_off = action_mode == PortfolioSafetyActionMode.PAUSE_AND_SQUARE_OFF.value
 
     reason = (
-        f"Portfolio safety triggered: loss {loss_pct:.2f}% (₹{loss_amount:.2f}) "
-        f"breached {threshold_type} threshold {threshold_value}"
+        f"Portfolio safety triggered: DAILY loss {loss_pct:.2f}% (₹{loss_amount:.2f}) "
+        f"breached {threshold_type} threshold {threshold_value}%"
     )
 
     kill_switch = AlgoKillSwitch(redis)
@@ -424,7 +453,7 @@ async def _evaluate_portfolio_safety(
 
     logger.critical(
         f"PORTFOLIO SAFETY TRIGGERED for user {user_id}: "
-        f"action={action_mode}, loss_pct={loss_pct:.2f}, loss_amount=₹{loss_amount:.2f}, "
+        f"action={action_mode}, daily_loss_pct={loss_pct:.2f}%, daily_loss=₹{loss_amount:.2f}, "
         f"strategies_killed={len(active_strategies)}"
     )
 
@@ -1544,3 +1573,72 @@ async def reconcile_all_funds(
         "users_fixed": users_fixed,
         "total_discrepancy": float(total_discrepancy),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal - Daily P&L Reset
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/internal/reset-daily-pnl")
+async def reset_daily_pnl(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    x_internal_token: str = Header(None),
+) -> dict:
+    """Reset daily P&L tracking for all users at market open.
+
+    Called by Celery Beat at 9:15 AM IST to:
+    1. Calculate current portfolio value (cash + margin)
+    2. Set daily_start_value = current portfolio value
+    3. Reset daily_realized_pnl = 0
+    4. Update daily_reset_date = today
+
+    This enables portfolio guardrails to work based on intraday loss.
+    """
+    from datetime import date
+
+    # Validate internal token
+    if x_internal_token != settings.INTERNAL_API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid internal token",
+        )
+
+    today = date.today()
+    users_reset = 0
+
+    try:
+        # Get all user funds
+        result = await db.execute(select(UserFunds))
+        all_funds = result.scalars().all()
+
+        for funds in all_funds:
+            # Skip if already reset today
+            if funds.daily_reset_date == today:
+                continue
+
+            # Calculate current portfolio value
+            current_value = funds.cash_balance + funds.margin_used
+
+            # Reset daily tracking
+            funds.daily_start_value = current_value
+            funds.daily_realized_pnl = Decimal("0")
+            funds.daily_reset_date = today
+            users_reset += 1
+
+            logger.info(
+                f"Reset daily P&L for user {funds.user_id}: daily_start_value=₹{current_value:.2f}"
+            )
+
+        await db.commit()
+
+        logger.info(f"Daily P&L reset complete. Users reset: {users_reset}")
+        return {"status": "success", "users_reset": users_reset}
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error resetting daily P&L: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
