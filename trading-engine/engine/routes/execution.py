@@ -1339,10 +1339,15 @@ async def check_stop_monitors(
                 continue
 
             # Check exit conditions (SL/TP/trailing stop/profit booking)
+            # respect_time_window=False: stop monitors must always enforce exits
+            # even outside the strategy's trading window — e.g., INTRADAY positions
+            # not squared off by the 3:10/3:15 PM job still need SL/TP protection.
+            # New entries are separately gated by the executor's _process_signal().
             closed_positions, pnl_stats = await _check_exit_conditions_for_strategy(
                 db=db,
                 strategy=strategy,
                 data_provider=data_provider,
+                respect_time_window=False,
             )
 
             if closed_positions:

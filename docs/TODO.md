@@ -200,6 +200,7 @@ main                           # Production-ready code
 | 2 | 14-15 | `phase-2/profit-lock-stop` | Position-level profit lock toggle and margin fix |
 | 2 | 15-16 | `phase-2/ema-trailing-stop` | EMA-based trailing stop and profit booking extension |
 | 2 | 16-17 | `phase-2/short-selling-enhancements` | INTRADAY auto-square-off, short strategies, SLB support |
+| 2 | 17-18 | `phase-2/screener-robustness` | VIX gate, breadth analysis, product-type profiles (MIS/CNC/SLB), market circuit breakers |
 | 3 | - | `phase-3/multi-broker` | Dhan, Zerodha integration |
 | 3 | - | `phase-3/advanced-orders` | Bracket, Cover, GTT orders |
 | 3 | - | `phase-3/options` | Options trading support |
@@ -6572,6 +6573,128 @@ def _check_sell_funds(self, product_type: str, ...):
 1. ✅ **Auto square-off** - Worker task, endpoints, and Celery schedule complete
 2. ✅ **Short strategies** - SignalIntent, MomentumShortStrategy, executor validation complete
 3. 🔶 **SLB** - Model, migration, broker interface, worker tasks complete; Fyers API TBD
+
+---
+
+### 2.10 Screener Robustness: VIX Gate, Market Factors & Product-Type Profiles
+> 🌿 **Branch:** `phase-2/screener-robustness`
+
+**Goal**: Make screeners more robust by integrating market-wide factors (VIX, breadth), adding product-type-aware filter profiles (MIS/CNC/MTF/SLB), and implementing automatic safety gates.
+
+#### 2.10.1 VIX Hard Gate (Configurable Per Strategy)
+Currently VIX contributes only 15% weight to the composite market regime score. It doesn't block trades — it just nudges the score. We need a configurable hard gate.
+
+**Proposed VIX Levels:**
+
+| VIX Level | Action |
+|-----------|--------|
+| < 12 | Full throttle — normal trading |
+| 12–18 | Normal — standard filters apply |
+| 18–22 | Caution — tighten filters, reduce position size by 25% |
+| 22–30 | Defensive — LONG only, no new breakout entries, tighten stops |
+| > 30 | No-trade zone (or contrarian buy only on extreme oversold) |
+
+**Tasks:**
+- [ ] Add `vix_gate_enabled` and `vix_thresholds` fields to `UserStrategy` model
+- [ ] Add VIX check before trade execution in trading engine
+- [ ] Support per-strategy VIX overrides (e.g., mean-reversion strategies may *want* high VIX)
+- [ ] Fetch India VIX from data provider (already available via `^INDIAVIX` symbol)
+- [ ] Add VIX display to strategy dashboard
+- [ ] Add configurable actions per VIX band: `reduce_size`, `long_only`, `no_trade`, `contrarian_buy`
+
+#### 2.10.2 Market Breadth Analysis
+`_get_breadth_score()` in `market_regime.py` currently returns `0.0` with a TODO. This is a critical missing signal.
+
+**Tasks:**
+- [ ] Implement breadth calculation from screener run data (we already scan 500 stocks per run):
+  - Advance/Decline ratio — % of stocks above their 50 DMA
+  - New Highs vs New Lows — stocks near 52-week high vs 52-week low
+  - Breadth thrust indicator — are the majority of stocks participating in the rally?
+- [ ] Store breadth snapshot per screener run for trend tracking
+- [ ] Add breadth divergence detection: NIFTY near highs but breadth deteriorating = warning
+- [ ] Expose breadth data via API for dashboard display
+- [ ] Add `BREADTH_FILTER` type to screener filters (e.g., only enter if breadth > 50%)
+
+#### 2.10.3 Product-Type-Specific Screener Profiles
+A pullback screener for DELIVERY (multi-week hold) needs completely different criteria than for MIS (must exit by 3:15 PM).
+
+**Profile Differences:**
+
+| Factor | DELIVERY (CNC) | MIS (Intraday) | MTF (Margin) | SLB (Multi-day Short) |
+|--------|----------------|-----------------|--------------|------------------------|
+| Timeframe | Daily/Weekly | 5min–15min | Daily | Daily |
+| Key filters | Trend, consolidation, MA structure | Gap, momentum, VWAP, volume spike | Trend + leverage headroom | Weakness, breakdown, below MA |
+| Volume | Avg daily > 50K | First 30min volume surge | Avg daily > 100K | F&O lot size liquidity |
+| VIX gate | Softer (18–22 caution) | Strict (>20 = reduce, >25 = skip) | Moderate | Inverted (high VIX = opportunity) |
+| Stop loss | 2–3% (ATR-based) | 0.3–0.5% (tight) | 1.5–2% | 2–3% |
+| Holding period | Days to weeks | Hours | Days to weeks | Days to weeks |
+| F&O required? | No | No | No | Yes |
+| Square-off | No | Yes (3:15 PM) | No | No |
+| Signal direction | Mostly LONG | LONG + SHORT | LONG only | SHORT only |
+
+**Tasks:**
+- [ ] Add `product_type` field to `FilterConfig` or `ScreenerPresetInfo`
+- [ ] Create MIS-specific filters: opening range breakout, gap-up/down, VWAP cross, first-hour volume surge
+- [ ] Create SLB-specific filters: F&O-eligible only, breakdown patterns, weakness signals
+- [ ] Auto-adjust default stop loss and position sizing based on product type
+- [ ] Add product type selector to saved screener / auto-trade config UI
+- [ ] Validate product type compatibility (e.g., SLB screener cannot generate LONG signals)
+
+#### 2.10.4 Additional Screener Factors
+
+| Factor | Current State | Enhancement |
+|--------|--------------|-------------|
+| ATR / Volatility ranking | Used in position sizing only | Add as screener filter — skip stocks with ATR < 1% (dead) or > 5% (too wild for the strategy) |
+| Delivery % | Not tracked | High delivery % = institutional buying = conviction. Filter for > 40% delivery |
+| Open Interest | Not tracked | For F&O stocks: rising OI + rising price = trend confirmation |
+| Relative Strength vs NIFTY | Exists in momentum filter | Make it a standalone gate — Mansfield RS > 0 required |
+| Earnings proximity | Not tracked | Avoid entries 5 days before earnings (gap risk) |
+| Bid-ask spread / Impact cost | Not tracked | Critical for MIS — skip illiquid stocks where slippage > 0.1% |
+| Sector strength | Not tracked | Rank sectors by relative strength, filter out bottom 2–3 sectors |
+
+**Tasks:**
+- [ ] Add `ATR_RANGE` filter type (min/max ATR % of price)
+- [ ] Add `DELIVERY_PERCENT` filter type (requires NSE bhavcopy data)
+- [ ] Add `OPEN_INTEREST_TREND` filter type for F&O stocks
+- [ ] Add `EARNINGS_PROXIMITY` filter type (needs earnings calendar data source)
+- [ ] Add `SECTOR_STRENGTH` filter type (rank sectors, filter bottom N)
+- [ ] Add `IMPACT_COST` or `LIQUIDITY` filter type for MIS strategies
+- [ ] Add `RS_GATE` filter type — standalone Mansfield Relative Strength gate vs NIFTY
+
+#### 2.10.5 Automatic Market-Wide Circuit Breakers
+The current kill switch is manual. Add automatic market-wide gates.
+
+**Tasks:**
+- [ ] Auto-pause new entries if NIFTY drops > 2% intraday (let exits continue)
+- [ ] Auto-pause all MIS entries if India VIX spikes > 20% in a single session
+- [ ] Auto-pause LONG entries if advance/decline ratio < 0.3
+- [ ] Add configurable thresholds per user (some users may want tighter/looser gates)
+- [ ] Add override mechanism — user can acknowledge the warning and force-enable
+- [ ] Log all auto-pause events with reason for audit trail
+- [ ] Send notification when auto-pause triggers and when it clears
+
+#### 2.10.6 Data Provider Resilience
+Handle stale or missing data from primary provider.
+
+**Tasks:**
+- [x] Add Yahoo fallback when Fyers returns no data or zero LTP for a symbol
+- [ ] Add cross-validation: if primary provider's price deviates > 2% from secondary, flag as stale
+- [ ] Add data staleness detection based on volume (0 volume during market hours = suspect)
+- [ ] Log provider fallback events for monitoring
+- [ ] Add provider health dashboard showing per-symbol data quality
+
+**Implementation Priority:**
+
+| Priority | Enhancement | Effort | Impact |
+|----------|------------|--------|--------|
+| 🔴 High | VIX hard gate (per strategy) | Small | Prevents trading in volatile markets |
+| 🔴 High | Product-type-aware screener profiles (MIS/CNC/SLB) | Medium | Right filters for right product |
+| 🟡 Medium | Implement breadth analysis (50 DMA breadth) | Medium | Early divergence warning |
+| 🟡 Medium | ATR-based volatility filter | Small | Avoids dead or hyper-volatile stocks |
+| 🟡 Medium | Auto market-wide circuit breaker | Medium | Automatic protection |
+| 🟢 Low | Sector strength filter | Medium | Needs sector classification data |
+| 🟢 Low | Delivery %, OI tracking | Large | Needs new data pipeline (NSE bhavcopy) |
+| 🟢 Low | Earnings calendar integration | Medium | Needs external data source |
 
 ---
 

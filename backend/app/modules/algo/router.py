@@ -460,7 +460,11 @@ async def update_strategy(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.commit()
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
+    strategy, executions = await service.get_strategy(
+        current_user.id, strategy_id, load_recent_executions=False
+    )
+    return StrategyResponse.from_model(strategy, executions=executions)
 
 
 @router.delete("/strategies/{strategy_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -546,7 +550,9 @@ async def unlink_strategy_from_screener(
     strategy.sync_from_screener = False
     await db.commit()
 
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch to avoid lazy-load issues after commit
+    await db.refresh(strategy)
+    return StrategyResponse.from_model(strategy, executions=[])
 
 
 @router.post("/strategies/{strategy_id}/relink-screener", response_model=StrategyResponse)
@@ -586,7 +592,9 @@ async def relink_strategy_to_screener(
     strategy.sync_from_screener = True
     await db.commit()
 
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch to avoid lazy-load issues after commit
+    await db.refresh(strategy)
+    return StrategyResponse.from_model(strategy, executions=[])
 
 
 @router.post("/strategies/{strategy_id}/trigger")

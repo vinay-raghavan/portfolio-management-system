@@ -503,6 +503,22 @@ class StrategyResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @staticmethod
+    def _get_linked_screener_name(obj) -> str | None:
+        """Safely get linked screener name without triggering lazy loads."""
+        from sqlalchemy.orm import InstanceState
+
+        try:
+            state: InstanceState = obj._sa_instance_state
+            # Check if linked_screener is already loaded (not pending lazy load)
+            if "linked_screener" in state.dict:
+                screener = state.dict["linked_screener"]
+                return screener.name if screener else None
+            # Not loaded — don't trigger lazy load, just return None
+            return None
+        except Exception:
+            return None
+
+    @staticmethod
     def _parse_profit_booking_rules(rules_data: dict | list | None) -> "ProfitBookingRules | None":
         """Parse profit booking rules from database format.
 
@@ -627,11 +643,7 @@ class StrategyResponse(BaseModel):
             # Screener linking fields
             "linked_screener_id": getattr(obj, "linked_screener_id", None),
             "sync_from_screener": getattr(obj, "sync_from_screener", True),
-            "linked_screener_name": (
-                obj.linked_screener.name
-                if hasattr(obj, "linked_screener") and obj.linked_screener
-                else None
-            ),
+            "linked_screener_name": cls._get_linked_screener_name(obj),
         }
         return cls(**data)
 

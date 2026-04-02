@@ -195,8 +195,23 @@ class FyersDataProvider(DataProvider):
         else:
             return MarketSession.CLOSED
 
+    async def _get_yahoo_fallback_quote(self, symbol: str) -> Quote | None:
+        """Fall back to Yahoo when Fyers returns no data for a symbol."""
+        try:
+            from .yahoo import YahooDataProvider
+
+            if not hasattr(self, "_yahoo_fallback"):
+                self._yahoo_fallback = YahooDataProvider()
+            quote = await self._yahoo_fallback.get_quote(symbol)
+            if quote:
+                logger.info(f"Yahoo fallback returned quote for {symbol}: price={quote.price}")
+            return quote
+        except Exception as e:
+            logger.error(f"Yahoo fallback also failed for {symbol}: {e}")
+            return None
+
     async def get_quote(self, symbol: str) -> Quote | None:
-        """Get real-time quote for a symbol."""
+        """Get real-time quote for a symbol, with Yahoo fallback."""
         try:
             # Apply rate limiting to avoid 429 errors
             await self._rate_limit()
@@ -208,8 +223,8 @@ class FyersDataProvider(DataProvider):
             response = fyers.quotes(data)
 
             if response.get("code") != 200 or not response.get("d"):
-                logger.error(f"Fyers quote error for {symbol}: {response}")
-                return None
+                logger.warning(f"Fyers quote error for {symbol}: {response}; falling back to Yahoo")
+                return await self._get_yahoo_fallback_quote(symbol)
 
             quote_data = response["d"][0]["v"]
             base_symbol = self._parse_fyers_symbol(fyers_symbol)
@@ -217,6 +232,12 @@ class FyersDataProvider(DataProvider):
             # Calculate change
             ltp = Decimal(str(quote_data.get("lp", 0)))
             prev_close = Decimal(str(quote_data.get("prev_close_price", 0)))
+
+            # If Fyers returns zero LTP, fall back to Yahoo
+            if not ltp:
+                logger.warning(f"Fyers returned zero LTP for {symbol}; falling back to Yahoo")
+                return await self._get_yahoo_fallback_quote(symbol)
+
             change = ltp - prev_close if prev_close else None
             change_pct = (change / prev_close * 100) if change and prev_close else None
 
@@ -236,8 +257,8 @@ class FyersDataProvider(DataProvider):
                 market_session=self.get_market_session(),
             )
         except Exception as e:
-            logger.error(f"Error fetching Fyers quote for {symbol}: {e}")
-            return None
+            logger.error(f"Error fetching Fyers quote for {symbol}: {e}; trying Yahoo fallback")
+            return await self._get_yahoo_fallback_quote(symbol)
 
     async def get_historical(
         self,
