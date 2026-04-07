@@ -911,6 +911,9 @@ class PendingAutoTradeService:
                     position_sizing_method=PositionSizingMethod.PERCENT_OF_PORTFOLIO,
                     portfolio_percent=Decimal(str(round(adjusted_position_pct, 2))),
                     risk_per_trade_percent=Decimal(str(round(stop_loss_pct, 2))),
+                    # Fixed SL/TP as backstop (stored as decimal, e.g. 0.02 = 2%)
+                    default_stop_loss_pct=Decimal(str(round(stop_loss_pct / 100, 4))),
+                    default_take_profit_pct=Decimal(str(round(take_profit_pct / 100, 4))),
                     # Risk controls
                     max_daily_trades=10,
                     max_daily_loss=Decimal("5000.00"),

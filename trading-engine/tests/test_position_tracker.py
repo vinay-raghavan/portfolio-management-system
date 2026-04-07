@@ -401,7 +401,7 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.losing_trades == 1
-        assert stats.total_pnl == Decimal("-6000.00")  # (940-1000)*100
+        assert stats.total_pnl == Decimal("-5000.00")  # (950-1000)*100, exits at stop price not market
 
     async def test_check_take_profit_long_position(self, tracker, mock_db):
         """Test take-profit trigger for LONG position."""
@@ -463,7 +463,7 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.winning_trades == 1
-        assert stats.total_pnl == Decimal("7500.00")  # (1650-1500)*50
+        assert stats.total_pnl == Decimal("5000.00")  # (1600-1500)*50, exits at TP price not market
 
     async def test_check_stop_loss_short_position(self, tracker, mock_db):
         """Test stop-loss trigger for SHORT position."""
@@ -525,8 +525,8 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.losing_trades == 1
-        # SHORT P&L = (entry - exit) * qty = (3500 - 3650) * 20 = -3000
-        assert stats.total_pnl == Decimal("-3000.00")
+        # SHORT P&L = (entry - exit) * qty = (3500 - 3600) * 20 = -2000, exits at stop price not market
+        assert stats.total_pnl == Decimal("-2000.00")
 
     async def test_no_exit_when_price_in_range(self, tracker, mock_db):
         """Test no exit when price is between stop-loss and take-profit."""
@@ -869,8 +869,8 @@ class TestTrailingStopLoss:
         # Should have closed due to trailing stop
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
-        # P&L = (1040 - 1000) * 100 = 4000 profit (still profitable due to trailing!)
-        assert closed_positions[0].realized_pnl == Decimal("4000.00")
+        # P&L = (1045 - 1000) * 100 = 4500 profit, exits at trailing stop price not market
+        assert closed_positions[0].realized_pnl == Decimal("4500.00")
 
     async def test_trailing_stop_updates_when_price_falls_short(self, tracker, mock_db):
         """Test trailing stop moves down when price falls for SHORT position."""

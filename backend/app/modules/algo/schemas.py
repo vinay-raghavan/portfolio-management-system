@@ -364,6 +364,13 @@ class StrategyCreate(BaseModel):
     product_type: StrategyProductType = StrategyProductType.DELIVERY
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection = SignalDirection.LONG
+    # Strategy-level default fixed stop loss / take profit (as percentage, e.g. 2.0 = 2%)
+    default_stop_loss_pct: Decimal | None = Field(
+        default=None, ge=0, le=50, description="Fixed stop loss percentage (e.g., 2.0 = 2%)"
+    )
+    default_take_profit_pct: Decimal | None = Field(
+        default=None, ge=0, le=100, description="Fixed take profit percentage (e.g., 4.0 = 4%)"
+    )
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -412,6 +419,13 @@ class StrategyUpdate(BaseModel):
     product_type: StrategyProductType | None = None
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection | None = None
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = Field(
+        default=None, ge=0, le=50, description="Fixed stop loss percentage (e.g., 2.0 = 2%)"
+    )
+    default_take_profit_pct: Decimal | None = Field(
+        default=None, ge=0, le=100, description="Fixed take profit percentage (e.g., 4.0 = 4%)"
+    )
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
@@ -475,6 +489,9 @@ class StrategyResponse(BaseModel):
     product_type: StrategyProductType
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -619,6 +636,8 @@ class StrategyResponse(BaseModel):
             "is_paper_trading": obj.is_paper_trading,
             "product_type": obj.product_type,
             "signal_direction": obj.signal_direction,
+            "default_stop_loss_pct": obj.default_stop_loss_pct,
+            "default_take_profit_pct": obj.default_take_profit_pct,
             "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
             "default_trailing_stop_pct": obj.default_trailing_stop_pct,
             "default_profit_booking_rules": (
@@ -1096,6 +1115,9 @@ class CompositeStrategyCreate(BaseModel):
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -1143,6 +1165,9 @@ class DSLStrategyCreate(BaseModel):
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
