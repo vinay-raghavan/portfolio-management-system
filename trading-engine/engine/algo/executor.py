@@ -229,15 +229,30 @@ class StrategyExecutor:
                 result.duration_ms = int((time_module.time() - start_time) * 1000)
                 return result
 
-            # Process signals and place orders
+            # Process signals and place orders.
+            # Track margin committed within this cycle to prevent over-allocation.
+            # Each signal's fund check reads stale DB funds, so we pass
+            # margin_committed to offset the available cash calculation.
+            margin_committed_this_cycle = Decimal("0")
             for symbol, signal in all_signals:
-                order_result = await self._process_signal(config, signal)
+                order_result = await self._process_signal(
+                    config, signal, margin_committed_this_cycle
+                )
                 if order_result:
                     result.signals_data.append(self._signal_to_dict(signal))
                     result.orders_data.append(order_result)
                     result.orders_placed += 1
                     if order_result.get("status") == "FILLED":
                         result.orders_filled += 1
+                        # Track margin committed by this fill
+                        filled_price = order_result.get("filled_price")
+                        filled_qty = order_result.get("quantity", 0)
+                        if filled_price and filled_qty:
+                            order_value = Decimal(str(filled_price)) * Decimal(str(filled_qty))
+                            margin_pct = self.safety_service._get_margin_percent(
+                                config.product_type.value
+                            )
+                            margin_committed_this_cycle += order_value * margin_pct
                     elif order_result.get("status") in ["REJECTED", "CANCELLED"]:
                         result.orders_rejected += 1
 
@@ -320,8 +335,14 @@ class StrategyExecutor:
         self,
         config: StrategyConfig,
         signal: SignalData,
+        margin_committed: Decimal = Decimal("0"),
     ) -> dict | None:
-        """Process a signal: size, validate, and place order."""
+        """Process a signal: size, validate, and place order.
+
+        Args:
+            margin_committed: Margin already committed by prior signals
+                in the same execution cycle (not yet reflected in DB).
+        """
         open_position_side = await self._get_open_position_side(
             strategy_id=config.id,
             user_id=config.user_id,
@@ -457,6 +478,7 @@ class StrategyExecutor:
             price=price,
             product_type=config.product_type.value,
             existing_position_qty=existing_position_qty,
+            margin_committed=margin_committed,
         )
 
         if not safety_check.passed:
