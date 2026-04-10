@@ -38,9 +38,10 @@ from engine.models.algo import (
     UserStrategy,
 )
 from engine.providers.broker import PaperBroker
-from engine.providers.data import DataProvider, get_data_provider
+from engine.providers.data import DataProvider
 from engine.providers.schemas import ProductType
 from engine.providers.user_broker import get_user_broker
+from engine.providers.user_data import clear_provider_cache, get_user_data_provider
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
@@ -628,7 +629,7 @@ async def execute_strategy_full(
         )
         if not await broker.is_connected():
             await broker.connect()
-        data_provider = get_data_provider()
+        data_provider = await get_user_data_provider(db, request.user_id)
         _configure_broker_price_fetcher(broker, data_provider)
         # Pass broker to SafetyService for funds validation
         safety_service = SafetyService(broker=broker)
@@ -705,7 +706,8 @@ async def run_scheduled_strategies(
         results = []
         executed_count = 0
         user_safety_cache: dict[str, dict] = {}
-        shared_data_provider = get_data_provider()
+        user_data_providers: dict[str, DataProvider] = {}
+        clear_provider_cache()  # Clear stale cached providers at start of cycle
 
         for strategy in due_strategies:
             try:
@@ -730,6 +732,13 @@ async def run_scheduled_strategies(
                     continue
 
                 try:
+                    # Resolve data provider per-user (fyers/yahoo/nse)
+                    if strategy.user_id not in user_data_providers:
+                        user_data_providers[strategy.user_id] = await get_user_data_provider(
+                            db, strategy.user_id
+                        )
+                    strategy_data_provider = user_data_providers[strategy.user_id]
+
                     # Enforce portfolio safety once per user per run cycle.
                     safety_result = user_safety_cache.get(strategy.user_id)
                     if safety_result is None:
@@ -738,7 +747,7 @@ async def run_scheduled_strategies(
                             redis=redis,
                             scheduler=scheduler,
                             user_id=strategy.user_id,
-                            data_provider=shared_data_provider,
+                            data_provider=strategy_data_provider,
                         )
                         user_safety_cache[strategy.user_id] = safety_result
 
@@ -760,7 +769,7 @@ async def run_scheduled_strategies(
                     closed_positions, exit_pnl = await _check_exit_conditions_for_strategy(
                         db=db,
                         strategy=strategy,
-                        data_provider=shared_data_provider,
+                        data_provider=strategy_data_provider,
                     )
 
                     # Update strategy stats if any positions were closed
@@ -858,12 +867,12 @@ async def run_scheduled_strategies(
                     )
                     if not await broker.is_connected():
                         await broker.connect()
-                    _configure_broker_price_fetcher(broker, shared_data_provider)
+                    _configure_broker_price_fetcher(broker, strategy_data_provider)
                     safety_service = SafetyService(broker=broker)
 
                     executor = StrategyExecutor(
                         broker=broker,
-                        data_provider=shared_data_provider,
+                        data_provider=strategy_data_provider,
                         safety_service=safety_service,
                     )
                     result = await executor.execute(config)
@@ -902,7 +911,7 @@ async def run_scheduled_strategies(
                         current_prices: dict[str, Decimal] = {}
                         for sym in position_symbols:
                             try:
-                                quote = await shared_data_provider.get_quote(sym)
+                                quote = await strategy_data_provider.get_quote(sym)
                                 if quote and quote.price:
                                     current_prices[sym] = quote.price
                             except Exception as price_err:
@@ -1041,7 +1050,7 @@ async def execute_strategy_by_id(
             detail=f"Strategy {strategy_id} not found",
         )
 
-    data_provider = get_data_provider()
+    data_provider = await get_user_data_provider(db, strategy.user_id)
     safety_result = await _evaluate_portfolio_safety(
         db=db,
         redis=redis,
@@ -1310,19 +1319,27 @@ async def check_stop_monitors(
             "circuit_breakers_triggered": 0,
         }
 
-    data_provider = get_data_provider()
     position_tracker = PositionTracker(db)
     circuit_breaker = CircuitBreaker(redis)
     cb_persistence = CircuitBreakerPersistence(redis)
+    clear_provider_cache()  # Clear stale cached providers
 
     checked = 0
     positions_closed = 0
     circuit_breakers_triggered = 0
     user_safety_cache: dict[str, dict] = {}
+    user_data_providers: dict[str, DataProvider] = {}
     errors = []
 
     for strategy in active_strategies:
         try:
+            # Resolve data provider per-user (fyers/yahoo/nse)
+            if strategy.user_id not in user_data_providers:
+                user_data_providers[strategy.user_id] = await get_user_data_provider(
+                    db, strategy.user_id
+                )
+            data_provider = user_data_providers[strategy.user_id]
+
             safety_result = user_safety_cache.get(strategy.user_id)
             if safety_result is None:
                 safety_result = await _evaluate_portfolio_safety(

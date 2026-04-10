@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-this-in-production-use-a-real-secret-key"
 
     # Credential Encryption (must match backend ENCRYPTION_KEY)
-    ENCRYPTION_KEY: str = "change-this-encryption-key-in-production"
+    ENCRYPTION_KEY: str = ""
     ENCRYPTION_ITERATIONS: int = 600_000
 
     # Data Provider
