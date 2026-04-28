@@ -293,11 +293,10 @@ class StrategyTemplateService:
                 )
             else:
                 logger.info(
-                    f"Strategy '{existing_strategy.name}' is unsynced, skipping settings update"
+                    f"Strategy '{existing_strategy.name}' is unsynced, skipping update entirely"
                 )
-                # Just update symbols for unsynced strategies
-                existing_strategy.custom_symbols = symbols
-                await self.db.flush()
+                # Do NOT overwrite symbols for unsynced strategies
+                # Manual symbol curation should be preserved
 
             return existing_strategy, False
 

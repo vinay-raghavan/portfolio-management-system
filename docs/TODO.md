@@ -6683,18 +6683,135 @@ Handle stale or missing data from primary provider.
 - [ ] Log provider fallback events for monitoring
 - [ ] Add provider health dashboard showing per-symbol data quality
 
+#### 2.10.7 Support & Resistance Level Detection
+
+The screener currently has no concept of key price levels. Support/resistance (S/R) levels are critical for:
+- **Entry timing**: Enter LONG near support, SHORT near resistance
+- **Stop loss placement**: Place SL just below support (LONG) or above resistance (SHORT)
+- **Target setting**: Use next resistance as TP for LONG, next support as TP for SHORT
+- **Breakout confirmation**: Price breaking above resistance with volume = valid breakout
+- **Risk/reward filtering**: Skip trades where nearest S/R gives < 1:2 R:R
+
+**Current Gap:** Strategies use ATR-based SL/TP which ignores actual price structure. A stock at ₹100 with support at ₹98 and resistance at ₹110 should have SL at ₹97.50 (below support) and TP at ₹110 (at resistance) — not a blind 2% SL / 4% TP.
+
+**Detection Methods (in priority order):**
+
+| Method | Description | Best For |
+|--------|-------------|----------|
+| **Swing High/Low** | Local peaks and troughs from daily candles (zigzag detection) | Primary S/R levels |
+| **Volume Profile (POC)** | Price levels with highest traded volume (Point of Control) | Strongest S/R — where institutions trade |
+| **Pivot Points** | Classic/Fibonacci/Camarilla pivots from prior day OHLC | Intraday (MIS) S/R levels |
+| **Moving Averages** | 20/50/100/200 DMA act as dynamic support/resistance | Trend-following strategies |
+| **Round Numbers** | Psychological levels (₹100, ₹500, ₹1000, etc.) | Secondary confirmation |
+| **Gap Zones** | Unfilled gaps from prior sessions | Strong S/R zones |
+| **Fibonacci Retracement** | 38.2%, 50%, 61.8% levels from recent swing | Pullback entry targets |
+
+**Proposed Data Model:**
+
+```python
+# shared/shared/models/levels.py
+
+@dataclass
+class PriceLevel:
+    price: Decimal
+    level_type: str          # "support" | "resistance"
+    strength: int            # 1-5 (how many times tested)
+    method: str              # "swing_hl" | "volume_profile" | "pivot" | "ma" | "fib"
+    timeframe: str           # "intraday" | "daily" | "weekly"
+    last_tested: datetime    # When price last touched this level
+    distance_pct: Decimal    # Current price distance from level (%)
+
+@dataclass
+class SupportResistanceResult:
+    symbol: str
+    current_price: Decimal
+    supports: list[PriceLevel]      # Sorted by price descending (nearest first)
+    resistances: list[PriceLevel]   # Sorted by price ascending (nearest first)
+    nearest_support: PriceLevel | None
+    nearest_resistance: PriceLevel | None
+    risk_reward_long: Decimal | None   # R:R if entering LONG here
+    risk_reward_short: Decimal | None  # R:R if entering SHORT here
+```
+
+**Proposed Service:**
+
+```python
+# shared/shared/strategies/support_resistance.py
+
+class SupportResistanceDetector:
+    """Detects key support and resistance levels for a stock."""
+
+    def detect_swing_levels(self, df: pd.DataFrame, lookback: int = 20, min_touches: int = 2) -> list[PriceLevel]:
+        """Find swing highs/lows with clustering (merge levels within 0.5% of each other)."""
+
+    def detect_pivot_points(self, df: pd.DataFrame, method: str = "classic") -> list[PriceLevel]:
+        """Calculate pivot points from prior session OHLC.
+        Methods: classic, fibonacci, camarilla, woodie."""
+
+    def detect_volume_profile_levels(self, df: pd.DataFrame, bins: int = 50) -> list[PriceLevel]:
+        """Find high-volume price zones (HVN = support, LVN = resistance)."""
+
+    def detect_ma_levels(self, df: pd.DataFrame, periods: list[int] = [20, 50, 100, 200]) -> list[PriceLevel]:
+        """Moving averages as dynamic S/R. Only include MAs within 5% of current price."""
+
+    def detect_fib_levels(self, df: pd.DataFrame, lookback_days: int = 60) -> list[PriceLevel]:
+        """Fibonacci retracement from recent swing high to swing low."""
+
+    def detect_gap_zones(self, df: pd.DataFrame) -> list[PriceLevel]:
+        """Unfilled gap zones from prior sessions act as S/R."""
+
+    def get_all_levels(self, df: pd.DataFrame, symbol: str) -> SupportResistanceResult:
+        """Run all detection methods, merge nearby levels, rank by strength."""
+
+    def cluster_levels(self, levels: list[PriceLevel], merge_pct: float = 0.5) -> list[PriceLevel]:
+        """Merge levels within merge_pct% of each other. Strength = sum of merged levels."""
+```
+
+**Integration Points:**
+
+| Integration | How S/R Levels Would Be Used |
+|-------------|------------------------------|
+| **Screener filter** | New `SUPPORT_RESISTANCE` filter type: only pass stocks near support (LONG screener) or near resistance (SHORT screener) |
+| **Strategy SL/TP** | Replace ATR-based SL with structure-based SL (below nearest support for LONG) |
+| **Signal quality scoring** | Boost signal confidence if entry is near a strong support/resistance level |
+| **Breakout screener** | Detect price breaking above resistance with volume confirmation |
+| **Position tracker** | Adjust trailing stop to lock in profits at S/R levels (trail to next support as price rises) |
+| **Frontend chart** | Overlay S/R lines on TradingView chart for visual confirmation |
+| **Risk/reward filter** | Auto-reject trades where nearest opposing level gives < 1:2 R:R |
+
+**Tasks:**
+- [ ] Create `PriceLevel` and `SupportResistanceResult` dataclasses in `shared/shared/models/levels.py`
+- [ ] Implement `SupportResistanceDetector` in `shared/shared/strategies/support_resistance.py`
+- [ ] Implement swing high/low detection with zigzag algorithm and level clustering
+- [ ] Implement classic + Fibonacci pivot point calculation from prior day OHLC
+- [ ] Implement volume profile analysis (POC, HVN, LVN detection)
+- [ ] Implement MA-as-S/R detection (only include MAs within 5% of current price)
+- [ ] Implement Fibonacci retracement level detection
+- [ ] Implement gap zone detection from daily candle data
+- [ ] Add level clustering/merging (merge levels within 0.5% of each other, sum strength)
+- [ ] Add `SUPPORT_RESISTANCE` filter type to screener (`SRFilter` class)
+- [ ] Integrate S/R levels into strategy SL/TP calculation (structure-based stops)
+- [ ] Add S/R data to screener result metadata for frontend display
+- [ ] Add S/R overlay to stock detail page chart
+- [ ] Cache S/R levels per symbol (recalculate daily, intraday pivots recalculate each session)
+- [ ] Add unit tests for each detection method with known price patterns
+
 **Implementation Priority:**
 
 | Priority | Enhancement | Effort | Impact |
 |----------|------------|--------|--------|
 | 🔴 High | VIX hard gate (per strategy) | Small | Prevents trading in volatile markets |
 | 🔴 High | Product-type-aware screener profiles (MIS/CNC/SLB) | Medium | Right filters for right product |
+| 🔴 High | Support/resistance detection (swing + pivots) | Medium | Structure-based SL/TP, better entries |
 | 🟡 Medium | Implement breadth analysis (50 DMA breadth) | Medium | Early divergence warning |
 | 🟡 Medium | ATR-based volatility filter | Small | Avoids dead or hyper-volatile stocks |
 | 🟡 Medium | Auto market-wide circuit breaker | Medium | Automatic protection |
+| 🟡 Medium | S/R-based screener filter (near support/resistance) | Small | Entry timing improvement |
+| 🟡 Medium | Volume profile S/R levels | Medium | Strongest institutional levels |
 | 🟢 Low | Sector strength filter | Medium | Needs sector classification data |
 | 🟢 Low | Delivery %, OI tracking | Large | Needs new data pipeline (NSE bhavcopy) |
 | 🟢 Low | Earnings calendar integration | Medium | Needs external data source |
+| 🟢 Low | Fibonacci retracement + gap zone detection | Small | Refines existing S/R levels |
 
 ---
 

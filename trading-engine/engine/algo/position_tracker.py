@@ -15,11 +15,17 @@ from engine.models.algo import (
     AlgoPosition,
     PositionSide,
     PositionStatus,
+    SignalDirection,
     StrategyProductType,
     UserStrategy,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class DirectionViolationError(Exception):
+    """Raised when an order attempts to open a position in a direction that
+    violates the strategy's configured signal_direction."""
 
 
 @dataclass
@@ -194,6 +200,25 @@ class PositionTracker:
 
         # Check for existing open position
         existing = await self.get_open_position(strategy_id, user_id, symbol)
+
+        # Defense-in-depth: even if the executor's direction guard is bypassed,
+        # refuse to open (or add to) a position that violates the strategy's
+        # configured signal_direction. Closing an existing opposite-side position
+        # is handled earlier in handle_order_fill and never reaches this method.
+        if strategy is not None and existing is None:
+            configured_direction = strategy.signal_direction
+            if (
+                configured_direction == SignalDirection.LONG and position_side == PositionSide.SHORT
+            ) or (
+                configured_direction == SignalDirection.SHORT and position_side == PositionSide.LONG
+            ):
+                msg = (
+                    f"Refusing to open {position_side.value} position for {symbol}: "
+                    f"strategy {strategy_id} is configured as "
+                    f"{configured_direction.value}-only"
+                )
+                logger.error(msg)
+                raise DirectionViolationError(msg)
 
         if existing:
             # Average into existing position

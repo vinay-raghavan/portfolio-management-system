@@ -408,3 +408,129 @@ class TestStrategyExecutorTimeWindow:
         # Confirm it failed for strategy-not-found reason, not time window
         assert result.status == ExecutionStatus.FAILED
         assert "not found in registry" in result.error_message
+
+
+class TestDirectionGuardHelpers:
+    """Unit tests for the direction guard helpers in StrategyExecutor."""
+
+    def _signal(self, signal_type_value, intent=None):
+        from decimal import Decimal
+
+        from engine.models.signals import SignalData, SignalType
+
+        return SignalData(
+            symbol="POWERGRID",
+            signal_type=SignalType(signal_type_value),
+            strength=Decimal("0.5"),
+            confidence=Decimal("0.5"),
+            price_at_signal=Decimal("319.35"),
+            intent=intent,
+        )
+
+    def test_derive_intent_sell_no_position_is_open_short(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.signals import SignalIntent
+
+        effective = StrategyExecutor._derive_effective_intent(self._signal("SELL"), None)
+        assert effective == SignalIntent.OPEN_SHORT
+
+    def test_derive_intent_sell_with_long_position_is_close_long(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.signals import SignalIntent
+
+        effective = StrategyExecutor._derive_effective_intent(self._signal("SELL"), "LONG")
+        assert effective == SignalIntent.CLOSE_LONG
+
+    def test_derive_intent_buy_no_position_is_open_long(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.signals import SignalIntent
+
+        effective = StrategyExecutor._derive_effective_intent(self._signal("BUY"), None)
+        assert effective == SignalIntent.OPEN_LONG
+
+    def test_derive_intent_buy_with_short_position_is_close_short(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.signals import SignalIntent
+
+        effective = StrategyExecutor._derive_effective_intent(self._signal("BUY"), "SHORT")
+        assert effective == SignalIntent.CLOSE_SHORT
+
+    def test_derive_intent_explicit_intent_is_preserved(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.signals import SignalIntent
+
+        signal = self._signal("SELL", intent=SignalIntent.CLOSE_LONG)
+        effective = StrategyExecutor._derive_effective_intent(signal, None)
+        assert effective == SignalIntent.CLOSE_LONG
+
+    def test_long_only_blocks_open_short(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.algo import SignalDirection
+        from engine.models.signals import SignalIntent
+
+        reason = StrategyExecutor._direction_guard_block_reason(
+            SignalDirection.LONG, SignalIntent.OPEN_SHORT
+        )
+        assert reason is not None
+        assert "LONG only" in reason
+
+    def test_long_only_blocks_close_short(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.algo import SignalDirection
+        from engine.models.signals import SignalIntent
+
+        reason = StrategyExecutor._direction_guard_block_reason(
+            SignalDirection.LONG, SignalIntent.CLOSE_SHORT
+        )
+        assert reason is not None
+
+    def test_long_only_allows_open_long_and_close_long(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.algo import SignalDirection
+        from engine.models.signals import SignalIntent
+
+        assert (
+            StrategyExecutor._direction_guard_block_reason(
+                SignalDirection.LONG, SignalIntent.OPEN_LONG
+            )
+            is None
+        )
+        assert (
+            StrategyExecutor._direction_guard_block_reason(
+                SignalDirection.LONG, SignalIntent.CLOSE_LONG
+            )
+            is None
+        )
+
+    def test_short_only_blocks_long_actions(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.algo import SignalDirection
+        from engine.models.signals import SignalIntent
+
+        assert (
+            StrategyExecutor._direction_guard_block_reason(
+                SignalDirection.SHORT, SignalIntent.OPEN_LONG
+            )
+            is not None
+        )
+        assert (
+            StrategyExecutor._direction_guard_block_reason(
+                SignalDirection.SHORT, SignalIntent.CLOSE_LONG
+            )
+            is not None
+        )
+
+    def test_both_allows_all_intents(self):
+        from engine.algo.executor import StrategyExecutor
+        from engine.models.algo import SignalDirection
+        from engine.models.signals import SignalIntent
+
+        for intent in (
+            SignalIntent.OPEN_LONG,
+            SignalIntent.CLOSE_LONG,
+            SignalIntent.OPEN_SHORT,
+            SignalIntent.CLOSE_SHORT,
+        ):
+            assert (
+                StrategyExecutor._direction_guard_block_reason(SignalDirection.BOTH, intent) is None
+            )

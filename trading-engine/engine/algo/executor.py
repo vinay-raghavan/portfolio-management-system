@@ -17,6 +17,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pandas as pd
+from shared.market.intraday_regime import IntradayDirection, IntradayRegimeDetector
 from shared.utils.time_window import TimeWindowValidator
 
 from engine.algo.notifications import AlgoNotificationService
@@ -80,6 +81,7 @@ class StrategyConfig:
     portfolio_percent: Decimal = Decimal("5.0")
     risk_per_trade_percent: Decimal = Decimal("2.0")
     max_open_positions: int = 5
+    max_position_value: Decimal | None = None  # Hard cap on total notional per symbol
     product_type: ProductType = ProductType.DELIVERY
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection = SignalDirection.LONG
@@ -179,8 +181,104 @@ class StrategyExecutor:
             if not strategy:
                 raise ValueError(f"Strategy '{config.strategy_name}' not found in registry")
 
+            # ── Intraday Regime Override (Option B) ────────────────────
+            # For INTRADAY (MIS) strategies, detect the real-time market
+            # direction using gap, VIX rate-of-change, and price action.
+            # If the intraday regime conflicts with the configured
+            # signal_direction:
+            #   1. Flip the direction
+            #   2. Find the user's opposite-direction strategy
+            #   3. Swap in its symbols + strategy logic
+            # This ensures we trade the RIGHT stocks on the RIGHT side.
+            original_direction = config.signal_direction
+            regime_swapped_symbols: list[str] | None = None
+            # Only apply regime override for strategies with direction=BOTH
+            # (adaptive). Strategies explicitly set to LONG or SHORT are
+            # intentional (e.g., sector-specific shorts) and should not be
+            # flipped by broad market regime.
+            if (
+                config.product_type == StrategyProductType.INTRADAY
+                and original_direction == SignalDirection.BOTH
+            ):
+                try:
+                    intraday_detector = IntradayRegimeDetector(self.data_provider)
+                    intraday_regime = await intraday_detector.detect()
+
+                    needs_flip = (
+                        intraday_regime.direction == IntradayDirection.BULLISH
+                        and config.signal_direction == SignalDirection.SHORT
+                    ) or (
+                        intraday_regime.direction == IntradayDirection.BEARISH
+                        and config.signal_direction == SignalDirection.LONG
+                    )
+
+                    if needs_flip:
+                        # Determine the opposite direction
+                        opposite_dir = (
+                            SignalDirection.LONG
+                            if config.signal_direction == SignalDirection.SHORT
+                            else SignalDirection.SHORT
+                        )
+
+                        # Find the user's strategy with the opposite direction
+                        alt_strategy_name, alt_symbols = await self._resolve_opposite_strategy(
+                            user_id=config.user_id,
+                            current_strategy_id=config.id,
+                            target_direction=opposite_dir,
+                        )
+
+                        if alt_symbols:
+                            config.signal_direction = opposite_dir
+                            regime_swapped_symbols = alt_symbols
+
+                            # Swap the strategy instance if a different one was found
+                            if alt_strategy_name and alt_strategy_name != config.strategy_name:
+                                alt_strategy = StrategyRegistry.get_strategy(
+                                    alt_strategy_name, config.strategy_params
+                                )
+                                if alt_strategy:
+                                    strategy = alt_strategy
+                                    logger.info(
+                                        f"Regime flip: swapped strategy "
+                                        f"{config.strategy_name} → {alt_strategy_name}"
+                                    )
+
+                            logger.info(
+                                f"Intraday regime {intraday_regime.direction.value} "
+                                f"(score={intraday_regime.composite_score}): "
+                                f"flipped {original_direction.value} → {opposite_dir.value}, "
+                                f"swapped to {len(alt_symbols)} symbols from "
+                                f"'{alt_strategy_name}' strategy "
+                                f"| {', '.join(intraday_regime.reasons)}"
+                            )
+                        else:
+                            # No opposite strategy found — block new entries (Option A fallback)
+                            logger.info(
+                                f"Intraday regime {intraday_regime.direction.value} "
+                                f"conflicts with {original_direction.value} but no opposite "
+                                f"strategy found — blocking new entries"
+                            )
+                            config.signal_direction = opposite_dir
+                            regime_swapped_symbols = []  # Empty = no entries
+                    else:
+                        logger.info(
+                            f"Intraday regime: {intraday_regime.direction.value} "
+                            f"(score={intraday_regime.composite_score}) — "
+                            f"aligned with {config.signal_direction.value}, no swap needed "
+                            f"| {', '.join(intraday_regime.reasons)}"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Intraday regime detection failed, using configured direction: {e}"
+                    )
+
             # Get symbols to analyze: active symbols + exit-only symbols
-            active_symbols = symbols_override or config.symbols
+            # Use regime-swapped symbols if intraday override flipped direction,
+            # otherwise use configured symbols.
+            if regime_swapped_symbols is not None:
+                active_symbols = regime_swapped_symbols
+            else:
+                active_symbols = symbols_override or config.symbols
             exit_only_symbols = set(config.exit_only_symbols or [])
             all_symbols = list(set(active_symbols) | exit_only_symbols)
 
@@ -230,13 +328,14 @@ class StrategyExecutor:
                 return result
 
             # Process signals and place orders.
-            # Track margin committed within this cycle to prevent over-allocation.
-            # Each signal's fund check reads stale DB funds, so we pass
-            # margin_committed to offset the available cash calculation.
+            # Track margin committed and positions opened within this cycle to
+            # prevent over-allocation. Each signal's checks read stale DB state,
+            # so we pass in-memory counters to offset.
             margin_committed_this_cycle = Decimal("0")
+            positions_opened_this_cycle = 0
             for symbol, signal in all_signals:
                 order_result = await self._process_signal(
-                    config, signal, margin_committed_this_cycle
+                    config, signal, margin_committed_this_cycle, positions_opened_this_cycle
                 )
                 if order_result:
                     result.signals_data.append(self._signal_to_dict(signal))
@@ -244,7 +343,7 @@ class StrategyExecutor:
                     result.orders_placed += 1
                     if order_result.get("status") == "FILLED":
                         result.orders_filled += 1
-                        # Track margin committed by this fill
+                        # Track margin committed and positions opened by this fill
                         filled_price = order_result.get("filled_price")
                         filled_qty = order_result.get("quantity", 0)
                         if filled_price and filled_qty:
@@ -253,6 +352,7 @@ class StrategyExecutor:
                                 config.product_type.value
                             )
                             margin_committed_this_cycle += order_value * margin_pct
+                        positions_opened_this_cycle += 1
                     elif order_result.get("status") in ["REJECTED", "CANCELLED"]:
                         result.orders_rejected += 1
 
@@ -293,8 +393,9 @@ class StrategyExecutor:
         interval = interval_map.get(timeframe, "1d")
 
         # Determine period based on timeframe
-        period_map = {"1m": "1d", "5m": "5d", "15m": "5d", "1h": "1mo", "1d": "6mo"}
-        period = period_map.get(timeframe, "6mo")
+        # Use 1y for daily to support EMA200 and other long-lookback indicators
+        period_map = {"1m": "1d", "5m": "5d", "15m": "5d", "1h": "1mo", "1d": "1y"}
+        period = period_map.get(timeframe, "1y")
 
         # Fetch historical data
         ohlcv_data = await self.data_provider.get_historical(
@@ -312,10 +413,16 @@ class StrategyExecutor:
         # Get current price from latest bar
         current_price = Decimal(str(ohlcv_data[-1].close))
 
-        # Convert to DataFrame
+        # Convert to DataFrame with lowercase columns for strategy compatibility
         df = pd.DataFrame(
             [
                 {
+                    "open": float(bar.open),
+                    "high": float(bar.high),
+                    "low": float(bar.low),
+                    "close": float(bar.close),
+                    "volume": bar.volume,
+                    # Include uppercase aliases for backward compatibility
                     "Open": float(bar.open),
                     "High": float(bar.high),
                     "Low": float(bar.low),
@@ -336,11 +443,14 @@ class StrategyExecutor:
         config: StrategyConfig,
         signal: SignalData,
         margin_committed: Decimal = Decimal("0"),
+        positions_opened_this_cycle: int = 0,
     ) -> dict | None:
         """Process a signal: size, validate, and place order.
 
         Args:
             margin_committed: Margin already committed by prior signals
+                in the same execution cycle (not yet reflected in DB).
+            positions_opened_this_cycle: Number of new positions opened by prior signals
                 in the same execution cycle (not yet reflected in DB).
         """
         open_position_side = await self._get_open_position_side(
@@ -349,42 +459,23 @@ class StrategyExecutor:
             symbol=signal.symbol,
         )
 
-        # Check if signal direction is allowed by strategy configuration
-        if config.signal_direction == SignalDirection.LONG:
-            # LONG only: block SHORT signals
-            if signal.intent in (SignalIntent.OPEN_SHORT, SignalIntent.CLOSE_SHORT):
-                logger.debug(
-                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is LONG only"
-                )
-                return None
+        # Derive the effective intent from signal_type + intent + current position,
+        # then validate against the strategy's signal_direction. We compute this up
+        # front so the guard is observable and cannot be bypassed by signals that
+        # leave `intent` unset.
+        effective_intent = self._derive_effective_intent(signal, open_position_side)
 
-            # Fallback guard for strategies that don't set intent:
-            # allow SELL only when it closes an existing LONG position.
-            if signal.intent is None and signal.signal_type == SignalType.SELL:
-                if open_position_side != "LONG":
-                    logger.debug(
-                        f"Blocking SELL signal for {signal.symbol}: LONG strategy has no LONG "
-                        "position to close (would open short)"
-                    )
-                    return None
-        elif config.signal_direction == SignalDirection.SHORT:
-            # SHORT only: block LONG signals
-            if signal.intent in (SignalIntent.OPEN_LONG, SignalIntent.CLOSE_LONG):
-                logger.debug(
-                    f"Blocking {signal.intent} signal for {signal.symbol}: strategy is SHORT only"
-                )
-                return None
-
-            # Fallback guard for strategies that don't set intent:
-            # allow BUY only when it closes an existing SHORT position.
-            if signal.intent is None and signal.signal_type == SignalType.BUY:
-                if open_position_side != "SHORT":
-                    logger.debug(
-                        f"Blocking BUY signal for {signal.symbol}: SHORT strategy has no SHORT "
-                        "position to close (would open long)"
-                    )
-                    return None
-        # BOTH: allow all signals
+        block_reason = self._direction_guard_block_reason(config.signal_direction, effective_intent)
+        if block_reason is not None:
+            logger.info(
+                "Blocking %s signal for %s (effective_intent=%s, open_side=%s): %s",
+                signal.signal_type.value,
+                signal.symbol,
+                effective_intent.value if effective_intent else None,
+                open_position_side,
+                block_reason,
+            )
+            return None
 
         # Check if signal intent is compatible with product type
         if signal.intent == SignalIntent.OPEN_SHORT:
@@ -435,22 +526,81 @@ class StrategyExecutor:
             open_positions_count = await self._get_open_positions_count(
                 strategy_id=config.id, user_id=config.user_id
             )
-            if open_positions_count >= config.max_open_positions:
+            # Add positions opened in this cycle but not yet persisted to DB
+            effective_count = open_positions_count + positions_opened_this_cycle
+            if effective_count >= config.max_open_positions:
                 logger.warning(
                     f"Max open positions reached for strategy {config.id}: "
-                    f"{open_positions_count}/{config.max_open_positions}"
+                    f"{effective_count}/{config.max_open_positions} "
+                    f"(db={open_positions_count}, cycle={positions_opened_this_cycle})"
                 )
                 return {
                     "symbol": signal.symbol,
                     "status": "RISK_BLOCKED",
                     "reason": (
-                        f"Max open positions reached: "
-                        f"{open_positions_count}/{config.max_open_positions}"
+                        f"Max open positions reached: {effective_count}/{config.max_open_positions}"
                     ),
                 }
 
+        # --- Enforce max_position_value as TOTAL cap on per-symbol notional ---
+        # This prevents the engine from averaging into a position beyond the cap.
+        existing_notional = Decimal("0")
+        existing_position_obj = None
+        if open_position_side is not None:
+            try:
+                async with get_db_context() as db:
+                    tracker = PositionTracker(db)
+                    existing_position_obj = await tracker.get_open_position(
+                        config.id, config.user_id, signal.symbol
+                    )
+                    if existing_position_obj:
+                        existing_notional = (
+                            existing_position_obj.entry_price
+                            * existing_position_obj.remaining_quantity
+                        )
+            except Exception as e:
+                logger.warning(f"Could not get existing position for {signal.symbol}: {e}")
+
+            if config.max_position_value and existing_notional >= config.max_position_value:
+                logger.warning(
+                    f"Max position value reached for {signal.symbol}: "
+                    f"notional ₹{existing_notional:.2f} >= cap ₹{config.max_position_value:.2f}"
+                )
+                return {
+                    "symbol": signal.symbol,
+                    "status": "RISK_BLOCKED",
+                    "reason": (
+                        f"Max position value reached: ₹{existing_notional:.2f} "
+                        f">= cap ₹{config.max_position_value:.2f}"
+                    ),
+                }
+
+        # --- Enforce total portfolio exposure cap ---
+        # Total margin must not exceed equity (cash_balance).
+        # This is the hard stop preventing negative available_cash.
+        try:
+            funds = await self.broker.get_funds(config.user_id)
+            if funds.available_cash - margin_committed <= Decimal("0"):
+                logger.warning(
+                    f"No available cash for {signal.symbol}: "
+                    f"available=₹{funds.available_cash:.2f}, "
+                    f"committed=₹{margin_committed:.2f}"
+                )
+                return {
+                    "symbol": signal.symbol,
+                    "status": "RISK_BLOCKED",
+                    "reason": (
+                        f"No available cash: ₹{funds.available_cash:.2f} "
+                        f"(committed: ₹{margin_committed:.2f})"
+                    ),
+                }
+        except Exception as e:
+            logger.warning(f"Could not check funds for exposure cap: {e}")
+
         # Calculate position size (async to fetch funds for percent-based sizing)
-        quantity = await self._calculate_position_size(config, signal)
+        quantity = await self._calculate_position_size(
+            config, signal, existing_notional=existing_notional
+        )
         if quantity <= 0:
             logger.debug(f"Position size is 0 for {signal.symbol}, skipping")
             return None
@@ -524,6 +674,55 @@ class StrategyExecutor:
                 "reason": str(e),
             }
 
+    @staticmethod
+    def _derive_effective_intent(
+        signal: SignalData,
+        open_position_side: str | None,
+    ) -> SignalIntent | None:
+        """Determine the effective SignalIntent for a signal.
+
+        Strategies are allowed to leave `signal.intent` as None and express
+        direction only via `signal_type` (BUY/SELL). In that case we infer the
+        intent from the current position state:
+
+        - BUY  + no position / SHORT position → OPEN_LONG / CLOSE_SHORT
+        - SELL + LONG position                → CLOSE_LONG
+        - SELL + no position / SHORT position → OPEN_SHORT
+
+        If the strategy sets an explicit intent, it is trusted as-is.
+        """
+        if signal.intent is not None:
+            return signal.intent
+
+        if signal.signal_type == SignalType.BUY:
+            if open_position_side == "SHORT":
+                return SignalIntent.CLOSE_SHORT
+            return SignalIntent.OPEN_LONG
+        if signal.signal_type == SignalType.SELL:
+            if open_position_side == "LONG":
+                return SignalIntent.CLOSE_LONG
+            return SignalIntent.OPEN_SHORT
+        return None
+
+    @staticmethod
+    def _direction_guard_block_reason(
+        signal_direction: SignalDirection,
+        effective_intent: SignalIntent | None,
+    ) -> str | None:
+        """Return a human-readable block reason if the intent violates the
+        configured signal_direction, or None if the signal is allowed.
+        """
+        if effective_intent is None:
+            return None
+
+        if signal_direction == SignalDirection.LONG:
+            if effective_intent in (SignalIntent.OPEN_SHORT, SignalIntent.CLOSE_SHORT):
+                return "strategy is LONG only, refusing SHORT-side action"
+        elif signal_direction == SignalDirection.SHORT:
+            if effective_intent in (SignalIntent.OPEN_LONG, SignalIntent.CLOSE_LONG):
+                return "strategy is SHORT only, refusing LONG-side action"
+        return None
+
     async def _get_open_position_side(
         self,
         strategy_id: str,
@@ -541,6 +740,74 @@ class StrategyExecutor:
                 f"Failed to fetch open position side for {symbol} in strategy {strategy_id}: {e}"
             )
             return None
+
+    async def _resolve_opposite_strategy(
+        self,
+        user_id: str,
+        current_strategy_id: str,
+        target_direction: SignalDirection,
+    ) -> tuple[str | None, list[str] | None]:
+        """Find the user's strategy with the target direction and return its name + symbols.
+
+        When the intraday regime flips direction, we need to trade the RIGHT stocks.
+        This looks up the user's other INTRADAY strategies that match the target
+        direction and borrows their strategy_name and custom_symbols.
+
+        Returns:
+            (strategy_name, symbols) or (None, None) if no suitable strategy found.
+        """
+        try:
+            from sqlalchemy import select
+
+            from engine.models.algo import StrategyStatus, UserStrategy
+
+            async with get_db_context() as db:
+                result = await db.execute(
+                    select(UserStrategy).where(
+                        UserStrategy.user_id == user_id,
+                        UserStrategy.id != current_strategy_id,
+                        UserStrategy.signal_direction == target_direction,
+                        UserStrategy.status.in_(
+                            [
+                                StrategyStatus.ACTIVE,
+                                StrategyStatus.DISABLED,
+                                StrategyStatus.KILLED,
+                            ]
+                        ),
+                    )
+                )
+                candidates = list(result.scalars().all())
+
+                if not candidates:
+                    logger.info(
+                        f"No opposite strategy found for direction={target_direction.value}"
+                    )
+                    return None, None
+
+                # Prefer ACTIVE, then DISABLED, then KILLED
+                priority = {
+                    StrategyStatus.ACTIVE: 0,
+                    StrategyStatus.DISABLED: 1,
+                    StrategyStatus.KILLED: 2,
+                }
+                candidates.sort(key=lambda s: priority.get(s.status, 99))
+                chosen = candidates[0]
+
+                symbols = chosen.custom_symbols or []
+                if chosen.universe and hasattr(chosen.universe, "symbols"):
+                    symbols = symbols or chosen.universe.symbols or []
+
+                logger.info(
+                    f"Resolved opposite strategy: '{chosen.name}' "
+                    f"(strategy={chosen.strategy_name}, "
+                    f"direction={chosen.signal_direction.value}, "
+                    f"symbols={len(symbols)})"
+                )
+                return chosen.strategy_name, symbols
+
+        except Exception as e:
+            logger.warning(f"Failed to resolve opposite strategy: {e}")
+            return None, None
 
     async def _get_open_positions_count(
         self,
@@ -569,6 +836,7 @@ class StrategyExecutor:
         self,
         config: StrategyConfig,
         signal: SignalData,
+        existing_notional: Decimal = Decimal("0"),
     ) -> int:
         """Calculate position size based on strategy config.
 
@@ -578,6 +846,9 @@ class StrategyExecutor:
         Args:
             config: Strategy configuration with sizing method
             signal: Signal data with price information
+            existing_notional: Current notional value of any existing position
+                in this symbol. Used to cap new entry so total stays within
+                max_position_value.
 
         Returns:
             Position size as integer quantity
@@ -586,11 +857,17 @@ class StrategyExecutor:
         price = signal.entry_price or signal.price_at_signal
 
         if method == PositionSizingMethod.FIXED_QUANTITY:
-            return config.fixed_quantity or 1
+            qty = config.fixed_quantity or 1
+            return self._cap_qty_by_max_position_value(
+                qty, price, config.max_position_value, existing_notional, "FIXED_QUANTITY"
+            )
 
         if method == PositionSizingMethod.FIXED_AMOUNT:
             amount = config.fixed_amount or Decimal("10000")
-            return max(1, int(amount / price))
+            qty = max(1, int(amount / price))
+            return self._cap_qty_by_max_position_value(
+                qty, price, config.max_position_value, existing_notional, "FIXED_AMOUNT"
+            )
 
         if method == PositionSizingMethod.PERCENT_OF_PORTFOLIO:
             # Fetch actual portfolio value from broker
@@ -599,12 +876,35 @@ class StrategyExecutor:
                 portfolio_value = funds.total_balance
                 pct = config.portfolio_percent or Decimal("5.0")
                 amount_to_invest = portfolio_value * (pct / Decimal("100"))
+
+                # For INTRADAY positions, cap to available cash to prevent
+                # over-leveraging when multiple positions are open
+                margin_percent = Decimal("0.25")  # INTRADAY default
+                if config.product_type and config.product_type.value.upper() in (
+                    "INTRADAY",
+                    "MIS",
+                ):
+                    # Max position value = available_cash / margin_percent
+                    cash_based_max = funds.available_cash / margin_percent
+                    if cash_based_max < amount_to_invest:
+                        logger.info(
+                            f"PERCENT_OF_PORTFOLIO capped by available cash: "
+                            f"target ₹{amount_to_invest:.2f} -> ₹{cash_based_max:.2f} "
+                            f"(available_cash=₹{funds.available_cash:.2f})"
+                        )
+                        amount_to_invest = max(Decimal("0"), cash_based_max)
+
                 quantity = int(amount_to_invest / price)
-                logger.debug(
-                    f"PERCENT_OF_PORTFOLIO sizing: {pct}% of {portfolio_value} = "
-                    f"{amount_to_invest}, qty={quantity} @ {price}"
+                if quantity <= 0:
+                    return 0
+                quantity = max(1, quantity)
+                return self._cap_qty_by_max_position_value(
+                    quantity,
+                    price,
+                    config.max_position_value,
+                    existing_notional,
+                    "PERCENT_OF_PORTFOLIO",
                 )
-                return max(1, quantity) if quantity > 0 else 0
             except Exception as e:
                 logger.warning(f"Failed to get portfolio value: {e}, using fixed amount")
                 return max(1, int((config.fixed_amount or Decimal("10000")) / price))
@@ -623,11 +923,36 @@ class StrategyExecutor:
                 if stop_loss and price > stop_loss:
                     risk_per_share = price - stop_loss
                     quantity = int(risk_amount / risk_per_share)
+
+                    # Cap to available cash for INTRADAY to prevent over-leveraging
+                    margin_percent = Decimal("0.25")
+                    if config.product_type and config.product_type.value.upper() in (
+                        "INTRADAY",
+                        "MIS",
+                    ):
+                        max_qty = int(funds.available_cash / (margin_percent * price))
+                        if max_qty < quantity:
+                            logger.info(
+                                f"RISK_BASED capped by available cash: "
+                                f"qty {quantity} -> {max_qty} "
+                                f"(available_cash=₹{funds.available_cash:.2f})"
+                            )
+                            quantity = max_qty
+
                     logger.debug(
                         f"RISK_BASED sizing: {risk_pct}% risk = {risk_amount}, "
                         f"risk/share={risk_per_share}, qty={quantity}"
                     )
-                    return max(1, quantity) if quantity > 0 else 0
+                    if quantity <= 0:
+                        return 0
+                    quantity = max(1, quantity)
+                    return self._cap_qty_by_max_position_value(
+                        quantity,
+                        price,
+                        config.max_position_value,
+                        existing_notional,
+                        "RISK_BASED",
+                    )
                 else:
                     # No stop loss defined, fall back to portfolio percent
                     pct = config.portfolio_percent or Decimal("5.0")
@@ -639,6 +964,55 @@ class StrategyExecutor:
 
         # Default: fixed quantity
         return 1
+
+    def _cap_qty_by_max_position_value(
+        self,
+        quantity: int,
+        price: Decimal,
+        max_position_value: Decimal | None,
+        existing_notional: Decimal,
+        method_name: str,
+    ) -> int:
+        """Cap quantity so that existing + new notional doesn't exceed max_position_value.
+
+        Args:
+            quantity: Proposed new quantity
+            price: Entry price
+            max_position_value: Strategy-level hard cap on total symbol notional
+            existing_notional: Current notional value of existing position
+            method_name: Sizing method name for logging
+
+        Returns:
+            Capped quantity (may be 0 if fully utilized)
+        """
+        if not max_position_value or max_position_value <= 0:
+            return quantity
+
+        new_notional = price * quantity
+        total_notional = existing_notional + new_notional
+
+        if total_notional <= max_position_value:
+            return quantity
+
+        # Cap: allow only the headroom
+        headroom = max_position_value - existing_notional
+        if headroom <= 0:
+            logger.info(
+                f"{method_name}: position already at cap "
+                f"(existing=₹{existing_notional:.2f}, cap=₹{max_position_value:.2f})"
+            )
+            return 0
+
+        capped_qty = int(headroom / price)
+        if capped_qty <= 0:
+            return 0
+
+        logger.info(
+            f"{method_name}: capped qty {quantity} -> {capped_qty} "
+            f"(existing=₹{existing_notional:.2f}, "
+            f"cap=₹{max_position_value:.2f})"
+        )
+        return capped_qty
 
     async def _check_exit_conditions(
         self,

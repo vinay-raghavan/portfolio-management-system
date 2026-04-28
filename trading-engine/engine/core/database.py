@@ -17,14 +17,30 @@ class Base(DeclarativeBase):
 
 
 # Create async engine
+# connect_args notes (asyncpg):
+# - command_timeout bounds any single query so a dead socket surfaces fast
+# - server_settings enables TCP keepalives on the server side so long-idle
+#   sessions (e.g. while fetching quotes) don't get silently dropped by
+#   firewalls / container networks
+# - statement_timeout is a safety net against runaway queries
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    pool_recycle=1800,  # Recycle connections after 30 minutes (was 5 min — too aggressive)
+    pool_recycle=300,  # Recycle connections every 5 min to avoid stale conns during long scheduled runs
     pool_timeout=60,  # Wait max 60s for a connection from pool
+    connect_args={
+        "command_timeout": 60,
+        "server_settings": {
+            "application_name": "trading-engine",
+            "tcp_keepalives_idle": "60",
+            "tcp_keepalives_interval": "10",
+            "tcp_keepalives_count": "3",
+            "statement_timeout": "60000",
+        },
+    },
 )
 
 # Create async session factory
