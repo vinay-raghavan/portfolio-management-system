@@ -95,7 +95,7 @@ class MomentumShortStrategy(BaseStrategy):
             "min_score": self.min_score,
         }
 
-    def generate_signals(self, symbol: str, df: pd.DataFrame) -> list[SignalData]:
+    def generate_signals(self, df: pd.DataFrame, symbol: str) -> list[SignalData]:
         """Generate short signals based on bearish momentum."""
         if df is None or len(df) < self.ema_trend + 10:
             return []

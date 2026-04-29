@@ -134,10 +134,11 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.algo.sync_circuit_breakers",
         "schedule": 300.0,  # Every 5 minutes
     },
-    # Check trailing stops and circuit breakers every 5 minutes during market hours
-    "check-stop-monitors-every-5-minutes": {
+    # Check trailing stops and circuit breakers every minute during market hours
+    # Must be frequent enough to catch tight INTRADAY stops (e.g., 0.75%)
+    "check-stop-monitors-every-minute": {
         "task": "worker.tasks.algo.check_stop_monitors",
-        "schedule": 300.0,  # Every 5 minutes
+        "schedule": 60.0,  # Every 1 minute
     },
     # Expire pending auto-trades every hour
     "expire-pending-auto-trades-hourly": {

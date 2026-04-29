@@ -15,11 +15,17 @@ from engine.models.algo import (
     AlgoPosition,
     PositionSide,
     PositionStatus,
+    SignalDirection,
     StrategyProductType,
     UserStrategy,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class DirectionViolationError(Exception):
+    """Raised when an order attempts to open a position in a direction that
+    violates the strategy's configured signal_direction."""
 
 
 @dataclass
@@ -195,6 +201,25 @@ class PositionTracker:
         # Check for existing open position
         existing = await self.get_open_position(strategy_id, user_id, symbol)
 
+        # Defense-in-depth: even if the executor's direction guard is bypassed,
+        # refuse to open (or add to) a position that violates the strategy's
+        # configured signal_direction. Closing an existing opposite-side position
+        # is handled earlier in handle_order_fill and never reaches this method.
+        if strategy is not None and existing is None:
+            configured_direction = strategy.signal_direction
+            if (
+                configured_direction == SignalDirection.LONG and position_side == PositionSide.SHORT
+            ) or (
+                configured_direction == SignalDirection.SHORT and position_side == PositionSide.LONG
+            ):
+                msg = (
+                    f"Refusing to open {position_side.value} position for {symbol}: "
+                    f"strategy {strategy_id} is configured as "
+                    f"{configured_direction.value}-only"
+                )
+                logger.error(msg)
+                raise DirectionViolationError(msg)
+
         if existing:
             # Average into existing position
             total_qty = existing.remaining_quantity + quantity
@@ -240,6 +265,29 @@ class PositionTracker:
                 quantity=total_qty,
                 entry_price=new_avg_price,
                 status="OPEN",
+            )
+
+        # Calculate fixed SL/TP from strategy defaults when not provided
+        if stop_loss is None and strategy and strategy.default_stop_loss_pct:
+            sl_pct = strategy.default_stop_loss_pct
+            if position_side == PositionSide.LONG:
+                stop_loss = entry_price * (Decimal("1") - sl_pct)
+            else:  # SHORT
+                stop_loss = entry_price * (Decimal("1") + sl_pct)
+            logger.info(
+                f"Calculated fixed SL for {symbol}: {stop_loss} "
+                f"({sl_pct * 100}% from entry {entry_price})"
+            )
+
+        if take_profit is None and strategy and strategy.default_take_profit_pct:
+            tp_pct = strategy.default_take_profit_pct
+            if position_side == PositionSide.LONG:
+                take_profit = entry_price * (Decimal("1") + tp_pct)
+            else:  # SHORT
+                take_profit = entry_price * (Decimal("1") - tp_pct)
+            logger.info(
+                f"Calculated fixed TP for {symbol}: {take_profit} "
+                f"({tp_pct * 100}% from entry {entry_price})"
             )
 
         # Initialize trailing stop from strategy defaults
@@ -758,9 +806,38 @@ class PositionTracker:
                     close_reason = "take-profit"
 
             if should_close:
+                # Use the stop/TP price as exit instead of market price to reduce
+                # slippage from polling gaps. For stop exits, the intended exit was
+                # the stop price; for TP exits, the intended exit was the TP price.
+                # Only use market price if it's MORE favorable than the stop/TP.
+                if close_reason in ("stop-loss", "trailing-stop-loss", "profit-lock-stop"):
+                    # For stops: use the stop price (more favorable to the trader)
+                    # unless market price is better (rare gap-through scenario)
+                    if position.side == PositionSide.LONG:
+                        # LONG stop: higher price is better for trader
+                        exit_price = (
+                            max(current_price, effective_stop) if effective_stop else current_price
+                        )
+                    else:
+                        # SHORT stop: lower price is better for trader
+                        exit_price = (
+                            min(current_price, effective_stop) if effective_stop else current_price
+                        )
+                elif close_reason == "take-profit" and position.take_profit:
+                    # For TP: use the TP price (the intended target)
+                    if position.side == PositionSide.LONG:
+                        # LONG TP: lower of market/TP is more conservative
+                        exit_price = min(current_price, position.take_profit)
+                    else:
+                        # SHORT TP: higher of market/TP is more conservative
+                        exit_price = max(current_price, position.take_profit)
+                else:
+                    exit_price = current_price
+
                 logger.info(
                     f"Closing position {position.symbol} due to {close_reason}: "
                     f"entry={position.entry_price}, current={current_price}, "
+                    f"exit_price={exit_price}, "
                     f"effective_stop={effective_stop}, tp={position.take_profit}"
                 )
                 result = await self.close_position(
@@ -768,7 +845,7 @@ class PositionTracker:
                     user_id,
                     position.symbol,
                     None,  # Close full position
-                    current_price,
+                    exit_price,
                 )
                 if result:
                     closed_results.append(result)

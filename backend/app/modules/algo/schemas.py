@@ -364,6 +364,13 @@ class StrategyCreate(BaseModel):
     product_type: StrategyProductType = StrategyProductType.DELIVERY
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection = SignalDirection.LONG
+    # Strategy-level default fixed stop loss / take profit (as percentage, e.g. 2.0 = 2%)
+    default_stop_loss_pct: Decimal | None = Field(
+        default=None, ge=0, le=50, description="Fixed stop loss percentage (e.g., 2.0 = 2%)"
+    )
+    default_take_profit_pct: Decimal | None = Field(
+        default=None, ge=0, le=100, description="Fixed take profit percentage (e.g., 4.0 = 4%)"
+    )
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -412,6 +419,13 @@ class StrategyUpdate(BaseModel):
     product_type: StrategyProductType | None = None
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection | None = None
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = Field(
+        default=None, ge=0, le=50, description="Fixed stop loss percentage (e.g., 2.0 = 2%)"
+    )
+    default_take_profit_pct: Decimal | None = Field(
+        default=None, ge=0, le=100, description="Fixed take profit percentage (e.g., 4.0 = 4%)"
+    )
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool | None = None
     default_trailing_stop_pct: Decimal | None = None
@@ -475,6 +489,9 @@ class StrategyResponse(BaseModel):
     product_type: StrategyProductType
     # Signal direction (LONG/SHORT/BOTH)
     signal_direction: SignalDirection
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -501,6 +518,22 @@ class StrategyResponse(BaseModel):
     linked_screener_name: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @staticmethod
+    def _get_linked_screener_name(obj) -> str | None:
+        """Safely get linked screener name without triggering lazy loads."""
+        from sqlalchemy.orm import InstanceState
+
+        try:
+            state: InstanceState = obj._sa_instance_state
+            # Check if linked_screener is already loaded (not pending lazy load)
+            if "linked_screener" in state.dict:
+                screener = state.dict["linked_screener"]
+                return screener.name if screener else None
+            # Not loaded — don't trigger lazy load, just return None
+            return None
+        except Exception:
+            return None
 
     @staticmethod
     def _parse_profit_booking_rules(rules_data: dict | list | None) -> "ProfitBookingRules | None":
@@ -603,6 +636,8 @@ class StrategyResponse(BaseModel):
             "is_paper_trading": obj.is_paper_trading,
             "product_type": obj.product_type,
             "signal_direction": obj.signal_direction,
+            "default_stop_loss_pct": obj.default_stop_loss_pct,
+            "default_take_profit_pct": obj.default_take_profit_pct,
             "default_trailing_stop_enabled": obj.default_trailing_stop_enabled,
             "default_trailing_stop_pct": obj.default_trailing_stop_pct,
             "default_profit_booking_rules": (
@@ -627,11 +662,7 @@ class StrategyResponse(BaseModel):
             # Screener linking fields
             "linked_screener_id": getattr(obj, "linked_screener_id", None),
             "sync_from_screener": getattr(obj, "sync_from_screener", True),
-            "linked_screener_name": (
-                obj.linked_screener.name
-                if hasattr(obj, "linked_screener") and obj.linked_screener
-                else None
-            ),
+            "linked_screener_name": cls._get_linked_screener_name(obj),
         }
         return cls(**data)
 
@@ -1084,6 +1115,9 @@ class CompositeStrategyCreate(BaseModel):
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None
@@ -1131,6 +1165,9 @@ class DSLStrategyCreate(BaseModel):
     profit_cutoff_action: ProfitCutoffAction = ProfitCutoffAction.PAUSE_STRATEGY
     is_paper_trading: bool = True
     product_type: StrategyProductType = StrategyProductType.DELIVERY
+    # Strategy-level default fixed stop loss / take profit
+    default_stop_loss_pct: Decimal | None = None
+    default_take_profit_pct: Decimal | None = None
     # Strategy-level default trailing stop and profit booking settings
     default_trailing_stop_enabled: bool = False
     default_trailing_stop_pct: Decimal | None = None

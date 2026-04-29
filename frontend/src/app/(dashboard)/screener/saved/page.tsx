@@ -325,7 +325,7 @@ function AutoTradeSettingsModal({
     enabled: open,
   });
 
-  const existingConfig = configsData?.configs?.find(c => c.category === 'custom');
+  const existingConfig = configsData?.configs?.find(c => c.saved_screener_id === screener?.id);
   const templates = templatesData?.templates ?? [];
 
   // Form state

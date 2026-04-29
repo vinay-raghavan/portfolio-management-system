@@ -255,14 +255,13 @@ class TestClosePosition:
             assert result.is_winner is True
 
     @pytest.mark.asyncio
-    async def test_close_short_uses_negative_existing_qty_for_funds(self, mock_db):
-        """Short closes must pass negative qty so margin is released, not blocked."""
+    async def test_close_short_recalculates_funds(self, mock_db):
+        """Closing a short position should recalculate funds from positions."""
         service = AlgoService(mock_db)
 
         with patch("app.modules.algo.service.DatabaseFundsProvider") as mock_provider_cls:
             provider = MagicMock()
-            provider.update_funds_for_trade = AsyncMock()
-            provider.update_realized_pnl = AsyncMock()
+            provider.recalculate_funds = AsyncMock()
             mock_provider_cls.return_value = provider
 
             await service._update_funds_for_closed_position(
@@ -275,9 +274,7 @@ class TestClosePosition:
                 product_type=ProductType.SLB,
             )
 
-            kwargs = provider.update_funds_for_trade.await_args.kwargs
-            assert kwargs["side"] == "BUY"
-            assert kwargs["existing_position_qty"] == Decimal("-5")
+            provider.recalculate_funds.assert_awaited_once_with("test-user-id")
 
     @pytest.mark.asyncio
     async def test_close_position_uses_position_product_type_for_funds(
