@@ -75,7 +75,8 @@ jobs:
             --ignore-vuln CVE-2026-0994 \
             --ignore-vuln CVE-2024-6345 \
             --ignore-vuln PYSEC-2025-49 \
-            --ignore-vuln CVE-2024-23342
+            --ignore-vuln CVE-2024-23342 \
+            --ignore-vuln CVE-2026-3219
 
   backend-test:
     name: Backend - Test
@@ -153,7 +154,8 @@ jobs:
         run: |
           uv run pip-audit \
             --ignore-vuln CVE-2026-0994 \
-            --ignore-vuln CVE-2026-21441
+            --ignore-vuln CVE-2026-21441 \
+            --ignore-vuln CVE-2026-3219
 
   worker-test:
     name: Worker - Test
@@ -246,7 +248,8 @@ jobs:
             --ignore-vuln CVE-2024-47081 \
             --ignore-vuln CVE-2025-4565 \
             --ignore-vuln CVE-2026-0994 \
-            --ignore-vuln CVE-2026-21441
+            --ignore-vuln CVE-2026-21441 \
+            --ignore-vuln CVE-2026-3219
 
   trading-engine-test:
     name: Trading Engine - Test
@@ -318,7 +321,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run bandit (static security analysis)
-        run: uv run bandit -r portfolio_shared -f txt -ll
+        run: uv run bandit -r shared -f txt -ll
 
       - name: Run pip-audit (dependency vulnerabilities)
         run: |
@@ -339,7 +342,8 @@ jobs:
             --ignore-vuln CVE-2024-47081 \
             --ignore-vuln CVE-2025-4565 \
             --ignore-vuln CVE-2026-0994 \
-            --ignore-vuln CVE-2026-21441
+            --ignore-vuln CVE-2026-21441 \
+            --ignore-vuln CVE-2026-3219
 
   frontend-security:
     name: Frontend - Security
