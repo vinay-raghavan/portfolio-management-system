@@ -116,12 +116,15 @@ def check_sl_tp_orders(self) -> dict:
                 if current_price <= 0:
                     continue
 
+                # Determine position side from tracking fields:
+                # LONG positions track highest_price, SHORT positions track lowest_price
+                highest_price = pos.get("highest_price_since_entry")
+                lowest_price = pos.get("lowest_price_since_entry")
+                is_long = not (lowest_price is not None and highest_price is None)
+
                 # Update trailing stop price if enabled (before checking SL)
                 # This adjusts the stop price based on favorable price movement
                 if trailing_stop_enabled:
-                    # For LONG positions: update when price moves up
-                    # Assume quantity > 0 means LONG position
-                    is_long = quantity > 0
                     update_response = client.patch(
                         f"{api_url}/trading/positions/{position_id}/trailing-stop-price",
                         json={"current_price": str(current_price), "is_long": is_long},
@@ -142,18 +145,28 @@ def check_sl_tp_orders(self) -> dict:
                 effective_stop_loss = trailing_stop_price if trailing_stop_enabled else stop_loss
 
                 # Check SL condition (highest priority)
-                if effective_stop_loss and current_price <= effective_stop_loss:
+                # LONG: trigger when price falls to/below stop
+                # SHORT: trigger when price rises to/above stop
+                sl_triggered = bool(
+                    effective_stop_loss
+                    and (
+                        (is_long and current_price <= effective_stop_loss)
+                        or (not is_long and current_price >= effective_stop_loss)
+                    )
+                )
+                if sl_triggered:
                     stop_type = "Trailing SL" if trailing_stop_enabled else "SL"
                     logger.info(
                         f"{stop_type} triggered for {symbol} @ {current_price} "
-                        f"(Stop: {effective_stop_loss})"
+                        f"(Stop: {effective_stop_loss}, side={'LONG' if is_long else 'SHORT'})"
                     )
-                    # Execute sell order
+                    # For LONG: sell to close; for SHORT: buy to cover
+                    close_side = "SELL" if is_long else "BUY"
                     order_data = {
                         "symbol": symbol,
-                        "side": "SELL",
+                        "side": close_side,
                         "order_type": "MARKET",
-                        "quantity": int(abs(quantity)),  # Use abs for SHORT positions
+                        "quantity": int(abs(quantity)),
                         "notes": f"Auto {stop_type} triggered at {current_price}",
                     }
                     sell_response = client.post(
@@ -167,14 +180,27 @@ def check_sl_tp_orders(self) -> dict:
                     continue
 
                 # Check TP condition
-                if take_profit and current_price >= take_profit:
-                    logger.info(f"TP triggered for {symbol} @ {current_price} (TP: {take_profit})")
-                    # Execute sell order
+                # Check TP condition
+                # LONG: trigger when price rises to/above TP
+                # SHORT: trigger when price falls to/below TP
+                tp_triggered = bool(
+                    take_profit
+                    and (
+                        (is_long and current_price >= take_profit)
+                        or (not is_long and current_price <= take_profit)
+                    )
+                )
+                if tp_triggered:
+                    logger.info(
+                        f"TP triggered for {symbol} @ {current_price} "
+                        f"(TP: {take_profit}, side={'LONG' if is_long else 'SHORT'})"
+                    )
+                    close_side = "SELL" if is_long else "BUY"
                     order_data = {
                         "symbol": symbol,
-                        "side": "SELL",
+                        "side": close_side,
                         "order_type": "MARKET",
-                        "quantity": int(quantity),
+                        "quantity": int(abs(quantity)),
                         "notes": f"Auto TP triggered at {current_price}",
                     }
                     sell_response = client.post(
@@ -191,7 +217,11 @@ def check_sl_tp_orders(self) -> dict:
                     executed = profit_booking_rules.get("executed", [])
 
                     # Calculate current profit percentage
-                    profit_pct = ((current_price - avg_cost) / avg_cost) * 100
+                    # LONG: profit when price rises; SHORT: profit when price falls
+                    if is_long:
+                        profit_pct = ((current_price - avg_cost) / avg_cost) * 100
+                    else:
+                        profit_pct = ((avg_cost - current_price) / avg_cost) * 100
 
                     for rule in rules:
                         target_pct = Decimal(str(rule["target_pct"]))
@@ -475,4 +505,46 @@ def process_amo_orders(self) -> dict:
 
     except Exception as e:
         logger.error(f"Error processing AMO orders: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@celery_app.task(name="trading.reset_daily_pnl_tracking")
+def reset_daily_pnl_tracking() -> dict:
+    """Reset daily P&L tracking for all users at market open.
+
+    This task should run at 9:15 AM IST (market open) to:
+    1. Set daily_start_value = current portfolio value
+    2. Reset daily_realized_pnl = 0
+    3. Update daily_reset_date = today
+
+    This enables the portfolio guardrail to trigger based on
+    intraday loss from day start, not cumulative P&L.
+    """
+    import httpx
+
+    from worker.config import settings
+
+    logger.info("Starting daily P&L tracking reset for all users...")
+
+    try:
+        trading_engine_url = settings.TRADING_ENGINE_URL.rstrip("/")
+
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(f"{trading_engine_url}/internal/reset-daily-pnl")
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    f"Daily P&L reset complete. Users reset: {result.get('users_reset', 0)}"
+                )
+                return {
+                    "status": "success",
+                    "users_reset": result.get("users_reset", 0),
+                }
+            else:
+                logger.error(f"Failed to reset daily P&L: {response.status_code}")
+                return {"status": "error", "message": f"API returned {response.status_code}"}
+
+    except Exception as e:
+        logger.error(f"Error resetting daily P&L tracking: {e}")
         return {"status": "error", "message": str(e)}

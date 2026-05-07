@@ -108,6 +108,12 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.trading.process_amo_orders",
         "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
     },
+    # Reset daily P&L tracking at market open - 9:15 AM IST (3:45 UTC)
+    # This enables portfolio guardrails to work based on intraday loss
+    "reset-daily-pnl-at-market-open": {
+        "task": "trading.reset_daily_pnl_tracking",
+        "schedule": crontab(hour=3, minute=45),  # 9:15 AM IST = 3:45 UTC
+    },
     # Signal generation - after market close 4 PM IST (10:30 UTC)
     "generate-daily-signals": {
         "task": "worker.tasks.signals.generate_daily_signals",
@@ -128,10 +134,11 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.algo.sync_circuit_breakers",
         "schedule": 300.0,  # Every 5 minutes
     },
-    # Check trailing stops and circuit breakers every 5 minutes during market hours
-    "check-stop-monitors-every-5-minutes": {
+    # Check trailing stops and circuit breakers every minute during market hours
+    # Must be frequent enough to catch tight INTRADAY stops (e.g., 0.75%)
+    "check-stop-monitors-every-minute": {
         "task": "worker.tasks.algo.check_stop_monitors",
-        "schedule": 300.0,  # Every 5 minutes
+        "schedule": 60.0,  # Every 1 minute
     },
     # Expire pending auto-trades every hour
     "expire-pending-auto-trades-hourly": {

@@ -297,6 +297,14 @@ class UserStrategy(Base):
         default=ProfitCutoffAction.PAUSE_STRATEGY,
     )
 
+    # Strategy-level default fixed stop loss / take profit (applied to positions)
+    default_stop_loss_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Fixed stop loss percentage as decimal (e.g., 0.02 = 2%)
+    default_take_profit_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True
+    )  # Fixed take profit percentage as decimal (e.g., 0.04 = 4%)
+
     # Strategy-level default trailing stop settings (applied to positions unless overridden)
     default_trailing_stop_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False

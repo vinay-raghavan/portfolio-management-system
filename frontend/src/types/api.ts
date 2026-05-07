@@ -667,6 +667,9 @@ export interface AlgoStrategy {
   product_type: StrategyProductType;
   // Signal direction (LONG/SHORT/BOTH)
   signal_direction: SignalDirection;
+  // Strategy-level default fixed stop loss / take profit (stored as decimal, e.g. 0.02 = 2%)
+  default_stop_loss_pct: number | null;
+  default_take_profit_pct: number | null;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled: boolean;
   default_trailing_stop_pct: number | null;
@@ -717,6 +720,9 @@ export interface AlgoStrategyCreate {
   product_type?: StrategyProductType;
   // Signal direction (LONG/SHORT/BOTH)
   signal_direction?: SignalDirection;
+  // Strategy-level default fixed stop loss / take profit (as decimal, e.g. 0.02 = 2%)
+  default_stop_loss_pct?: number;
+  default_take_profit_pct?: number;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;
@@ -755,6 +761,9 @@ export interface AlgoStrategyUpdate {
   product_type?: StrategyProductType;
   // Signal direction (LONG/SHORT/BOTH)
   signal_direction?: SignalDirection;
+  // Strategy-level default fixed stop loss / take profit (as decimal, e.g. 0.02 = 2%)
+  default_stop_loss_pct?: number;
+  default_take_profit_pct?: number;
   // Strategy-level default trailing stop and profit booking settings
   default_trailing_stop_enabled?: boolean;
   default_trailing_stop_pct?: number;

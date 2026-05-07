@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, TrendingDown, Target, Shield, DollarSign, Layers, Settings2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { Plus, Trash2, TrendingDown, Target, Shield, ShieldAlert, DollarSign, Layers, Settings2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -115,6 +115,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
   const [productType, setProductType] = useState<StrategyProductType>('DELIVERY');
   // Signal direction (LONG/SHORT/BOTH)
   const [signalDirection, setSignalDirection] = useState<SignalDirection>('LONG');
+  // Strategy-level default fixed stop loss / take profit state (displayed as %, stored as decimal)
+  const [defaultStopLossPct, setDefaultStopLossPct] = useState('');
+  const [defaultTakeProfitPct, setDefaultTakeProfitPct] = useState('');
   // Strategy-level default trailing stop state
   const [defaultTrailingStopEnabled, setDefaultTrailingStopEnabled] = useState(false);
   const [defaultTrailingStopPct, setDefaultTrailingStopPct] = useState('5');
@@ -186,6 +189,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setProductType(strategy.product_type || 'DELIVERY');
       // Signal direction
       setSignalDirection(strategy.signal_direction || 'LONG');
+      // Strategy-level fixed SL/TP (stored as decimal, display as %)
+      setDefaultStopLossPct(strategy.default_stop_loss_pct ? String(strategy.default_stop_loss_pct * 100) : '');
+      setDefaultTakeProfitPct(strategy.default_take_profit_pct ? String(strategy.default_take_profit_pct * 100) : '');
       // Strategy-level trailing stop and profit booking
       setDefaultTrailingStopEnabled(strategy.default_trailing_stop_enabled || false);
       setDefaultTrailingStopPct(strategy.default_trailing_stop_pct ? String(strategy.default_trailing_stop_pct * 100) : '5');
@@ -274,6 +280,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       setProductType('DELIVERY');
       // Signal direction default
       setSignalDirection('LONG');
+      // Strategy-level fixed SL/TP defaults
+      setDefaultStopLossPct('');
+      setDefaultTakeProfitPct('');
       // Strategy-level trailing stop and profit booking defaults
       setDefaultTrailingStopEnabled(false);
       setDefaultTrailingStopPct('5');
@@ -393,6 +402,9 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
       is_paper_trading: isPaperTrading,
       product_type: productType,
       signal_direction: signalDirection,
+      // Fixed SL/TP as decimal (e.g. 2% → 0.02)
+      default_stop_loss_pct: defaultStopLossPct ? parseFloat(defaultStopLossPct) / 100 : undefined,
+      default_take_profit_pct: defaultTakeProfitPct ? parseFloat(defaultTakeProfitPct) / 100 : undefined,
       default_trailing_stop_enabled: defaultTrailingStopEnabled,
       default_trailing_stop_pct: defaultTrailingStopEnabled ? parseFloat(defaultTrailingStopPct) / 100 : undefined,
       default_profit_booking_rules: defaultProfitBookingEnabled
@@ -1091,6 +1103,50 @@ export function StrategyDialog({ open, onOpenChange, strategy }: StrategyDialogP
                     onChange={(e) => setMaxConsecutiveLosses(e.target.value)}
                     min="1"
                   />
+                </div>
+              </div>
+              {/* Fixed Stop Loss / Take Profit */}
+              <div className="border-t pt-4 mt-2 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-red-500" />
+                  <Label className="font-medium">Fixed Stop Loss & Take Profit</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Hard backstop applied to all positions. Acts as safety net even when trailing stop is enabled.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="defaultStopLossPct">Stop Loss %</Label>
+                    <Input
+                      id="defaultStopLossPct"
+                      type="number"
+                      placeholder="e.g. 2"
+                      value={defaultStopLossPct}
+                      onChange={(e) => setDefaultStopLossPct(e.target.value)}
+                      min="0.1"
+                      max="50"
+                      step="0.1"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Max loss per position. Leave empty for no fixed SL.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="defaultTakeProfitPct">Take Profit %</Label>
+                    <Input
+                      id="defaultTakeProfitPct"
+                      type="number"
+                      placeholder="e.g. 4"
+                      value={defaultTakeProfitPct}
+                      onChange={(e) => setDefaultTakeProfitPct(e.target.value)}
+                      min="0.1"
+                      max="100"
+                      step="0.1"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Target profit per position. Leave empty for no fixed TP.
+                    </p>
+                  </div>
                 </div>
               </div>
               {/* Default Trailing Stop */}

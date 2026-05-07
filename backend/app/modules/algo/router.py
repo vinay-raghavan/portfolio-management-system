@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from redis.asyncio import Redis
+from shared.providers.data import DataProvider, get_data_provider
 from shared.strategies.registry import StrategyRegistry
 
 from app.api.deps import CurrentUser, DbSession
@@ -56,6 +57,7 @@ from app.modules.algo.universe_service import (
     PREDEFINED_UNIVERSES,
     UniverseService,
 )
+from app.modules.data.service import get_user_data_provider
 from app.modules.portfolio.schemas import (
     ProfitBookingRules,
     ProfitLockConfig,
@@ -71,6 +73,18 @@ logger = logging.getLogger(__name__)
 _notification_service = AlgoNotificationService()
 
 router = APIRouter()
+
+
+async def _get_data_provider_for_user(db, user_id: str) -> DataProvider:
+    """Get data provider based on user's settings (Fyers/Yahoo/NSE).
+
+    Falls back to Yahoo if user's preferred provider is not available.
+    """
+    provider = await get_user_data_provider(db, user_id)
+    if provider is None:
+        # User has Yahoo selected or no settings - use default Yahoo
+        provider = get_data_provider("yahoo")
+    return provider
 
 
 # ============== Strategy Type Endpoints ==============
@@ -446,7 +460,11 @@ async def update_strategy(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     await db.commit()
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
+    strategy, executions = await service.get_strategy(
+        current_user.id, strategy_id, load_recent_executions=False
+    )
+    return StrategyResponse.from_model(strategy, executions=executions)
 
 
 @router.delete("/strategies/{strategy_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -532,7 +550,9 @@ async def unlink_strategy_from_screener(
     strategy.sync_from_screener = False
     await db.commit()
 
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch to avoid lazy-load issues after commit
+    await db.refresh(strategy)
+    return StrategyResponse.from_model(strategy, executions=[])
 
 
 @router.post("/strategies/{strategy_id}/relink-screener", response_model=StrategyResponse)
@@ -572,7 +592,9 @@ async def relink_strategy_to_screener(
     strategy.sync_from_screener = True
     await db.commit()
 
-    return StrategyResponse.model_validate(strategy)
+    # Re-fetch to avoid lazy-load issues after commit
+    await db.refresh(strategy)
+    return StrategyResponse.from_model(strategy, executions=[])
 
 
 @router.post("/strategies/{strategy_id}/trigger")
@@ -701,8 +723,6 @@ async def close_position(
     If no exit price is provided, fetches current market price.
     If no quantity is provided, closes the entire position.
     """
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # Verify strategy exists and belongs to user
@@ -723,8 +743,8 @@ async def close_position(
     quantity = data.quantity if data else None
 
     if not exit_price:
-        # Fetch current market price
-        data_provider = YahooDataProvider()
+        # Fetch current market price using user's preferred provider
+        data_provider = await _get_data_provider_for_user(db, current_user.id)
         try:
             quote = await data_provider.get_quote(symbol)
             if quote and quote.price:
@@ -786,8 +806,6 @@ async def square_off_strategy(
     Optionally provide exit prices for each symbol; missing symbols will use market price.
     This does NOT affect other strategies or disable the strategy.
     """
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # Verify strategy exists and belongs to user
@@ -817,7 +835,7 @@ async def square_off_strategy(
     # Fetch current prices for positions without provided exit price
     symbols_needing_price = [p.symbol for p in positions if p.symbol not in exit_prices]
     if symbols_needing_price:
-        data_provider = YahooDataProvider()
+        data_provider = await _get_data_provider_for_user(db, current_user.id)
         for symbol in symbols_needing_price:
             try:
                 quote = await data_provider.get_quote(symbol)
@@ -916,8 +934,6 @@ async def emergency_stop(
     data: EmergencyStopRequest = Body(default_factory=EmergencyStopRequest),
 ) -> EmergencyStopResponse:
     """Emergency stop with selectable mode: pause only, or pause + square off."""
-    from app.providers.data import YahooDataProvider
-
     pause_and_square_off = data.mode == EmergencyStopMode.PAUSE_AND_SQUARE_OFF
     reason = data.reason or (
         "Emergency stop triggered (pause + square off)"
@@ -945,7 +961,7 @@ async def emergency_stop(
         # Prepare one symbol->price map and reuse across strategy square-off calls.
         exit_prices: dict[str, Decimal] = {}
         if open_positions:
-            data_provider = YahooDataProvider()
+            data_provider = await _get_data_provider_for_user(db, current_user.id)
             symbols = sorted({p.symbol for p in open_positions})
             for symbol in symbols:
                 try:
@@ -1319,8 +1335,6 @@ async def list_positions(
     Optionally filter by strategy ID and/or position status.
     Returns unrealized P&L for open positions.
     """
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # First get positions without prices to know which symbols we need
@@ -1335,10 +1349,10 @@ async def list_positions(
         }
     )
 
-    # Fetch current prices for open positions
+    # Fetch current prices for open positions using user's preferred provider
     current_prices: dict[str, Decimal] = {}
     if open_symbols:
-        data_provider = YahooDataProvider()
+        data_provider = await _get_data_provider_for_user(db, current_user.id)
         for symbol in open_symbols:
             try:
                 quote = await data_provider.get_quote(symbol)
@@ -1368,8 +1382,6 @@ async def get_pnl_summary(
     """
     import asyncio
 
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # First get open/partial positions to know which symbols we need prices for
@@ -1379,6 +1391,9 @@ async def get_pnl_summary(
     symbols = list({p.symbol for p in positions}) if positions else []
     user_id = current_user.id
 
+    # Get data provider based on user's settings before committing
+    data_provider = await _get_data_provider_for_user(db, current_user.id)
+
     # Commit transaction to release DB connection before external API calls
     await db.commit()
 
@@ -1386,7 +1401,6 @@ async def get_pnl_summary(
     # Use parallel fetching for better performance
     current_prices: dict[str, Decimal] = {}
     if symbols:
-        data_provider = YahooDataProvider()
 
         async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
             try:
@@ -1418,8 +1432,6 @@ async def get_pnl_by_strategy(
     """
     import asyncio
 
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # First get open/partial positions to know which symbols we need prices for
@@ -1428,6 +1440,9 @@ async def get_pnl_by_strategy(
     symbols = list({p.symbol for p in positions}) if positions else []
     user_id = current_user.id
 
+    # Get data provider based on user's settings before committing
+    data_provider = await _get_data_provider_for_user(db, current_user.id)
+
     # Commit transaction to release DB connection before external API calls
     await db.commit()
 
@@ -1435,7 +1450,6 @@ async def get_pnl_by_strategy(
     # Use parallel fetching for better performance
     current_prices: dict[str, Decimal] = {}
     if symbols:
-        data_provider = YahooDataProvider()
 
         async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
             try:
@@ -1486,8 +1500,6 @@ async def get_unrealized_pnl(
     """
     import asyncio
 
-    from app.providers.data import YahooDataProvider
-
     service = AlgoService(db)
 
     # First get the positions to know which symbols we need prices for
@@ -1505,15 +1517,15 @@ async def get_unrealized_pnl(
             positions_count=0,
         )
 
-    # Get symbols before committing transaction
+    # Get symbols and data provider before committing transaction
     symbols = list({p.symbol for p in positions})
+    data_provider = await _get_data_provider_for_user(db, current_user.id)
 
     # Commit transaction to release DB connection before external API calls
     await db.commit()
 
     # Get current prices for all symbols using parallel fetching
     current_prices: dict[str, Decimal] = {}
-    data_provider = YahooDataProvider()
 
     async def fetch_price(symbol: str) -> tuple[str, Decimal | None]:
         try:

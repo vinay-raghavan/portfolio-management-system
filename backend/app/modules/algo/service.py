@@ -92,6 +92,8 @@ class AlgoService:
             profit_cutoff_action=data.profit_cutoff_action,
             is_paper_trading=data.is_paper_trading,
             product_type=data.product_type,
+            default_stop_loss_pct=data.default_stop_loss_pct,
+            default_take_profit_pct=data.default_take_profit_pct,
             default_trailing_stop_enabled=data.default_trailing_stop_enabled,
             default_trailing_stop_pct=data.default_trailing_stop_pct,
             default_profit_booking_rules=(
@@ -740,9 +742,21 @@ class AlgoService:
                 if start_date.isoformat() <= entry_date_str <= end_date.isoformat():
                     pnl_by_date[entry_date_str]["trades_opened"] += 1
 
+        # Seed cumulative with P&L from positions closed before the window
+        prior_pnl = Decimal("0")
+        for p in positions:
+            if p.status == PositionStatus.CLOSED and p.exit_at:
+                pnl_date = p.exit_at.date()
+            elif p.status == PositionStatus.PARTIAL and p.updated_at:
+                pnl_date = p.updated_at.date()
+            else:
+                continue
+            if pnl_date < start_date:
+                prior_pnl += p.realized_pnl
+
         # Build daily P&L list
         daily_pnl = []
-        cumulative = Decimal("0")
+        cumulative = prior_pnl
         total_realized = Decimal("0")
         profitable_days = 0
         losing_days = 0
@@ -1147,53 +1161,27 @@ class AlgoService:
     ) -> None:
         """Update user_funds when a position is closed.
 
-        This handles:
-        1. Crediting sale proceeds (for LONG) or debiting buy cost (for SHORT)
-        2. Releasing margin (for INTRADAY/MARGIN products)
-        3. Updating cumulative realized P&L
+        Uses recalculate_funds() to derive all values from positions,
+        ensuring funds stay in sync and don't drift from incremental rounding.
 
         Args:
             user_id: User ID
             side: Position side (LONG or SHORT)
             close_qty: Quantity being closed
-            entry_price: Original entry price (for margin release)
+            entry_price: Original entry price
             exit_price: Exit price
-            pnl: Realized P&L from this close
-            product_type: Product type for margin handling
+            pnl: Realized P&L from this close (for logging only)
+            product_type: Product type (for logging only)
         """
         try:
             funds_provider = DatabaseFundsProvider(db=self.db)
-
-            # For LONG positions, closing means SELL (credit proceeds)
-            # For SHORT positions, closing means BUY (debit cost to cover)
-            trade_side = "SELL" if side == PositionSide.LONG else "BUY"
-            # Funds provider expects signed position quantity:
-            # positive for long closes, negative for short closes.
-            existing_position_qty = Decimal(str(close_qty))
-            if side == PositionSide.SHORT:
-                existing_position_qty = -existing_position_qty
-
-            await funds_provider.update_funds_for_trade(
-                user_id=user_id,
-                side=trade_side,
-                quantity=Decimal(str(close_qty)),
-                price=exit_price,
-                fees=Decimal("0"),  # Fees handled separately if needed
-                product_type=product_type,
-                existing_position_qty=existing_position_qty,
-                entry_price=entry_price,  # For proper margin release
+            await funds_provider.recalculate_funds(user_id)
+            logger.debug(
+                f"Recalculated funds for user {user_id[:8]}... "
+                f"after closing {side.value} position: pnl={'+' if pnl > 0 else ''}₹{pnl:.2f}"
             )
-
-            # Update cumulative realized P&L
-            if pnl != Decimal("0"):
-                await funds_provider.update_realized_pnl(user_id, pnl)
-                logger.debug(
-                    f"Updated realized P&L for user {user_id[:8]}...: "
-                    f"{'+' if pnl > 0 else ''}₹{pnl:.2f}"
-                )
-
         except Exception as e:
-            logger.warning(f"Failed to update funds for closed position: {e}")
+            logger.warning(f"Failed to recalculate funds for closed position: {e}")
 
     async def square_off_strategy(
         self,

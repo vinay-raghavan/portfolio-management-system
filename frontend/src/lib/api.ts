@@ -1296,10 +1296,10 @@ export const autoTradeApi = {
 
   // Weight Configuration
   getWeights: (category: string) =>
-    api.get<WeightConfigResponse>(`/auto-trade/weights/${category}`),
+    api.get<WeightConfigResponse>('/auto-trade/weights', { params: { category } }),
 
   updateWeights: (category: string, data: WeightConfigUpdate) =>
-    api.put<WeightConfigResponse>(`/auto-trade/weights/${category}`, data),
+    api.put<WeightConfigResponse>('/auto-trade/weights', data, { params: { category } }),
 
   // Pending Auto-Trades
   getPendingTrades: (status?: string) =>

@@ -185,7 +185,7 @@ function AutoTradeConfigCard({
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<AutoTradeConfig>) => autoTradeApi.updateConfig(category.value, data),
+    mutationFn: (data: Partial<AutoTradeConfig>) => autoTradeApi.updateConfig(config!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['auto-trade-configs'] });
       onUpdate();

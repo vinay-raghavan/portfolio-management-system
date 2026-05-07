@@ -552,6 +552,7 @@ class SafetyService:
         price: Decimal,
         product_type: str = "DELIVERY",
         existing_position_qty: Decimal | None = None,
+        margin_committed: Decimal = Decimal("0"),
     ) -> SafetyCheck:
         """Check if an order passes safety checks including funds/margin validation.
 
@@ -566,6 +567,8 @@ class SafetyService:
             price: Order price
             product_type: Product type (DELIVERY, INTRADAY, MARGIN)
             existing_position_qty: Current position quantity for SELL validation
+            margin_committed: Margin already committed by prior signals in the
+                same execution cycle (not yet reflected in DB funds)
 
         Returns:
             SafetyCheck with pass/fail status
@@ -592,7 +595,12 @@ class SafetyService:
 
             if side == "BUY":
                 return self._check_buy_funds(
-                    product_type, order_value, estimated_fees, margin_percent, funds
+                    product_type,
+                    order_value,
+                    estimated_fees,
+                    margin_percent,
+                    funds,
+                    margin_committed,
                 )
             else:  # SELL
                 return self._check_sell_funds(
@@ -640,39 +648,54 @@ class SafetyService:
         fees: Decimal,
         margin_percent: Decimal,
         funds,
+        margin_committed: Decimal = Decimal("0"),
     ) -> SafetyCheck:
-        """Check funds for BUY order based on product type."""
-        # Block any order if available cash is negative
-        if funds.available_cash < Decimal("0"):
+        """Check funds for BUY order based on product type.
+
+        Args:
+            margin_committed: Margin already committed by prior signals in the
+                same execution cycle (not yet reflected in DB funds).
+                Subtracted from available_cash to prevent over-allocation.
+        """
+        # Effective available cash = DB available_cash - margin already committed
+        effective_available = funds.available_cash - margin_committed
+
+        # Block any order if effective available cash is negative
+        if effective_available < Decimal("0"):
             return SafetyCheck(
                 passed=False,
                 reason=(
-                    f"Negative available cash (₹{funds.available_cash:.2f}). "
-                    f"Cannot open new positions until existing positions are closed."
+                    f"Insufficient available cash (₹{effective_available:.2f}, "
+                    f"margin already committed: ₹{margin_committed:.2f}). "
+                    f"Cannot open new positions."
                 ),
             )
 
         if product_type.upper() in ("DELIVERY", "CNC"):
             # Full payment required
             total_required = order_value + fees
-            if funds.available_cash < total_required:
+            if effective_available < total_required:
                 return SafetyCheck(
                     passed=False,
                     reason=(
                         f"Insufficient funds for DELIVERY buy: "
-                        f"required ₹{total_required:.2f}, available ₹{funds.available_cash:.2f}"
+                        f"required ₹{total_required:.2f}, "
+                        f"available ₹{effective_available:.2f} "
+                        f"(committed: ₹{margin_committed:.2f})"
                     ),
                 )
         else:
             # Margin required
             margin_required = order_value * margin_percent + fees
-            if funds.available_cash < margin_required:
+            if effective_available < margin_required:
                 return SafetyCheck(
                     passed=False,
                     reason=(
                         f"Insufficient margin for {product_type} buy: "
-                        f"required ₹{margin_required:.2f} ({margin_percent * 100:.0f}% margin), "
-                        f"available ₹{funds.available_cash:.2f}"
+                        f"required ₹{margin_required:.2f} "
+                        f"({margin_percent * 100:.0f}% margin), "
+                        f"available ₹{effective_available:.2f} "
+                        f"(committed: ₹{margin_committed:.2f})"
                     ),
                 )
         return SafetyCheck(passed=True)

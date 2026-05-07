@@ -205,6 +205,16 @@ class UserFunds(Base):
         Numeric(18, 4), nullable=False, default=Decimal("100000")
     )
 
+    # Daily P&L tracking for intraday guardrails
+    # Resets at market open (9:15 AM IST) each trading day
+    daily_realized_pnl: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_start_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    daily_reset_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

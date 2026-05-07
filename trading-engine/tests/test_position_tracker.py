@@ -5,8 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.algo.position_tracker import PnLStats, PositionResult, PositionTracker
-from engine.models.algo import AlgoPosition, PositionSide, PositionStatus
+from engine.algo.position_tracker import (
+    DirectionViolationError,
+    PnLStats,
+    PositionResult,
+    PositionTracker,
+)
+from engine.models.algo import AlgoPosition, PositionSide, PositionStatus, SignalDirection
 
 
 class TestPnLStats:
@@ -401,7 +406,9 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.losing_trades == 1
-        assert stats.total_pnl == Decimal("-6000.00")  # (940-1000)*100
+        assert stats.total_pnl == Decimal(
+            "-5000.00"
+        )  # (950-1000)*100, exits at stop price not market
 
     async def test_check_take_profit_long_position(self, tracker, mock_db):
         """Test take-profit trigger for LONG position."""
@@ -463,7 +470,7 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.winning_trades == 1
-        assert stats.total_pnl == Decimal("7500.00")  # (1650-1500)*50
+        assert stats.total_pnl == Decimal("5000.00")  # (1600-1500)*50, exits at TP price not market
 
     async def test_check_stop_loss_short_position(self, tracker, mock_db):
         """Test stop-loss trigger for SHORT position."""
@@ -525,8 +532,8 @@ class TestPositionTrackerUnit:
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
         assert stats.losing_trades == 1
-        # SHORT P&L = (entry - exit) * qty = (3500 - 3650) * 20 = -3000
-        assert stats.total_pnl == Decimal("-3000.00")
+        # SHORT P&L = (entry - exit) * qty = (3500 - 3600) * 20 = -2000, exits at stop price not market
+        assert stats.total_pnl == Decimal("-2000.00")
 
     async def test_no_exit_when_price_in_range(self, tracker, mock_db):
         """Test no exit when price is between stop-loss and take-profit."""
@@ -869,8 +876,8 @@ class TestTrailingStopLoss:
         # Should have closed due to trailing stop
         assert len(closed_positions) == 1
         assert stats.trades_closed == 1
-        # P&L = (1040 - 1000) * 100 = 4000 profit (still profitable due to trailing!)
-        assert closed_positions[0].realized_pnl == Decimal("4000.00")
+        # P&L = (1045 - 1000) * 100 = 4500 profit, exits at trailing stop price not market
+        assert closed_positions[0].realized_pnl == Decimal("4500.00")
 
     async def test_trailing_stop_updates_when_price_falls_short(self, tracker, mock_db):
         """Test trailing stop moves down when price falls for SHORT position."""
@@ -1233,3 +1240,100 @@ class TestSafetyService:
 
         assert result.passed is False
         assert "value" in result.reason.lower()
+
+
+class TestDirectionViolationGuard:
+    """Tests for the defense-in-depth direction guard in open_position."""
+
+    @pytest.fixture
+    def mock_db(self):
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+        db.refresh = AsyncMock()
+        db.execute = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def tracker(self, mock_db):
+        return PositionTracker(mock_db)
+
+    def _make_strategy(self, direction: SignalDirection) -> MagicMock:
+        strategy = MagicMock()
+        strategy.signal_direction = direction
+        strategy.default_stop_loss_pct = None
+        strategy.default_take_profit_pct = None
+        strategy.default_trailing_stop_enabled = False
+        strategy.default_trailing_stop_pct = None
+        strategy.default_profit_lock_enabled = False
+        strategy.default_profit_lock_levels = None
+        return strategy
+
+    async def test_long_only_refuses_to_open_short(self, tracker, mock_db):
+        """LONG-only strategy must refuse to open a SHORT position."""
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.scalar_one_or_none.return_value = self._make_strategy(
+            SignalDirection.LONG
+        )
+        mock_position_result = MagicMock()
+        mock_position_result.scalar_one_or_none.return_value = None
+        mock_db.execute.side_effect = [mock_strategy_result, mock_position_result]
+
+        with pytest.raises(DirectionViolationError) as exc_info:
+            await tracker.open_position(
+                strategy_id="strat-long",
+                user_id="user-1",
+                symbol="POWERGRID",
+                side="SELL",
+                quantity=36,
+                entry_price=Decimal("319.35"),
+            )
+        assert "LONG-only" in str(exc_info.value)
+        mock_db.add.assert_not_called()
+
+    async def test_short_only_refuses_to_open_long(self, tracker, mock_db):
+        """SHORT-only strategy must refuse to open a LONG position."""
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.scalar_one_or_none.return_value = self._make_strategy(
+            SignalDirection.SHORT
+        )
+        mock_position_result = MagicMock()
+        mock_position_result.scalar_one_or_none.return_value = None
+        mock_db.execute.side_effect = [mock_strategy_result, mock_position_result]
+
+        with pytest.raises(DirectionViolationError):
+            await tracker.open_position(
+                strategy_id="strat-short",
+                user_id="user-1",
+                symbol="RELIANCE",
+                side="BUY",
+                quantity=10,
+                entry_price=Decimal("2500.00"),
+            )
+        mock_db.add.assert_not_called()
+
+    async def test_both_direction_allows_either_side(self, tracker, mock_db):
+        """BOTH strategies should open positions in either direction."""
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.scalar_one_or_none.return_value = self._make_strategy(
+            SignalDirection.BOTH
+        )
+        mock_position_result = MagicMock()
+        mock_position_result.scalar_one_or_none.return_value = None
+        mock_db.execute.side_effect = [mock_strategy_result, mock_position_result]
+
+        async def mock_refresh(pos):
+            pos.id = "new-pos-id"
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        result = await tracker.open_position(
+            strategy_id="strat-both",
+            user_id="user-1",
+            symbol="POWERGRID",
+            side="SELL",
+            quantity=36,
+            entry_price=Decimal("319.35"),
+        )
+        assert result.side == "SHORT"
+        mock_db.add.assert_called_once()

@@ -17,7 +17,7 @@ from engine.algo.position_tracker import PnLStats, PositionResult, PositionTrack
 from engine.algo.safety import AlgoKillSwitch, CircuitBreaker, PreExecutionChecker, SafetyService
 from engine.algo.scheduler import StrategyScheduler
 from engine.config import settings
-from engine.core.database import get_db
+from engine.core.database import async_session_maker, get_db
 from engine.core.locks import (
     SCHEDULED_RUN_LOCK_KEY,
     STRATEGY_LOCK_KEY,
@@ -38,12 +38,61 @@ from engine.models.algo import (
     UserStrategy,
 )
 from engine.providers.broker import PaperBroker
-from engine.providers.data import DataProvider, get_data_provider
+from engine.providers.data import DataProvider
 from engine.providers.schemas import ProductType
 from engine.providers.user_broker import get_user_broker
+from engine.providers.user_data import clear_provider_cache, get_user_data_provider
 from engine.strategies.registry import StrategyRegistry
 
 logger = logging.getLogger(__name__)
+
+
+async def _retry_with_fresh_session(
+    poisoned_db: AsyncSession,
+    strategy_id: str | None,
+    operation,
+) -> UserStrategy | None:
+    """Recover from a poisoned session by closing it and retrying on a fresh one.
+
+    When the underlying asyncpg connection dies mid-session (e.g. killed by
+    firewall after a long idle fetch), rollback() can't resurrect it — we must
+    close the session so the bad connection is returned/invalidated in the pool,
+    then reload the strategy in a brand-new session and re-apply the update.
+
+    Args:
+        poisoned_db: The session that already errored; will be rolled back & closed.
+        strategy_id: Strategy to reload in the fresh session.
+        operation: async callable ``(strategy, scheduler) -> None`` to retry.
+
+    Returns:
+        The reloaded strategy instance (attached to the fresh session), or None
+        if the strategy could not be reloaded.
+    """
+    try:
+        await poisoned_db.rollback()
+    except Exception as rb_err:
+        logger.warning(f"Rollback on poisoned session failed, closing: {rb_err}")
+    try:
+        await poisoned_db.close()
+    except Exception as close_err:
+        logger.warning(f"Close on poisoned session failed: {close_err}")
+
+    if not strategy_id:
+        return None
+
+    async with async_session_maker() as fresh_db:
+        try:
+            fresh_scheduler = StrategyScheduler(fresh_db)
+            strategy = await fresh_scheduler.get_strategy_by_id(strategy_id)
+            if strategy is None:
+                return None
+            await operation(strategy, fresh_scheduler)
+            await fresh_db.commit()
+            return strategy
+        except Exception as retry_err:
+            logger.error(f"Fresh-session retry for strategy {strategy_id} failed: {retry_err}")
+            await fresh_db.rollback()
+            return None
 
 
 def _is_within_strategy_time_window(strategy: UserStrategy) -> tuple[bool, str]:
@@ -324,7 +373,15 @@ async def _evaluate_portfolio_safety(
     user_id: str,
     data_provider: DataProvider,
 ) -> dict:
-    """Evaluate and enforce user-level portfolio safety guardrail."""
+    """Evaluate and enforce user-level portfolio safety guardrail.
+
+    Uses DAILY P&L from day start, not cumulative P&L:
+    - daily_realized_pnl: P&L from positions closed today
+    - unrealized_pnl: Current MTM of open positions
+    - daily_start_value: Portfolio value at market open (for % calculation)
+    """
+    from datetime import date
+
     cfg_result = await db.execute(
         select(PortfolioSafetyConfig).where(PortfolioSafetyConfig.user_id == user_id)
     )
@@ -337,24 +394,37 @@ async def _evaluate_portfolio_safety(
     if not funds:
         return {"breached": False, "triggered": False}
 
-    realized_pnl = Decimal(str(funds.realized_pnl or 0))
+    # Use DAILY P&L, not cumulative
+    daily_realized_pnl = Decimal(str(funds.daily_realized_pnl or 0))
     unrealized_pnl = await _calculate_user_unrealized_pnl(db, user_id, data_provider)
-    current_total_pnl = realized_pnl + unrealized_pnl
+    daily_total_pnl = daily_realized_pnl + unrealized_pnl
 
-    # Only act on drawdown / losses.
-    if current_total_pnl >= Decimal("0"):
+    # Check if daily tracking is initialized for today
+    today = date.today()
+    daily_start_value = Decimal(str(funds.daily_start_value or 0))
+    if not funds.daily_reset_date or funds.daily_reset_date != today:
+        # Daily tracking not yet reset for today - use current portfolio value
+        # This handles edge case where reset task hasn't run yet
+        daily_start_value = funds.cash_balance + funds.margin_used
+        logger.debug(
+            f"Daily tracking not reset for {user_id}, using current value: {daily_start_value}"
+        )
+
+    # Only act on drawdown / losses
+    if daily_total_pnl >= Decimal("0"):
         return {
             "breached": False,
             "triggered": False,
             "loss_amount": Decimal("0"),
             "loss_pct": Decimal("0"),
+            "daily_pnl": daily_total_pnl,
         }
 
-    loss_amount = abs(current_total_pnl)
-    starting_balance = Decimal(str(funds.starting_balance or 0))
+    loss_amount = abs(daily_total_pnl)
+    # Calculate loss % based on daily starting value, not initial deposit
     loss_pct = (
-        (loss_amount / starting_balance) * Decimal("100")
-        if starting_balance > Decimal("0")
+        (loss_amount / daily_start_value) * Decimal("100")
+        if daily_start_value > Decimal("0")
         else Decimal("0")
     )
 
@@ -370,12 +440,20 @@ async def _evaluate_portfolio_safety(
         if threshold_type == PortfolioSafetyThresholdType.PERCENT.value
         else loss_amount >= threshold_value
     )
+
+    logger.info(
+        f"Portfolio safety check for {user_id}: "
+        f"daily_pnl=₹{daily_total_pnl:.2f}, loss_pct={loss_pct:.2f}%, "
+        f"threshold={threshold_value}{threshold_type}, breached={breached}"
+    )
+
     if not breached:
         return {
             "breached": False,
             "triggered": False,
             "loss_amount": loss_amount,
             "loss_pct": loss_pct,
+            "daily_pnl": daily_total_pnl,
         }
 
     action_mode = (config.action_mode or PortfolioSafetyActionMode.PAUSE_ONLY.value).upper()
@@ -387,8 +465,8 @@ async def _evaluate_portfolio_safety(
     pause_and_square_off = action_mode == PortfolioSafetyActionMode.PAUSE_AND_SQUARE_OFF.value
 
     reason = (
-        f"Portfolio safety triggered: loss {loss_pct:.2f}% (₹{loss_amount:.2f}) "
-        f"breached {threshold_type} threshold {threshold_value}"
+        f"Portfolio safety triggered: DAILY loss {loss_pct:.2f}% (₹{loss_amount:.2f}) "
+        f"breached {threshold_type} threshold {threshold_value}%"
     )
 
     kill_switch = AlgoKillSwitch(redis)
@@ -424,7 +502,7 @@ async def _evaluate_portfolio_safety(
 
     logger.critical(
         f"PORTFOLIO SAFETY TRIGGERED for user {user_id}: "
-        f"action={action_mode}, loss_pct={loss_pct:.2f}, loss_amount=₹{loss_amount:.2f}, "
+        f"action={action_mode}, daily_loss_pct={loss_pct:.2f}%, daily_loss=₹{loss_amount:.2f}, "
         f"strategies_killed={len(active_strategies)}"
     )
 
@@ -581,6 +659,11 @@ async def execute_strategy_full(
             portfolio_percent=Decimal(str(request.portfolio_percent)),
             risk_per_trade_percent=Decimal(str(request.risk_per_trade_percent)),
             max_open_positions=request.max_open_positions,
+            max_position_value=(
+                Decimal(str(request.max_position_value))
+                if getattr(request, "max_position_value", None)
+                else None
+            ),
             product_type=ProductType.normalize(request.product_type),
             signal_direction=SignalDirection(request.signal_direction),
             # Trading time window configuration
@@ -599,7 +682,7 @@ async def execute_strategy_full(
         )
         if not await broker.is_connected():
             await broker.connect()
-        data_provider = get_data_provider()
+        data_provider = await get_user_data_provider(db, request.user_id)
         _configure_broker_price_fetcher(broker, data_provider)
         # Pass broker to SafetyService for funds validation
         safety_service = SafetyService(broker=broker)
@@ -676,7 +759,8 @@ async def run_scheduled_strategies(
         results = []
         executed_count = 0
         user_safety_cache: dict[str, dict] = {}
-        shared_data_provider = get_data_provider()
+        user_data_providers: dict[str, DataProvider] = {}
+        clear_provider_cache()  # Clear stale cached providers at start of cycle
 
         for strategy in due_strategies:
             try:
@@ -701,6 +785,13 @@ async def run_scheduled_strategies(
                     continue
 
                 try:
+                    # Resolve data provider per-user (fyers/yahoo/nse)
+                    if strategy.user_id not in user_data_providers:
+                        user_data_providers[strategy.user_id] = await get_user_data_provider(
+                            db, strategy.user_id
+                        )
+                    strategy_data_provider = user_data_providers[strategy.user_id]
+
                     # Enforce portfolio safety once per user per run cycle.
                     safety_result = user_safety_cache.get(strategy.user_id)
                     if safety_result is None:
@@ -709,7 +800,7 @@ async def run_scheduled_strategies(
                             redis=redis,
                             scheduler=scheduler,
                             user_id=strategy.user_id,
-                            data_provider=shared_data_provider,
+                            data_provider=strategy_data_provider,
                         )
                         user_safety_cache[strategy.user_id] = safety_result
 
@@ -731,7 +822,7 @@ async def run_scheduled_strategies(
                     closed_positions, exit_pnl = await _check_exit_conditions_for_strategy(
                         db=db,
                         strategy=strategy,
-                        data_provider=shared_data_provider,
+                        data_provider=strategy_data_provider,
                     )
 
                     # Update strategy stats if any positions were closed
@@ -811,6 +902,7 @@ async def run_scheduled_strategies(
                         portfolio_percent=strategy.portfolio_percent,
                         risk_per_trade_percent=strategy.risk_per_trade_percent,
                         max_open_positions=strategy.max_open_positions,
+                        max_position_value=strategy.max_position_value,
                         product_type=ProductType.normalize(strategy.product_type.value),
                         signal_direction=strategy.signal_direction or SignalDirection.LONG,
                         # Trading time window configuration
@@ -829,27 +921,58 @@ async def run_scheduled_strategies(
                     )
                     if not await broker.is_connected():
                         await broker.connect()
-                    _configure_broker_price_fetcher(broker, shared_data_provider)
+                    _configure_broker_price_fetcher(broker, strategy_data_provider)
                     safety_service = SafetyService(broker=broker)
 
                     executor = StrategyExecutor(
                         broker=broker,
-                        data_provider=shared_data_provider,
+                        data_provider=strategy_data_provider,
                         safety_service=safety_service,
                     )
                     result = await executor.execute(config)
 
-                    # Update next run time
-                    await scheduler.update_next_run(strategy)
+                    # Update next run time — DB connection may be stale after
+                    # long data fetches, so rollback and retry if needed. If the
+                    # underlying connection is dead, rollback() itself can't
+                    # resurrect it — fall back to a fresh session.
+                    try:
+                        await scheduler.update_next_run(strategy)
+                    except Exception:
+                        logger.warning(
+                            f"DB stale after execution of {strategy.id}, recovering with fresh session"
+                        )
+                        strategy = await _retry_with_fresh_session(
+                            db, strategy.id, lambda s, sch: sch.update_next_run(s)
+                        )
 
                     # Update strategy statistics with P&L from position tracker
-                    await scheduler.update_strategy_stats(
-                        strategy=strategy,
-                        orders_filled=result.orders_filled,
-                        total_pnl_delta=float(result.pnl_stats.total_pnl),
-                        winning_trades_delta=result.pnl_stats.winning_trades,
-                        losing_trades_delta=result.pnl_stats.losing_trades,
-                    )
+                    try:
+                        await scheduler.update_strategy_stats(
+                            strategy=strategy,
+                            orders_filled=result.orders_filled,
+                            total_pnl_delta=float(result.pnl_stats.total_pnl),
+                            winning_trades_delta=result.pnl_stats.winning_trades,
+                            losing_trades_delta=result.pnl_stats.losing_trades,
+                        )
+                    except Exception:
+                        logger.warning(
+                            f"DB stale updating stats for {strategy.id}, recovering with fresh session"
+                        )
+                        orders_filled = result.orders_filled
+                        total_pnl_delta = float(result.pnl_stats.total_pnl)
+                        winning_trades_delta = result.pnl_stats.winning_trades
+                        losing_trades_delta = result.pnl_stats.losing_trades
+                        strategy = await _retry_with_fresh_session(
+                            db,
+                            strategy.id if strategy else None,
+                            lambda s, sch: sch.update_strategy_stats(
+                                strategy=s,
+                                orders_filled=orders_filled,
+                                total_pnl_delta=total_pnl_delta,
+                                winning_trades_delta=winning_trades_delta,
+                                losing_trades_delta=losing_trades_delta,
+                            ),
+                        )
 
                     # Record actual filled trades for cooldown and daily trade tracking
                     if result.orders_filled > 0:
@@ -873,7 +996,7 @@ async def run_scheduled_strategies(
                         current_prices: dict[str, Decimal] = {}
                         for sym in position_symbols:
                             try:
-                                quote = await shared_data_provider.get_quote(sym)
+                                quote = await strategy_data_provider.get_quote(sym)
                                 if quote and quote.price:
                                     current_prices[sym] = quote.price
                             except Exception as price_err:
@@ -1012,7 +1135,7 @@ async def execute_strategy_by_id(
             detail=f"Strategy {strategy_id} not found",
         )
 
-    data_provider = get_data_provider()
+    data_provider = await get_user_data_provider(db, strategy.user_id)
     safety_result = await _evaluate_portfolio_safety(
         db=db,
         redis=redis,
@@ -1071,6 +1194,7 @@ async def execute_strategy_by_id(
             portfolio_percent=strategy.portfolio_percent,
             risk_per_trade_percent=strategy.risk_per_trade_percent,
             max_open_positions=strategy.max_open_positions,
+            max_position_value=strategy.max_position_value,
             product_type=ProductType.normalize(strategy.product_type.value),
             signal_direction=strategy.signal_direction or SignalDirection.LONG,
             # Trading time window configuration
@@ -1099,17 +1223,39 @@ async def execute_strategy_by_id(
         )
         result = await executor.execute(config)
 
-        # Update next run time
-        await scheduler.update_next_run(strategy)
+        # After long execution, DB connection may have gone stale.
+        # Rollback any dead transaction state before updating.
+        try:
+            await scheduler.update_next_run(strategy)
+        except Exception:
+            logger.warning("DB connection stale after execution, rolling back and retrying")
+            await db.rollback()
+            # Re-fetch strategy with fresh connection
+            strategy = await scheduler.get_strategy_by_id(strategy_id)
+            if strategy:
+                await scheduler.update_next_run(strategy)
 
         # Update strategy statistics with P&L from position tracker
-        await scheduler.update_strategy_stats(
-            strategy=strategy,
-            orders_filled=result.orders_filled,
-            total_pnl_delta=float(result.pnl_stats.total_pnl),
-            winning_trades_delta=result.pnl_stats.winning_trades,
-            losing_trades_delta=result.pnl_stats.losing_trades,
-        )
+        try:
+            await scheduler.update_strategy_stats(
+                strategy=strategy,
+                orders_filled=result.orders_filled,
+                total_pnl_delta=float(result.pnl_stats.total_pnl),
+                winning_trades_delta=result.pnl_stats.winning_trades,
+                losing_trades_delta=result.pnl_stats.losing_trades,
+            )
+        except Exception:
+            logger.warning("DB stale updating strategy stats, rolling back and retrying")
+            await db.rollback()
+            strategy = await scheduler.get_strategy_by_id(strategy_id)
+            if strategy:
+                await scheduler.update_strategy_stats(
+                    strategy=strategy,
+                    orders_filled=result.orders_filled,
+                    total_pnl_delta=float(result.pnl_stats.total_pnl),
+                    winning_trades_delta=result.pnl_stats.winning_trades,
+                    losing_trades_delta=result.pnl_stats.losing_trades,
+                )
 
         # Record actual filled trades for cooldown and daily trade tracking
         if result.orders_filled > 0:
@@ -1281,19 +1427,27 @@ async def check_stop_monitors(
             "circuit_breakers_triggered": 0,
         }
 
-    data_provider = get_data_provider()
     position_tracker = PositionTracker(db)
     circuit_breaker = CircuitBreaker(redis)
     cb_persistence = CircuitBreakerPersistence(redis)
+    clear_provider_cache()  # Clear stale cached providers
 
     checked = 0
     positions_closed = 0
     circuit_breakers_triggered = 0
     user_safety_cache: dict[str, dict] = {}
+    user_data_providers: dict[str, DataProvider] = {}
     errors = []
 
     for strategy in active_strategies:
         try:
+            # Resolve data provider per-user (fyers/yahoo/nse)
+            if strategy.user_id not in user_data_providers:
+                user_data_providers[strategy.user_id] = await get_user_data_provider(
+                    db, strategy.user_id
+                )
+            data_provider = user_data_providers[strategy.user_id]
+
             safety_result = user_safety_cache.get(strategy.user_id)
             if safety_result is None:
                 safety_result = await _evaluate_portfolio_safety(
@@ -1310,10 +1464,15 @@ async def check_stop_monitors(
                 continue
 
             # Check exit conditions (SL/TP/trailing stop/profit booking)
+            # respect_time_window=False: stop monitors must always enforce exits
+            # even outside the strategy's trading window — e.g., INTRADAY positions
+            # not squared off by the 3:10/3:15 PM job still need SL/TP protection.
+            # New entries are separately gated by the executor's _process_signal().
             closed_positions, pnl_stats = await _check_exit_conditions_for_strategy(
                 db=db,
                 strategy=strategy,
                 data_provider=data_provider,
+                respect_time_window=False,
             )
 
             if closed_positions:
@@ -1544,3 +1703,72 @@ async def reconcile_all_funds(
         "users_fixed": users_fixed,
         "total_discrepancy": float(total_discrepancy),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal - Daily P&L Reset
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/internal/reset-daily-pnl")
+async def reset_daily_pnl(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    x_internal_token: str = Header(None),
+) -> dict:
+    """Reset daily P&L tracking for all users at market open.
+
+    Called by Celery Beat at 9:15 AM IST to:
+    1. Calculate current portfolio value (cash + margin)
+    2. Set daily_start_value = current portfolio value
+    3. Reset daily_realized_pnl = 0
+    4. Update daily_reset_date = today
+
+    This enables portfolio guardrails to work based on intraday loss.
+    """
+    from datetime import date
+
+    # Validate internal token
+    if x_internal_token != settings.INTERNAL_API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid internal token",
+        )
+
+    today = date.today()
+    users_reset = 0
+
+    try:
+        # Get all user funds
+        result = await db.execute(select(UserFunds))
+        all_funds = result.scalars().all()
+
+        for funds in all_funds:
+            # Skip if already reset today
+            if funds.daily_reset_date == today:
+                continue
+
+            # Calculate current portfolio value
+            current_value = funds.cash_balance + funds.margin_used
+
+            # Reset daily tracking
+            funds.daily_start_value = current_value
+            funds.daily_realized_pnl = Decimal("0")
+            funds.daily_reset_date = today
+            users_reset += 1
+
+            logger.info(
+                f"Reset daily P&L for user {funds.user_id}: daily_start_value=₹{current_value:.2f}"
+            )
+
+        await db.commit()
+
+        logger.info(f"Daily P&L reset complete. Users reset: {users_reset}")
+        return {"status": "success", "users_reset": users_reset}
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error resetting daily P&L: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
